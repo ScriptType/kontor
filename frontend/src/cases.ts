@@ -1,4 +1,11 @@
-import { Component, computed, inject } from "@angular/core";
+import {
+  Component,
+  computed,
+  inject,
+  afterRenderEffect,
+  viewChild,
+  ElementRef,
+} from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { injectTable, tableFeatures } from "@tanstack/angular-table";
 import { ActionControl } from "./action-registry";
@@ -20,6 +27,24 @@ export class Cases {
   readonly ui = this.actions.ui;
   readonly runner = this.actions.runner;
   readonly action = action;
+  readonly evidenceInput =
+    viewChild<ElementRef<HTMLTextAreaElement>>("evidenceNote");
+  constructor() {
+    afterRenderEffect(() => {
+      const request = this.ui.evidenceFocus();
+      const field = this.evidenceInput()?.nativeElement;
+      if (
+        request &&
+        request === this.ui.selectedId() &&
+        field &&
+        !this.runner.registry.modal
+      ) {
+        this.ui.evidenceFocus.set(null);
+        field.scrollIntoView({ block: "center" });
+        field.focus();
+      }
+    });
+  }
   readonly table = injectTable(() => ({
     features,
     columns,

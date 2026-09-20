@@ -236,7 +236,13 @@
           </div>
         </li>
       </ul>
-      @if (selected.requiresInspection) {
+      @if (selected.requiresInspection) { @if (runner.evidenceGuidance()) {
+      <p class="notice">
+        Für den Abschluss von {{ selected.id }} die tatsächliche Beobachtung
+        dokumentieren, in den Entwurf übernehmen und unten speichern. Danach
+        „Auftrag fortsetzen“ wählen.
+      </p>
+      }
       <label for="evidence" class="field-label">Tatsächlicher Prüfbeleg</label
       ><textarea
         #evidenceNote
@@ -278,7 +284,14 @@
       Speichern
     </button>
   </footer>
-  @for (blocker of ui.blocked(); track blocker.kind) {
+  @if (runner.evidenceGuidance()) {
+  <button
+    [disabled]="ui.dirty() || ui.busy() || !!ui.unknownSave() || !draft.inspection"
+    (click)="runner.resume()"
+  >
+    Auftrag fortsetzen
+  </button>
+  } @for (blocker of ui.blocked(); track blocker.kind) {
   <p class="blocker">{{ blocker.message }}</p>
   }
 </section>

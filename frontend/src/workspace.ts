@@ -44,6 +44,7 @@ export class WorkspaceUi {
   readonly openOnly = signal(false);
   readonly search = signal("");
   readonly menu = signal<"customer" | "technician" | null>(null);
+  readonly evidenceFocus = signal<string | null>(null);
   readonly selectedId = signal<string | null>(null);
   readonly draft = signal<CaseDraft | null>(null);
   readonly draftOwner = signal<Actor | null>(null);
@@ -241,7 +242,14 @@ export class WorkspaceUi {
     );
   }
   async refresh() {
+    const draft = this.draft();
+    const pristine = !this.dirty();
     await this.query.refetch({ throwOnError: true });
+    const selected = this.selected();
+    if (pristine && this.draft() === draft && selected) {
+      this.draft.set(draftOf(selected));
+      this.draftRevision.set(this.data()?.revision ?? 0);
+    }
   }
   private restoreUnknown() {
     const parsed = saveSchema.safeParse(readBrowserState("kontor-save-v1"));

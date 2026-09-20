@@ -4,6 +4,7 @@ import {
   inject,
   Injector,
   signal,
+  computed,
   effect,
 } from "@angular/core";
 import { z } from "zod";
@@ -58,6 +59,20 @@ export class CommandRunner {
   readonly registry = inject(ActionRegistry);
   private readonly injector = inject(Injector);
   readonly state = signal<RunState>({ kind: "idle" });
+  readonly attention = signal(0);
+  readonly targetCase = computed(() =>
+    this.ui.data()?.cases.find((c) => c.id === this.goal()?.caseId),
+  );
+  readonly evidenceGuidance = computed(() => {
+    const goal = this.goal();
+    const selected = this.ui.selected();
+    return (
+      selected?.id === goal?.caseId &&
+      selected?.requiresInspection &&
+      goal?.objectives.some((o) => o.kind === "complete") &&
+      !["idle", "done", "stopped"].includes(this.state().kind)
+    );
+  });
   readonly goal = signal<Goal | null>(null);
   readonly command = signal("");
   readonly historyStored = signal(true);
@@ -104,6 +119,12 @@ export class CommandRunner {
         }),
       );
     });
+  }
+  private requestAttention(
+    state: Extract<RunState, { kind: "needs_input" | "needs_approval" }>,
+  ) {
+    this.state.set(state);
+    this.attention.update((value) => value + 1);
   }
   label() {
     const s = this.state();
@@ -175,19 +196,18 @@ export class CommandRunner {
     this.finish("Gestoppt");
   }
   async start(reuse = false) {
+    this.invalidate();
     if (this.ui.dirty() || this.ui.unknownSave()) {
-      this.state.set({
+      this.requestAttention({
         kind: "needs_input",
         question: {
           kind: "draft",
-          message:
-            "Es gibt einen offenen Entwurf oder ein unbekanntes Speicherergebnis. Bitte zuerst speichern, verwerfen oder Ergebnis prüfen. Danach den Auftrag erneut starten.",
+          message: `Es gibt einen offenen Entwurf oder ein unbekanntes Speicherergebnis für ${this.ui.selectedId() ?? "den aktuellen Vorgang"}. Bitte zuerst speichern, verwerfen oder Ergebnis prüfen. Danach den Auftrag erneut starten.`,
           options: [],
         },
       });
       return;
     }
-    this.invalidate();
     const epoch = this.epoch;
     this.goal.set(null);
     this.approved.set(null);
@@ -252,7 +272,7 @@ export class CommandRunner {
       return;
     }
     if (this.ui.dirty() && this.ui.draftOwner() !== "jev") {
-      this.state.set({
+      this.requestAttention({
         kind: "needs_input",
         question: {
           kind: "draft",
@@ -431,7 +451,7 @@ export class CommandRunner {
           `${selected.id} ist bereits erledigt, der angeforderte Filter zeigt nur offene Vorgänge`,
         );
       if (conflicts.length) {
-        this.state.set({
+        this.requestAttention({
           kind: "needs_input",
           question: {
             kind: "filter_scope",
@@ -460,12 +480,28 @@ export class CommandRunner {
         });
         return;
       }
+      this.state.set({ kind: "deciding" });
+      await this.render();
+      if (epoch !== this.epoch) return;
       const preparation = prepareGoal(goal, workspace, this.approved());
-      if (preparation.kind === "question") {
-        this.state.set({ kind: "needs_input", question: preparation.question });
+      const contextAction =
+        goal.supported &&
+        goal.objectives.length > 0 &&
+        !goal.objectives.some((o) => o.kind === "filter" && !o.customerId) &&
+        workspace.cases.some((c) => c.id === goal.caseId)
+          ? this.nextContextAction(
+              goal,
+              goal.objectives.some((o) => o.kind !== "filter"),
+            )
+          : null;
+      if (!contextAction && preparation.kind === "question") {
+        this.requestAttention({
+          kind: "needs_input",
+          question: preparation.question,
+        });
         return;
       }
-      if (preparation.kind === "proposal") {
+      if (!contextAction && preparation.kind === "proposal") {
         const proposal = preparation.proposal;
         const selected = await this.ui.api.remedy.call(
           {
@@ -488,7 +524,7 @@ export class CommandRunner {
           );
           return;
         }
-        this.state.set({
+        this.requestAttention({
           kind: "needs_approval",
           proposal: {
             ...proposal,
@@ -497,11 +533,12 @@ export class CommandRunner {
         });
         return;
       }
-      this.desired.set(preparation.desired);
+      const desired = preparation.kind === "ready" ? preparation.desired : null;
+      this.desired.set(desired);
       this.state.set({ kind: "deciding" });
       await this.render();
       if (epoch !== this.epoch) return;
-      const target = this.nextAction(goal, preparation.desired);
+      const target = contextAction ?? this.nextAction(goal, desired);
       if (!target) {
         this.state.set({ kind: "done" });
         this.finish(this.label());
@@ -518,7 +555,7 @@ export class CommandRunner {
           context: JSON.stringify({
             goal,
             approved: this.approved(),
-            desired: preparation.desired,
+            desired,
             currentPage: this.ui.page(),
             filters: {
               customer: this.ui.customer(),
@@ -565,7 +602,7 @@ export class CommandRunner {
         new Error("Zu viele Schritte. Bitte den aktuellen Stand prüfen."),
       );
   }
-  private nextAction(goal: Goal, desired: CaseDraft | null): string | null {
+  private nextContextAction(goal: Goal, needsCase: boolean): string | null {
     const filter = goal.objectives.find((o) => o.kind === "filter");
     if (this.ui.page() !== "cases") {
       const available = this.registry.snapshot();
@@ -590,12 +627,18 @@ export class CommandRunner {
           : "menu:customer";
       if (this.ui.openOnly() !== filter.openOnly) return "filter:open";
     }
-    if (!desired || !goal.caseId) return null;
+    if (!needsCase || !goal.caseId) return null;
     if (this.ui.selectedId() !== goal.caseId) {
       if (!this.ui.filtered().some((c) => c.id === goal.caseId))
         return "filter:reset";
       return `case:${goal.caseId}`;
     }
+    return null;
+  }
+  private nextAction(goal: Goal, desired: CaseDraft | null): string | null {
+    const context = this.nextContextAction(goal, !!desired);
+    if (context) return context;
+    if (!desired || !goal.caseId) return null;
     const draft = this.ui.draft();
     if (!draft) return `case:${goal.caseId}`;
     if (draft.technicianId !== desired.technicianId)

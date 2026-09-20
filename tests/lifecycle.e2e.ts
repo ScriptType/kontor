@@ -375,7 +375,7 @@ for (const target of [
         await expect(page.locator(".activity-label")).toHaveText("Antwort ausstehend");
         expect(snapshots).toHaveLength(0);
         expect(store.snapshot()).toEqual(before);
-        await page.getByRole("button", { name: "Antworten", exact: true }).click();
+        await expect(page.locator(".answer-panel")).toBeVisible();
         await expect(page.locator(".answer-panel")).toContainText(target.caseId);
         await expect(page.locator(".answer-panel")).toContainText(target.reason);
         await page.keyboard.press("Escape");

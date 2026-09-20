@@ -1,4 +1,15 @@
-import { Component, HostListener, inject, signal } from "@angular/core";
+import {
+  Component,
+  HostListener,
+  inject,
+  signal,
+  effect,
+  untracked,
+  computed,
+  afterRenderEffect,
+  viewChild,
+  ElementRef,
+} from "@angular/core";
 import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { BrnDialogImports } from "@spartan-ng/brain/dialog";
@@ -12,6 +23,42 @@ import { demos } from "../../shared/command";
 export class Palette {
   readonly runner = inject(CommandRunner);
   readonly demos = demos;
+  readonly attentionPanel =
+    viewChild<ElementRef<HTMLElement>>("attentionPanel");
+  private focusedAttention = 0;
+  readonly focusTarget = computed(() => {
+    const state = this.runner.state();
+    return state.kind === "needs_input" || state.kind === "needs_approval"
+      ? ".answer-panel input, .answer-panel button"
+      : "textarea";
+  });
+  constructor() {
+    effect(() => {
+      const attention = this.runner.attention();
+      if (attention) untracked(() => this.setOpen(true));
+    });
+    afterRenderEffect(() => {
+      const attention = this.runner.attention();
+      const control =
+        this.attentionPanel()?.nativeElement.querySelector<HTMLElement>(
+          "input, button",
+        );
+      if (this.open() && attention > this.focusedAttention && control) {
+        this.focusedAttention = attention;
+        control.focus();
+      }
+    });
+  }
+  editDraft() {
+    this.setOpen(false);
+    this.runner.ui.navigate("cases", "manual");
+  }
+  editEvidence() {
+    const target = this.runner.targetCase();
+    if (!target || this.runner.ui.selectedId() !== target.id) return;
+    this.setOpen(false);
+    this.runner.ui.evidenceFocus.set(target.id);
+  }
   readonly open = signal(false);
   readonly minutes = signal("");
   readonly scheduleError = signal("");

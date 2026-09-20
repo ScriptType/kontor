@@ -25,7 +25,7 @@ async function command(page: Page, text: string) {
   await page.getByRole("button", { name: "Ausführen" }).click();
 }
 async function answerPanel(page: Page) {
-  await page.getByRole("button", { name: "Antworten", exact: true }).click();
+  await expect(page.locator(".answer-panel")).toBeVisible();
 }
 test("assignment follows visible menus, saves once, updates cross-page state, and persists on reload", async ({
   page,
@@ -107,7 +107,7 @@ test("ambiguous case and missing time ask concrete questions, Escape retains inp
   ).toBeVisible();
   await page.keyboard.press("Escape");
   expect(workspace.snapshot().revision).toBe(0);
-  await answerPanel(page);
+  await page.getByRole("button", { name: "Antworten", exact: true }).click();
   await page
     .getByRole("button", { name: /V-1042 · Wartung Standort Nord/ })
     .click();
@@ -165,6 +165,13 @@ test("conflict proposal can be rejected; approval changes only the displayed job
   await command(page, demos[5]);
   await answerPanel(page);
   await expect(page.getByText(/durch V-1041 belegt/)).toBeVisible();
+  await expect(page.locator(".answer-options button").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.locator(".activity-label")).toHaveText(
+    "Freigabe ausstehend",
+  );
+  await page.getByRole("button", { name: "Antworten", exact: true }).click();
   await page.getByRole("button", { name: "Ablehnen und stoppen" }).click();
   expect(workspace.snapshot().revision).toBe(0);
   await page.keyboard.press("Escape");
@@ -197,7 +204,9 @@ test("unverified physical work and unknown demo input never mutate; mobile dialo
   await command(page, demos[6]);
   await answerPanel(page);
   await expect(
-    page.getByText(/Die Prüfung vor Ort ist nicht belegt/),
+    page
+      .locator(".answer-panel")
+      .getByText(/Die Prüfung vor Ort ist nicht belegt/),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(
@@ -360,7 +369,10 @@ test("missing schedule asks for concrete source values and then saves them", asy
   await page
     .getByLabel("Gewünschter Termin", { exact: true })
     .fill("2026-09-25T11:00");
-  await page.getByLabel("Termindauer in Minuten", { exact: true }).fill("75");
+  await page
+    .locator(".answer-panel")
+    .getByLabel("Termindauer in Minuten", { exact: true })
+    .fill("75");
   await page.getByRole("button", { name: "Diesen Termin bestätigen" }).click();
   await expect(page.locator(".activity-label")).toHaveText(
     "Auftrag abgeschlossen",
@@ -395,22 +407,104 @@ test("unavailable browser storage refuses sending a save instead of losing its r
   expect(workspace.snapshot().revision).toBe(0);
 });
 
-test("pending attention opens once and evidence hands off to the correct manual editor", async ({ page, address, workspace }) => {
-  await page.goto(address + '#reports');
+for (const entry of ["cases", "customers", "reports", "filtered"]) {
+  test(`pending attention opens once and evidence hands off from ${entry} to the correct manual editor`, async ({
+    page,
+    address,
+    workspace,
+  }) => {
+    await page.goto(address + "#" + (entry === "filtered" ? "cases" : entry));
+    if (entry === "filtered")
+      await page.getByLabel("Vorgänge durchsuchen").fill("V-1042");
+    await command(page, demos[6]);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".answer-panel")).toContainText("V-1039");
+    const evidence = page.getByRole("button", {
+      name: "Prüfbeleg erfassen",
+      exact: true,
+    });
+    await expect(evidence).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.locator(".editor")).toContainText("V-1039");
+    await expect(page.locator(".activity-label")).toHaveText(
+      "Antwort ausstehend",
+    );
+    await page.waitForTimeout(150);
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await page.getByRole("button", { name: "Antworten", exact: true }).click();
+    await evidence.click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByLabel("Tatsächlicher Prüfbeleg")).toBeFocused();
+    const before = workspace.snapshot();
+    expect(before.revision).toBe(0);
+    await page
+      .getByLabel("Tatsächlicher Prüfbeleg")
+      .fill("Testbeobachtung am isolierten Prüfstand dokumentiert.");
+    expect(workspace.snapshot()).toEqual(before);
+    await page
+      .getByRole("button", { name: "Eigenen Prüfbeleg in Entwurf übernehmen" })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Auftrag fortsetzen", exact: true }),
+    ).toBeDisabled();
+    expect(workspace.snapshot()).toEqual(before);
+    await page.getByRole("button", { name: "Speichern", exact: true }).click();
+    await expect(page.locator(".editor-footer")).toContainText(
+      "V-1039 gespeichert",
+    );
+    expect(
+      workspace.snapshot().cases.find((c) => c.id === "V-1039"),
+    ).toMatchObject({ status: "open", inspection: { by: "user" } });
+    await expect(
+      page.getByRole("button", { name: "Auftrag fortsetzen", exact: true }),
+    ).toBeEnabled();
+    await page
+      .getByRole("button", { name: "Auftrag fortsetzen", exact: true })
+      .click();
+    await expect(page.locator(".activity-label")).toHaveText(
+      "Auftrag abgeschlossen",
+    );
+    const after = workspace.snapshot();
+    expect(after.revision).toBe(2);
+    expect(after.cases.find((c) => c.id === "V-1039")).toMatchObject({
+      status: "done",
+      inspection: { by: "user" },
+    });
+    expect(after.cases.filter((c) => c.id !== "V-1039")).toEqual(
+      before.cases.filter((c) => c.id !== "V-1039"),
+    );
+    await page.getByRole("button", { name: "Berichte", exact: true }).click();
+    await expect(
+      page
+        .locator(".metrics article")
+        .filter({ hasText: "Abgeschlossen" })
+        .locator("strong"),
+    ).toHaveText("2");
+  });
+}
+
+test("foreign draft stays intact and can be reached from reports", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.goto(address);
+  await page
+    .getByRole("button", { name: "Wartung Standort Nord", exact: true })
+    .click();
+  await page.getByLabel("Geleistete Arbeitszeit in Minuten").fill("19");
+  await page.getByRole("button", { name: "Berichte", exact: true }).click();
   await command(page, demos[6]);
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.locator('.answer-panel')).toContainText('V-1039');
-  const evidence = page.getByRole('button', { name: 'Prüfbeleg erfassen', exact: true });
-  await expect(evidence).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.locator('.editor')).toContainText('V-1039');
-  await expect(page.locator('.activity-label')).toHaveText('Antwort ausstehend');
-  await page.waitForTimeout(150);
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-  await answerPanel(page);
-  await evidence.click();
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(page.getByLabel('Tatsächlicher Prüfbeleg')).toBeFocused();
+  await expect(page.locator(".answer-panel")).toContainText("V-1042");
+  await expect(
+    page.getByRole("button", { name: "Offenen Entwurf prüfen" }),
+  ).toBeFocused();
+  await page.getByRole("button", { name: "Offenen Entwurf prüfen" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.locator(".editor")).toContainText("V-1042");
+  await expect(
+    page.getByLabel("Geleistete Arbeitszeit in Minuten"),
+  ).toHaveValue("19");
   expect(workspace.snapshot().revision).toBe(0);
 });

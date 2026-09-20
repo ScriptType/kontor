@@ -5,7 +5,7 @@
 <brn-dialog
   [state]="open() ? 'open' : 'closed'"
   (stateChanged)="setOpen($event === 'open')"
-  [autoFocus]="'textarea'"
+  [autoFocus]="focusTarget()"
 >
   <ng-template brnDialogContent
     ><section class="palette">
@@ -51,9 +51,32 @@
         </div>
       </form>
       @if (runner.state(); as state) { @if (state.kind === 'needs_input') {
-      <section class="answer-panel">
+      <section #attentionPanel class="answer-panel">
         <h3>Antwort ausstehend</h3>
-        <p>{{ state.question.message }}</p>
+        @if (state.question.kind !== 'draft' && runner.targetCase(); as target)
+        {
+        <p>
+          {{ target.id }} · {{ target.title }} · {{
+          runner.ui.customerName(target.customerId) }} · {{ target.site }}
+        </p>
+        }
+        <p>
+          {{ state.question.kind === 'unsupported' &&
+          runner.ui.source.data()?.mode === 'live' ? 'Der vollständige Auftrag
+          ist nicht unterstützt oder nicht eindeutig. Bitte nenne den Vorgang
+          und die gewünschte Änderung genauer.' : state.question.message }}
+        </p>
+        @if (state.question.kind === 'evidence') {
+        <p>
+          Eigene Beobachtung dokumentieren, in den Entwurf übernehmen und
+          speichern. Danach den Auftrag ausdrücklich fortsetzen.
+        </p>
+        <button class="primary" (click)="editEvidence()">
+          Prüfbeleg erfassen
+        </button>
+        } @if (state.question.kind === 'draft') {
+        <button (click)="editDraft()">Offenen Entwurf prüfen</button>
+        }
         <div class="answer-options">
           @for (option of state.question.options; track option.id) {
           <button (click)="answer(option.id)">{{ option.label }}</button> }
@@ -93,8 +116,14 @@
         </button>
       </section>
       } @if (state.kind === 'needs_approval') {
-      <section class="answer-panel">
+      <section #attentionPanel class="answer-panel">
         <h3>Zusätzliche Änderung freigeben</h3>
+        @if (runner.targetCase(); as target) {
+        <p>
+          {{ target.id }} · {{ target.title }} · {{
+          runner.ui.customerName(target.customerId) }} · {{ target.site }}
+        </p>
+        }
         <p>{{ state.proposal.message }}</p>
         <dl class="proposal">
           <dt>Vorgang</dt>
