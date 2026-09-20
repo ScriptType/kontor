@@ -326,23 +326,21 @@ export function createJev(config: Config, fetch?: Fetch) {
           order: "flexible",
           readiness: { kind: "refused", reason: "scope" },
         };
-      if (requested.includes("assign")) {
-        const namedTechnicians = workspace.technicians.filter(({ name }) =>
-          new RegExp(
-            `(?<![\\p{L}\\p{N}_])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`,
-            "iu",
-          ).test(request),
-        );
-        if (namedTechnicians.length > 1)
-          return {
-            request,
-            caseId: null,
-            objectives: [],
-            persistence: "unclear",
-            order: "flexible",
-            readiness: { kind: "refused", reason: "multiple_technicians" },
-          };
-      }
+      const namedTechnicians = workspace.technicians.filter(({ name }) =>
+        new RegExp(
+          `(?<![\\p{L}\\p{N}_])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`,
+          "iu",
+        ).test(request),
+      );
+      if (namedTechnicians.length > 1)
+        return {
+          request,
+          caseId: null,
+          objectives: [],
+          persistence: "unclear",
+          order: "flexible",
+          readiness: { kind: "refused", reason: "multiple_technicians" },
+        };
       const slotKeys = new Set<string>();
       if (requested.some((kind) => kind !== "filter")) {
         slotKeys.add("case");

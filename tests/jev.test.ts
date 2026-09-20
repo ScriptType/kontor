@@ -558,3 +558,27 @@ test("described work minutes remain bounded candidates without case, date or clo
   assert.equal(goal.persistence, "save");
   assert.deepEqual(goal.objectives, [{ kind: "time", minutes: 35 }]);
 });
+
+for (const assign of ["yes", "no"]) {
+  test(`multiple full names refuse a surviving time objective when assign is ${assign}`, async () => {
+    const goal = await provider(
+      {
+        ...filterAnswers,
+        filter: "no",
+        assign,
+        time: "yes",
+        workMinutes: "25",
+      },
+      () => {},
+      { assign: assign === "yes" ? 0.3 : 1 },
+    ).interpret(
+      "Weise V-1042 erst Lea Sommer dann Jonas Weber zu und erfasse 25 Minuten",
+      seedWorkspace(),
+    );
+    assert.deepEqual(goal.readiness, {
+      kind: "refused",
+      reason: "multiple_technicians",
+    });
+    assert.deepEqual(goal.objectives, []);
+  });
+}
