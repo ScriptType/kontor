@@ -8,3 +8,7 @@ playwright-report/
 test-results/
 .DS_Store
 todo.md
+
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

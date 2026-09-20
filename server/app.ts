@@ -8,7 +8,13 @@ import type { Fetch } from "@typesafe-ai/sdk";
 import type { Config } from "./config.js";
 import { createRouter } from "./router.js";
 
-export function createApp(config: Config, fetch?: Fetch) {
+import { WorkspaceStore } from "./workspace-store.js";
+
+export function createApp(
+  config: Config,
+  fetch?: Fetch,
+  store = new WorkspaceStore(),
+) {
   const app = new Hono();
   app.use("/*", serveStatic({ root: "./dist/frontend/browser" }));
   const server = createServer(getRequestListener(app.fetch));
@@ -16,7 +22,7 @@ export function createApp(config: Config, fetch?: Fetch) {
     noServer: true,
     maxPayload: 256 * 1024,
   });
-  const handler = new RPCHandler(createRouter(config, fetch));
+  const handler = new RPCHandler(createRouter(config, fetch, store));
   server.on("upgrade", (request, socket, head) => {
     const origin = request.headers.origin;
     if (
@@ -47,6 +53,7 @@ export function createApp(config: Config, fetch?: Fetch) {
           server.close((error) => (error ? reject(error) : resolve())),
         ),
       ]);
+      store.close();
     },
   };
 }

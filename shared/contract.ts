@@ -1,6 +1,14 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 
+import {
+  workspaceSchema,
+  saveSchema,
+  receiptSchema,
+  editableSchema,
+} from "./domain.js";
+import { goalSchema, decisionInputSchema, decisionSchema } from "./command.js";
+
 const probability = z.number().min(0).max(1);
 export const evaluationInputSchema = z.object({
   text: z.string().trim().min(1).max(20_000),
@@ -37,6 +45,23 @@ export const evaluationSchema = z.discriminatedUnion("mode", [
   sourceSchema.options[1].extend({ answers: answersSchema }),
 ]);
 export const contract = {
+  remedy: oc
+    .input(
+      z.object({
+        caseId: z.string(),
+        draft: editableSchema,
+        revision: z.number(),
+        request: z.string(),
+      }),
+    )
+    .output(z.object({ technicianId: z.string().nullable() })),
+  workspace: oc.output(workspaceSchema),
+  saveCase: oc.input(saveSchema).output(receiptSchema),
+  receipt: oc
+    .input(z.object({ operationId: z.string() }))
+    .output(receiptSchema.nullable()),
+  interpret: oc.input(evaluationInputSchema).output(goalSchema),
+  decide: oc.input(decisionInputSchema).output(decisionSchema),
   status: oc.output(sourceSchema),
   evaluate: oc
     .input(evaluationInputSchema)
