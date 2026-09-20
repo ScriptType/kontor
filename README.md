@@ -49,6 +49,8 @@ Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Bei eine
 
 Bei einem fehlenden Prüfbeleg führt **Prüfbeleg erfassen** direkt zum Feld im betroffenen Vorgang. Trage deine tatsächliche Beobachtung ein, übernimm sie in den Entwurf und speichere. Mit **Auftrag fortsetzen** prüft Jev anschließend den ursprünglichen Abschlussauftrag erneut.
 
+Mit **Demodaten zurücksetzen** unten im Arbeitsbereich stellst du die ursprünglichen Beispieldaten wieder her. Die Bestätigung verwirft gespeicherte Änderungen sowie Entwürfe, Filter und den Jev-Verlauf im aktuellen Tab. Ein laufender Auftrag wird beendet. API-Schlüssel und Betriebsmodus bleiben erhalten, sodass der Reset auch im Live-Modus funktioniert.
+
 Zusätzliche fachliche Änderungen, etwa ein Personenwechsel zum Beheben eines Terminkonflikts, erscheinen als konkreter Vorschlag. Eine fehlende Prüfung vor Ort lässt sich nicht durch Jev bestätigen. Werte stammen aus dem Auftrag oder vorhandenen Daten.
 
 ## Entwicklung

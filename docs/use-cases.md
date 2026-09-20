@@ -27,6 +27,8 @@ Das Auftragsfenster zeigt die verfügbaren Beispielaufträge. Im Demo-Modus funk
 
 Ein bereits erfülltes Teilziel benötigt keine erneute Speicherung. Bereits gespeicherte Änderungen aus einem früheren Beispiel bleiben bestehen.
 
+**Demodaten zurücksetzen** stellt nach Bestätigung den Ausgangsstand für einen neuen Test her. Der Reset beendet den Auftrag im aktuellen Tab und leert dessen Entwürfe, Filter, Eingabe und Verlauf. Das Abbrechen der Bestätigung vor dem Zurücksetzen erhält diese Daten.
+
 ## Rückfragen und Unterbrechungen
 
 Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Escape schließt das Fenster; der Status bleibt bei "Antwort ausstehend". Dieselbe Rückfrage öffnet sich dadurch nicht erneut. Eine bestätigte zusätzliche Änderung gilt nur für den angezeigten Vorschlag und den dazugehörigen Datenstand.

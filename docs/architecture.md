@@ -70,6 +70,10 @@ Der Server speichert die lokalen Daten in SQLite. Eine Änderung enthält eine O
 
 Die Fachregeln prüfen Qualifikation, Terminüberschneidungen, Arbeitszeit und erforderliche Belege. Sie liefern konkrete Blockaden und mögliche Alternativen. Dieselben Regeln können einen Formularentwurf prüfen. Die Prüfung im Browser ersetzt nie die Prüfung beim Speichern.
 
+Der manuelle Reset ersetzt die Fachdaten über WebSocket-RPC durch die Beispieldaten. Seine SQLite-Transaktion prüft die erwartete Revision und erhöht sie. Sie setzt die Revision nicht auf null zurück, damit verspätete Änderungen mit einem alten Datenstand weiterhin scheitern. Frühere Speicherbelege bleiben zur Erkennung wiederholter Operationen erhalten.
+
+Im Browser entwertet der bestätigte Reset laufende Entscheidungen und ältere Speicherantworten. Nach erfolgreichem Reset werden der lokale Entwurf und Auftrag samt Verlauf geleert. Ein fehlgeschlagener oder unklarer Reset wird nicht automatisch wiederholt und setzt den vorherigen Jev-Auftrag nicht fort. Jev erhält keine Aktion zum Zurücksetzen des Arbeitsbereichs.
+
 Ein Formularentwurf ist kein gespeicherter Vorgang. Jev und menschliche Bedienung verwenden dieselben sichtbaren Handler. Erst Speichern erzeugt eine fachliche Mutation. Jev darf einen Prüfbeleg weder erzeugen noch verändern.
 
 ## Auftrag und sichtbare Aktionen
