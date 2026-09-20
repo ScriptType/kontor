@@ -304,6 +304,7 @@ export class CommandRunner {
       data = this.ui.data();
     return JSON.stringify({
       currentPage: this.ui.page(),
+      currentScreen: this.screenText(),
       revision: data?.revision,
       filters: {
         customer: this.ui.customer(),
@@ -323,6 +324,12 @@ export class CommandRunner {
       receipts: this.run()?.receipts,
       message: this.ui.message(),
     });
+  }
+  private screenText() {
+    const content = document.querySelector(".content");
+    return content instanceof HTMLElement
+      ? content.innerText.slice(0, 12000)
+      : "";
   }
   private observed() {
     return JSON.stringify({
@@ -364,6 +371,12 @@ export class CommandRunner {
         fingerprint = input.context,
         before = this.observed(),
         runId = this.activeId;
+      if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 180000) {
+        this.block(
+          "Verlaufslimit erreicht. Bereits ausgeführte Schritte bleiben im Verlauf. Bitte verbleibende Arbeit als neuen Auftrag formulieren.",
+        );
+        return;
+      }
       if (input.steps.length >= 40) {
         this.block(
           "Schrittgrenze erreicht. Ausgeführte Änderungen bleiben erhalten.",
@@ -371,8 +384,10 @@ export class CommandRunner {
         return;
       }
       let action: ActionDescription | undefined;
+      let authorizedBy: "request" | "user" = "request";
       if (this.approved && this.approved.fingerprint === fingerprint) {
         const approved = this.approved;
+        authorizedBy = "user";
         action = input.actions.find(
           (a) => JSON.stringify(a) === JSON.stringify(approved.action),
         );
@@ -399,12 +414,15 @@ export class CommandRunner {
           return;
         }
         if (decision.choice === "blocked") {
+          const data = this.ui.data(),
+            selected = this.ui.selected(),
+            draft = this.ui.draft();
+          const hints =
+            data && selected && draft
+              ? blockers(data, { ...selected, ...draft, status: "done" })
+              : this.ui.blocked();
           this.block(
-            this.ui
-              .blocked()
-              .map((b) => b.message)
-              .join(" ") ||
-              "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt. Prüfbelege müssen von dir stammen.",
+            `Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.${hints.length ? " Aktuelle Formularhinweise: " + hints.map((h) => h.message).join(" ") : ""}`,
           );
           return;
         }
@@ -505,7 +523,13 @@ export class CommandRunner {
                 ...r,
                 steps: [
                   ...r.steps,
-                  { snapshotId: input.snapshotId, action, before, after },
+                  {
+                    snapshotId: input.snapshotId,
+                    action,
+                    authorizedBy,
+                    before,
+                    after,
+                  },
                 ],
                 entries: [...r.entries, action.effect],
               }

@@ -84,20 +84,47 @@ export class Cases {
     this.ui.search.set(value);
   }
   draftChanges() {
-    const before = this.ui.selected(), after = this.ui.draft();
+    const before = this.ui.selected(),
+      after = this.ui.draft();
     if (!before || !after) return "";
-    const appointment = (value: CaseDraft["appointment"]) => value ? `${value.start.replace("T", " ").slice(0,16)} · ${value.minutes} Minuten` : "kein Termin";
+    const appointment = (value: CaseDraft["appointment"]) =>
+      value
+        ? `${value.start.replace("T", " ").slice(0, 16)} · ${value.minutes} Minuten`
+        : "kein Termin";
     const fields = [
-      ["Zuständigkeit", this.ui.technicianName(before.technicianId), this.ui.technicianName(after.technicianId)],
+      [
+        "Zuständigkeit",
+        this.ui.technicianName(before.technicianId),
+        this.ui.technicianName(after.technicianId),
+      ],
       ["Arbeitszeit", `${before.minutes} Minuten`, `${after.minutes} Minuten`],
-      ["Termin", appointment(before.appointment), appointment(after.appointment)],
-      ["Status", before.status === "done" ? "erledigt" : "offen", after.status === "done" ? "erledigt" : "offen"],
-      ["Prüfbeleg", before.inspection?.note ?? "kein Beleg", after.inspection?.note ?? "kein Beleg"],
+      [
+        "Termin",
+        appointment(before.appointment),
+        appointment(after.appointment),
+      ],
+      [
+        "Status",
+        before.status === "done" ? "erledigt" : "offen",
+        after.status === "done" ? "erledigt" : "offen",
+      ],
+      [
+        "Prüfbeleg",
+        before.inspection?.note ?? "kein Beleg",
+        after.inspection?.note ?? "kein Beleg",
+      ],
     ];
-    return fields.filter(([, from, to]) => from !== to).map(([label, from, to]) => `${label} von ${from} auf ${to}`).join("; ");
+    return fields
+      .filter(([, from, to]) => from !== to)
+      .map(([label, from, to]) => `${label} von ${from} auf ${to}`)
+      .join("; ");
   }
-  saveEffect() { return `${this.ui.selectedId()} verbindlich speichern. ${this.draftChanges()}`; }
-  discardEffect() { return `${this.ui.selectedId()}: Folgende Entwurfsänderungen verwerfen und gespeicherten Stand wiederherstellen. ${this.draftChanges()}`; }
+  saveEffect() {
+    return `${this.ui.selectedId()} verbindlich speichern. ${this.draftChanges()}`;
+  }
+  discardEffect() {
+    return `${this.ui.selectedId()}: Folgende Entwurfsänderungen verwerfen und gespeicherten Stand wiederherstellen. ${this.draftChanges()}`;
+  }
   number(event: Event) {
     if (event.target instanceof HTMLInputElement) {
       const value = Number(event.target.value);

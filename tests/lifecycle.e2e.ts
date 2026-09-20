@@ -26,6 +26,7 @@ async function withLive(
     assessment?: string;
     forbidCommit?: boolean;
     outstanding?: boolean;
+    receiptComplete?: boolean;
   } = {},
 ) {
   const held = barrier(),
@@ -49,7 +50,15 @@ async function withLive(
         .object({ observedSteps: z.array(z.unknown()) })
         .parse(JSON.parse(payload.state));
       const key = payload.questions["next"] ? "next" : "assessment";
-      const next = sequence[input.observedSteps.length] ?? "done";
+      const facts = z
+        .object({
+          currentFacts: z.object({ receipts: z.array(z.unknown()).optional() }),
+        })
+        .parse(JSON.parse(payload.state));
+      const next =
+        options.receiptComplete && facts.currentFacts.receipts?.length
+          ? "done"
+          : (sequence[input.observedSteps.length] ?? "done");
       const selected = z
         .object({ selected: z.unknown().optional() })
         .parse(JSON.parse(payload.state)).selected;
@@ -380,5 +389,54 @@ test("changed revision revokes a displayed concrete confirmation", async ({
       expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
     },
     { low: "technician:lea" },
+  );
+});
+
+test("unknown save after reload reconciles once and never replays the mutation", async ({
+  page,
+}) => {
+  let firstReceipt = true;
+  const arrived = barrier();
+  await page.routeWebSocket("**/rpc", (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage((message) => {
+      const text =
+        typeof message === "string" ? message : message.toString("utf8");
+      if (
+        firstReceipt &&
+        text.includes("operationId") &&
+        text.includes("saved")
+      ) {
+        firstReceipt = false;
+        arrived.release();
+      } else socket.send(message);
+    });
+  });
+  await withLive(
+    page,
+    assignment,
+    async (store) => {
+      await start(page);
+      await arrived.promise;
+      expect(store.snapshot().revision).toBe(1);
+      await page.reload();
+      await expect(page.locator(".activity-label")).toContainText(
+        "Neuladen pausiert",
+      );
+      await page
+        .getByRole("button", { name: "Fortsetzen", exact: true })
+        .click();
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      expect(store.snapshot().revision).toBe(1);
+      expect(
+        await page.evaluate(() => localStorage.getItem("kontor-save-v1")),
+      ).toBeNull();
+      const history = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}"),
+      );
+      expect(history.history[0].receipts).toHaveLength(1);
+      expect(history.history[0].operations).toHaveLength(1);
+    },
+    { receiptComplete: true },
   );
 });

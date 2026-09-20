@@ -23,6 +23,7 @@ export const answerSchema = z.object({
 export const stepSchema = z.object({
   snapshotId: z.string(),
   action: actionSchema,
+  authorizedBy: z.enum(["request", "user"]).default("request"),
   before: z.string(),
   after: z.string(),
 });

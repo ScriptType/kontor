@@ -127,7 +127,7 @@ export function createJev(config: Config, fetch?: Fetch) {
         input.selected === "done"
           ? {
               complete:
-                "The entire original request is satisfied by actual observed steps and saved receipts, respecting order and no-save instructions.",
+                "The entire original request is satisfied by observed steps and current screen facts, respecting order. Navigation, search, filters and requested drafts need no save receipt. Requested persisted changes need matching receipts.",
               outstanding:
                 "Some requested work remains, including unsupported trailing tasks or work not yet observed.",
               unclear: "Cannot establish that all original work is satisfied.",
@@ -148,7 +148,7 @@ export function createJev(config: Config, fetch?: Fetch) {
           assessment: {
             text:
               input.selected === "done"
-                ? "Independently inspect the FULL original request against observed history and current facts. Is any original work still outstanding? Do not assume the proposed done is correct."
+                ? "Independently inspect the FULL original request against observed history and current screen facts. Is the entire request satisfied? Read-only UI work and no-save drafts do not need receipts; requested saves do. A trailing unsupported task remains outstanding. Do not assume proposed done is correct."
                 : "Evaluate authority for selected, a concrete effect already chosen. A necessary prerequisite is not permission for an extra mutation. Saving must cover exactly the authorized draft, and explicit no-save always forbids commit.",
             options,
           },
@@ -208,6 +208,7 @@ function modelState(input: DecisionInput & { selected?: unknown }) {
     currentFacts: JSON.parse(input.context),
     observedSteps: input.steps.map((step) => ({
       action: step.action,
+      authorizedBy: step.authorizedBy,
       before: JSON.parse(step.before),
       after: JSON.parse(step.after),
     })),

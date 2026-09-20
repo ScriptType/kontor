@@ -19,7 +19,10 @@ type Scenario = {
   draft?: boolean;
   blocked?: boolean;
   missing?: boolean;
-  rows?: number;
+  rows?: string[];
+  customer?: string;
+  openOnly?: boolean;
+  search?: string;
   revisions?: number;
   order?: string[];
 };
@@ -37,17 +40,32 @@ const scenarios: Scenario[] = [
     page: "team",
     order: ["customers", "reports", "team"],
   },
-  { id: "search", request: 'Suche in den Vorgängen nach "Wartung".', rows: 2 },
-  { id: "filter-original", request: "Filter nach nordwerk", rows: 2 },
+  {
+    id: "search",
+    request: 'Suche in den Vorgängen nach "Wartung".',
+    rows: ["V-1042", "V-1039"],
+    search: "Wartung",
+  },
+  {
+    id: "filter-original",
+    request: "Filter nach nordwerk",
+    rows: ["V-1042", "V-1039"],
+    customer: "Nordwerk GmbH",
+    openOnly: false,
+  },
   {
     id: "filter-open",
     request: "Zeige mir nur offene Nordwerk-Vorgänge.",
-    rows: 2,
+    rows: ["V-1042", "V-1039"],
+    customer: "Nordwerk GmbH",
+    openOnly: true,
   },
   {
     id: "filter-hafen",
     request: "Bitte nach Hafen & Partner filtern.",
-    rows: 2,
+    rows: ["V-1041", "V-1035"],
+    customer: "Hafen & Partner",
+    openOnly: false,
   },
   {
     id: "edit-save-reports",
@@ -239,13 +257,21 @@ try {
           assert.equal(store.snapshot().revision, 0);
         } else if (scenario.blocked) {
           assert(
-            !activity.includes("Jev meldet"),
-            "Outstanding work must not be reported complete",
+            activity.startsWith("Auftrag teilweise oder nicht erledigt."),
+            `Expected actual blocked handoff, received ${activity}`,
           );
-          assert(
-            !activity.includes("Konkreten Schritt"),
-            "Approval pause is not a domain blocker outcome",
+          await expect(page.locator(".answer-panel")).toBeVisible();
+          await expect(page.locator(".editor")).toContainText(
+            scenario.id === "domain-blocker" ? "V-1039" : "V-1042",
           );
+          if (scenario.id === "domain-blocker")
+            await expect(page.locator(".answer-panel")).toContainText(
+              "Prüfung vor Ort",
+            );
+          if (scenario.id === "requested-order")
+            await expect(page.locator(".answer-panel")).toContainText(
+              "Arbeitszeit",
+            );
         } else
           assert(
             activity.includes("Jev meldet"),
@@ -293,17 +319,40 @@ try {
             );
         if (scenario.page)
           assert.equal(new URL(page.url()).hash, `#${scenario.page}`);
-        if (scenario.rows !== undefined)
-          await expect(page.locator("tbody tr")).toHaveCount(scenario.rows);
-        for (const original of before.cases)
-          if (
-            !(scenario.patch && !scenario.draft && original.id === "V-1042") &&
-            !(scenario.secondPatch && original.id === "V-1039")
-          )
-            assert.deepEqual(
-              after.cases.find((c) => c.id === original.id),
-              original,
-            );
+        if (scenario.rows)
+          expect(
+            await page.locator("tbody tr td:first-child").allTextContents(),
+          ).toEqual(scenario.rows);
+        if (scenario.customer)
+          await expect(
+            page.locator('[data-action="menu:customer"]'),
+          ).toContainText(scenario.customer);
+        if (scenario.openOnly !== undefined)
+          await expect(
+            page.locator('[data-action="filter:open"]'),
+          ).toHaveAttribute("aria-pressed", String(scenario.openOnly));
+        if (scenario.search)
+          await expect(page.getByRole("searchbox")).toHaveValue(
+            scenario.search,
+          );
+        if (scenario.draft && scenario.patch?.appointment)
+          await expect(
+            page.getByRole("spinbutton", { name: "Termindauer in Minuten" }),
+          ).toHaveValue(String(scenario.patch.appointment.minutes));
+        const expected = {
+          ...before,
+          revision: scenario.revisions ?? 0,
+          cases: before.cases.map((c) => ({
+            ...c,
+            ...(!scenario.draft && c.id === "V-1042" ? scenario.patch : {}),
+            ...(c.id === "V-1039" ? scenario.secondPatch : {}),
+          })),
+        };
+        assert.deepEqual(
+          after,
+          expected,
+          "Exact workspace, including unrelated fields and records",
+        );
         const stored = await page.evaluate(() =>
           JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}"),
         );

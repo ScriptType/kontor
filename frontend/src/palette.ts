@@ -28,7 +28,9 @@ export class Palette {
   private focusedAttention = 0;
   readonly focusTarget = computed(() => {
     const state = this.runner.state();
-    return state.kind === "needs_input" || state.kind === "needs_approval"
+    return state.kind === "needs_input" ||
+      state.kind === "needs_approval" ||
+      state.kind === "blocked"
       ? ".answer-panel input, .answer-panel button"
       : "textarea";
   });
@@ -57,6 +59,7 @@ export class Palette {
     const target = this.runner.targetCase();
     if (!target || this.runner.ui.selectedId() !== target.id) return;
     this.setOpen(false);
+    this.runner.ui.navigate("cases", "manual");
     this.runner.ui.evidenceFocus.set(target.id);
   }
   readonly open = signal(false);

@@ -16,6 +16,7 @@ import type {
 import { fieldValues } from "../../shared/field-values";
 export type Actor = "manual" | "jev";
 interface Control {
+  element: HTMLElement;
   available(): boolean;
 }
 @Injectable({ providedIn: "root" })
@@ -66,6 +67,7 @@ export class ActionRegistry {
         execute: () => {
           if (!control.available())
             throw new Error("Das Bedienelement ist nicht mehr zugänglich.");
+          control.element.scrollIntoView({ block: "nearest" });
           execute();
         },
       });
@@ -91,6 +93,7 @@ export class ActionRegistry {
             },
             control,
             () => {
+              control.element.focus();
               control.element.value = value;
               control.element.dispatchEvent(
                 new Event("input", { bubbles: true }),

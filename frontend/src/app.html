@@ -37,7 +37,8 @@
       ><button class="text-button" (click)="palette.setOpen(true)">
         {{ runner.state().kind === 'needs_input' || runner.state().kind ===
         'needs_approval' ? 'Antworten' : 'Verlauf' }}</button
-      >@if (runner.state().kind === 'paused') {
+      >@if (runner.state().kind === 'paused' || runner.state().kind ===
+      'reconciling') {
       <button (click)="runner.resume()">Fortsetzen</button> }@if
       (!['idle','done','stopped'].includes(runner.state().kind)) {
       <button class="danger" (click)="runner.stop()">Stop</button> }
