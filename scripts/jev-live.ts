@@ -8,6 +8,7 @@ import { z } from "zod";
 import { createApp } from "../server/app.js";
 import { readConfig } from "../server/config.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
+import { goalSchema } from "../shared/command.js";
 import type { CaseDraft } from "../shared/domain.js";
 
 type Outcome =
@@ -230,6 +231,7 @@ const envelope = z.object({
 const calls: unknown[] = [];
 const results: unknown[] = [];
 let callCount = 0;
+let actionCalls = 0;
 let active = "";
 let failed = false;
 const liveFetch: Fetch = async (url, init) => {
@@ -237,6 +239,7 @@ const liveFetch: Fetch = async (url, init) => {
     throw new Error("Live suite call/time budget exhausted");
   callCount++;
   const payload = envelope.parse(JSON.parse(String(init?.body)));
+  if (payload.questions["next"]) actionCalls++;
   const start = performance.now();
   const entry = {
     scenario: active,
@@ -309,6 +312,11 @@ try {
       assert(address && typeof address !== "string");
       let error: string | null = null;
       const firstCall = callCount;
+      const firstAction = actionCalls;
+      let confirmed = false;
+      let approvedRemedy = false;
+      let reviewSummary: string[] = [];
+      const questionPath: string[] = [];
       const started = performance.now();
       try {
         await page.goto(`http://127.0.0.1:${address.port}`);
@@ -316,12 +324,16 @@ try {
           await page
             .getByRole("button", { name: scenario.page, exact: true })
             .click();
+        await expect(page.locator(".content")).not.toContainText(
+          "Arbeitsbereich wird geladen",
+        );
         await page
           .getByRole("button", { name: /Jev · Befehl eingeben/ })
           .click();
         await page
           .getByRole("textbox", { name: "Auftrag an Jev" })
           .fill(scenario.request);
+        const initialContent = await page.locator(".content").innerText();
         await page.getByRole("button", { name: "Ausführen" }).click();
         const outcome = scenario.outcome;
         const label =
@@ -334,6 +346,125 @@ try {
           /^(Bereit für deinen Auftrag|Auftrag wird geprüft|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/,
           { timeout: 45000 },
         );
+        if (scenario.id === "filter-scope") {
+          for (const answer of [
+            {
+              question: "Welcher Vorgang ist gemeint?",
+              label: "V-1042 · Wartung Standort Nord · Hamburg · Halle A",
+            },
+            {
+              question: "Für welchen Kunden soll ich filtern?",
+              label: "Hafen & Partner",
+            },
+          ]) {
+            if (
+              (await page.locator(".answer-panel").innerText()).includes(
+                answer.question,
+              )
+            ) {
+              assert.equal(actionCalls, firstAction);
+              assert.deepEqual(store.snapshot(), before);
+              assert.equal(
+                await page.locator(".content").innerText(),
+                initialContent,
+              );
+              questionPath.push(answer.question);
+              await page
+                .getByRole("button", { name: answer.label, exact: true })
+                .click();
+              await expect(page.locator(".answer-panel")).not.toContainText(
+                answer.question,
+              );
+              await expect(page.locator(".activity-label")).not.toHaveText(
+                /^(Auftrag wird geprüft|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt)$/,
+                { timeout: 45000 },
+              );
+            }
+          }
+        }
+        if (await page.locator(".review-panel").count()) {
+          assert.equal(
+            actionCalls,
+            firstAction,
+            "No action decision before confirmation",
+          );
+          assert.deepEqual(
+            store.snapshot(),
+            before,
+            "No database change before confirmation",
+          );
+          assert.equal(
+            await page.locator(".content").innerText(),
+            initialContent,
+            "No visible effect before confirmation",
+          );
+          reviewSummary = await page
+            .locator(".review-panel li")
+            .allTextContents();
+          const targetId = scenario.id === "evidence" ? "V-1039" : "V-1042";
+          const target = before.cases.find((c) => c.id === targetId);
+          assert(target);
+          const header = `${target.id} · ${target.title} · ${before.customers.find((c) => c.id === target.customerId)?.name} · ${target.site}`;
+          const expected: string[] = [];
+          if (outcome.kind === "filter")
+            expected.push(
+              `${outcome.open ? "Offene" : "Alle"} Vorgänge von ${outcome.customer} anzeigen.`,
+              "Keine Daten speichern.",
+            );
+          else if (outcome.kind === "change") {
+            expected.push(header);
+            if (outcome.patch.technicianId)
+              expected.push(
+                `${before.technicians.find((t) => t.id === outcome.patch.technicianId)?.name} zuweisen.`,
+              );
+            if (outcome.patch.appointment)
+              expected.push(
+                `Termin am ${outcome.patch.appointment.start.replace("T", " ")} für ${outcome.patch.appointment.minutes} Minuten setzen.`,
+              );
+            if (outcome.patch.minutes)
+              expected.push(
+                `${outcome.patch.minutes} Minuten tatsächlich geleistete Arbeitszeit erfassen.`,
+              );
+            if (outcome.patch.appointment && outcome.patch.minutes)
+              expected.push("Reihenfolge nach fachlichen Voraussetzungen.");
+            expected.push(
+              outcome.persistence === "save"
+                ? "Änderungen speichern."
+                : "Nur als Entwurf vorbereiten. Nicht speichern.",
+            );
+          } else if (scenario.id === "evidence")
+            expected.push(
+              header,
+              "Vorgang abschließen.",
+              "Änderungen speichern.",
+            );
+          else if (scenario.id === "schedule-conflict")
+            expected.push(
+              header,
+              "Termin am 2026-09-24 09:00:00 für 60 Minuten setzen.",
+              "Änderungen speichern.",
+            );
+          else
+            throw new Error("Unexpected review before required first question");
+          assert.deepEqual(
+            reviewSummary.map((s) => s.trim()),
+            expected,
+          );
+          await expect(page.locator(".review-panel")).toContainText(
+            `Originalauftrag: ${scenario.request}`,
+          );
+          await page
+            .getByRole("button", {
+              name: "Diesen Auftrag ausführen",
+              exact: true,
+            })
+            .click();
+          confirmed = true;
+          await expect(page.locator(".activity-label")).not.toHaveText(
+            /^(Erkannten Auftrag bestätigen|Auftrag bestätigt|Auftrag wird geprüft|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/,
+            { timeout: 45000 },
+          );
+        }
         await expect(page.locator(".activity-label")).toHaveText(label, {
           timeout: 1000,
         });
@@ -341,9 +472,45 @@ try {
           await expect(
             page.locator(".answer-panel, .approval-panel"),
           ).toContainText(outcome.text);
-          if (outcome.caseId)
+          questionPath.push(
+            ...(await page.locator(".answer-panel").allTextContents()),
+          );
+          const persisted = z
+            .object({ goal: goalSchema })
+            .parse(
+              JSON.parse(
+                await page.evaluate(
+                  () => localStorage.getItem("kontor-command-v1") ?? "null",
+                ),
+              ),
+            );
+          if (persisted.goal.readiness.kind !== "ready") {
+            assert.equal(actionCalls, firstAction);
+            assert.deepEqual(store.snapshot(), before);
+            assert.equal(
+              await page.locator(".content").innerText(),
+              initialContent,
+            );
+          } else if (outcome.caseId)
             await expect(page.locator(".editor")).toContainText(outcome.caseId);
           else await expect(page.locator(".editor")).toHaveCount(0);
+          if (scenario.id === "schedule-conflict") {
+            assert.deepEqual(store.snapshot(), before);
+            await expect(page.locator(".answer-options button")).toHaveText([
+              "Termin + Zuweisung an Lea Sommer freigeben",
+            ]);
+            await page
+              .getByRole("button", {
+                name: "Termin + Zuweisung an Lea Sommer freigeben",
+                exact: true,
+              })
+              .click();
+            await expect(page.locator(".activity-label")).toHaveText(
+              "Auftrag abgeschlossen",
+              { timeout: 45000 },
+            );
+            approvedRemedy = true;
+          }
         } else if (outcome.kind === "filter") {
           await expect(
             page.locator('[data-action="menu:customer"]'),
@@ -389,8 +556,24 @@ try {
             page.getByRole("spinbutton", { name: "Termindauer in Minuten" }),
           ).toHaveValue(String(expected.appointment?.minutes ?? 60));
         }
-        const expectedDb =
-          outcome.kind === "change" && outcome.persistence === "save"
+        const expectedDb = approvedRemedy
+          ? {
+              ...before,
+              revision: 1,
+              cases: before.cases.map((c) =>
+                c.id === "V-1042"
+                  ? {
+                      ...c,
+                      technicianId: "lea",
+                      appointment: {
+                        start: "2026-09-24T09:00:00",
+                        minutes: 60,
+                      },
+                    }
+                  : c,
+              ),
+            }
+          : outcome.kind === "change" && outcome.persistence === "save"
             ? {
                 ...before,
                 revision: 1,
@@ -410,6 +593,11 @@ try {
             scenario: active,
             request: scenario.request,
             expected: scenario.outcome,
+            interpretationPath: confirmed ? "confirmed" : "direct",
+            outcomeKind: approvedRemedy ? "change" : scenario.outcome.kind,
+            approvedRemedy,
+            reviewSummary,
+            questionPath,
             status: error ? "failed" : "passed",
             error,
             elapsedMs: Math.round(performance.now() - started),
