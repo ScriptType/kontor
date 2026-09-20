@@ -50,26 +50,36 @@
           </button>
         </div>
       </form>
-      @if (runner.state(); as state) {
-      @if (state.kind === 'needs_input') {
+      @if (runner.state(); as state) { @if (state.kind === 'needs_input') {
       <section #attentionPanel class="answer-panel">
-        <h3>Antwort ausstehend</h3><p>{{ state.field.label }}</p>
-        <input #answerValue [type]="state.field.type" [attr.min]="state.field.min" [attr.max]="state.field.max" [attr.aria-label]="state.field.label" />
+        <h3>Antwort ausstehend</h3>
+        <p>{{ state.field.label }}</p>
+        <input
+          #answerValue
+          [type]="state.field.type"
+          [attr.min]="state.field.min"
+          [attr.max]="state.field.max"
+          [attr.aria-label]="state.field.label"
+        />
         <button (click)="answer(answerValue.value)">Wert bestätigen</button>
         <button (click)="runner.stop()">Auftrag stoppen</button>
       </section>
-      }
-      @if (state.kind === 'needs_approval') {
+      } @if (state.kind === 'needs_approval') {
       <section #attentionPanel class="answer-panel">
-        <h3>Konkreten Schritt bestätigen</h3><p>{{ state.message }}</p>
-        <button class="primary" (click)="approve()">Diesen Schritt freigeben</button>
+        <h3>Konkreten Schritt bestätigen</h3>
+        <p>{{ state.message }}</p>
+        <button class="primary" (click)="approve()">
+          Diesen Schritt freigeben
+        </button>
         <button (click)="runner.stop()">Ablehnen und stoppen</button>
       </section>
-      }
-      @if (state.kind === 'paused' || state.kind === 'blocked') {
-      <section class="answer-panel"><p>{{ state.message }}</p>
-        @if (runner.evidenceGuidance()) { <button (click)="editEvidence()">Prüfbeleg erfassen</button> }
-        <button (click)="continueRun()">Fortsetzen</button><button (click)="runner.stop()">Stoppen</button>
+      } @if (state.kind === 'paused' || state.kind === 'blocked') {
+      <section class="answer-panel">
+        <p>{{ state.message }}</p>
+        @if (runner.evidenceGuidance()) {
+        <button (click)="editEvidence()">Prüfbeleg erfassen</button> }
+        <button (click)="continueRun()">Fortsetzen</button
+        ><button (click)="runner.stop()">Stoppen</button>
       </section>
       } } @if (runner.ui.source.data()?.mode === 'demo') {
       <details class="demo-examples">

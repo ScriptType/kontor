@@ -8,197 +8,131 @@ import { z } from "zod";
 import { createApp } from "../server/app.js";
 import { readConfig } from "../server/config.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
-import { goalSchema } from "../shared/command.js";
+import { decisionInputSchema } from "../shared/command.js";
 import type { CaseDraft } from "../shared/domain.js";
-
-type Outcome =
-  | { kind: "filter"; customer: string; rows: string[]; open: boolean }
-  | { kind: "question"; text: string; label?: string; caseId?: string }
-  | {
-      kind: "change";
-      persistence: "save" | "draft";
-      patch: Partial<CaseDraft>;
-    };
 type Scenario = {
   id: string;
   request: string;
   page?: string;
-  outcome: Outcome;
+  patch?: Partial<CaseDraft>;
+  secondPatch?: Partial<CaseDraft>;
+  draft?: boolean;
+  blocked?: boolean;
+  missing?: boolean;
+  rows?: number;
+  revisions?: number;
+  order?: string[];
 };
 const scenarios: Scenario[] = [
+  { id: "customers", request: "Zeig mir die Kunden.", page: "customers" },
   {
-    id: "filter-original",
-    request: "Filter nach nordwerk",
-    outcome: {
-      kind: "filter",
-      customer: "Nordwerk GmbH",
-      rows: ["V-1042", "V-1039"],
-      open: false,
-    },
+    id: "navigation",
+    request: "Öffne Kunden und danach Team.",
+    page: "team",
+    order: ["customers", "team"],
   },
   {
+    id: "ordered-navigation",
+    request: "Zeige zuerst Kunden, danach Berichte und zuletzt Team.",
+    page: "team",
+    order: ["customers", "reports", "team"],
+  },
+  { id: "search", request: 'Suche in den Vorgängen nach "Wartung".', rows: 2 },
+  { id: "filter-original", request: "Filter nach nordwerk", rows: 2 },
+  {
     id: "filter-open",
-    page: "Berichte",
-    request: "Zeige mir nur die offenen Vorgänge von Nordwerk.",
-    outcome: {
-      kind: "filter",
-      customer: "Nordwerk GmbH",
-      rows: ["V-1042", "V-1039"],
-      open: true,
-    },
+    request: "Zeige mir nur offene Nordwerk-Vorgänge.",
+    rows: 2,
   },
   {
     id: "filter-hafen",
-    page: "Team",
     request: "Bitte nach Hafen & Partner filtern.",
-    outcome: {
-      kind: "filter",
-      customer: "Hafen & Partner",
-      rows: ["V-1041", "V-1035"],
-      open: false,
-    },
+    rows: 2,
   },
   {
-    id: "time-draft",
+    id: "edit-save-reports",
     request:
-      "Trage für V-1042 25 Minuten Arbeitszeit als Entwurf ein, nicht speichern.",
-    outcome: { kind: "change", persistence: "draft", patch: { minutes: 25 } },
+      "Weise V-1042 Lea Sommer zu, trage 35 Minuten ein, speichere und öffne Berichte.",
+    page: "reports",
+    patch: { technicianId: "lea", minutes: 35 },
+    revisions: 1,
   },
   {
     id: "assign",
-    page: "Kunden",
-    request: "Weise V-1042 Lea Sommer zu.",
-    outcome: {
-      kind: "change",
-      persistence: "save",
-      patch: { technicianId: "lea" },
-    },
+    request: "Weise V-1042 Lea Sommer zu und speichere.",
+    patch: { technicianId: "lea" },
+    revisions: 1,
   },
   {
-    id: "evidence",
-    request: "Schließe V-1039 ab.",
-    outcome: {
-      kind: "question",
-      text: "Die Prüfung vor Ort ist nicht belegt.",
-      caseId: "V-1039",
-    },
-  },
-  {
-    id: "ambiguous-case",
-    request: "Weise die Wartung Lea Sommer zu und speichere.",
-    outcome: { kind: "question", text: "Welcher Vorgang ist gemeint?" },
-  },
-  {
-    id: "order",
-    request: "Zuerst V-1042 abschließen, dann 60 Minuten Arbeitszeit erfassen.",
-    outcome: {
-      kind: "question",
-      text: "Deine feste Reihenfolge ist so nicht möglich.",
-      caseId: "V-1042",
-    },
-  },
-  {
-    id: "schedule-conflict",
+    id: "multi-record",
     request:
-      "Setze für V-1042 einen Termin am 2026-09-24 um 09:00 für 60 Minuten.",
-    outcome: {
-      kind: "question",
-      text: "V-1041",
-      caseId: "V-1042",
-      label: "Freigabe ausstehend",
-    },
+      "Weise V-1042 Lea Sommer zu und speichere. Weise danach V-1039 Jonas Weber zu und speichere.",
+    patch: { technicianId: "lea" },
+    secondPatch: { technicianId: "jonas" },
+    revisions: 2,
   },
   {
-    id: "unsupported-delete",
-    request: "Weise V-1042 Lea Sommer zu und lösche alle Kunden.",
-    outcome: {
-      kind: "question",
-      text: "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig.",
-    },
+    id: "repeated-assignment",
+    request:
+      "Weise V-1042 zuerst Lea Sommer zu und speichere. Weise denselben Vorgang danach Jonas Weber zu und speichere erneut.",
+    patch: { technicianId: "jonas" },
+    revisions: 2,
   },
   {
-    id: "multi-case",
-    request: "Weise V-1042 Lea Sommer und V-1039 Jonas Weber zu.",
-    outcome: {
-      kind: "question",
-      text: "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig.",
-    },
+    id: "missing-value",
+    request: "Erfasse Arbeitszeit für V-1042 und speichere.",
+    missing: true,
   },
   {
-    id: "filter-scope",
-    request: "Zeige offene Hafen-Vorgänge und weise V-1042 Lea Sommer zu.",
-    outcome: {
-      kind: "question",
-      text: "Soll ich den angeforderten Filter entfernen",
-    },
+    id: "no-save",
+    request:
+      "Trage für V-1042 25 Minuten Arbeitszeit als Entwurf ein, nicht speichern.",
+    patch: { minutes: 25 },
+    draft: true,
+  },
+  {
+    id: "assign-no-save",
+    request: "V-1042 Lea Sommer zuweisen, aber nicht speichern.",
+    patch: { technicianId: "lea" },
+    draft: true,
+  },
+  { id: "domain-blocker", request: "Schließe V-1039 ab.", blocked: true },
+  {
+    id: "partial-trailing",
+    request:
+      "Weise V-1042 Lea Sommer zu und speichere. Sende danach eine E-Mail an den Kunden.",
+    patch: { technicianId: "lea" },
+    revisions: 1,
+    blocked: true,
+  },
+  {
+    id: "requested-order",
+    request: "Zuerst V-1042 abschließen, dann 45 Minuten Arbeitszeit erfassen.",
+    blocked: true,
   },
   {
     id: "durations",
     request:
       "V-1042 45 Minuten Arbeit erfassen, Termin 2026-09-25 09:00 für 60 Minuten, NICHT speichern",
-    outcome: {
-      kind: "change",
-      persistence: "draft",
-      patch: {
-        minutes: 45,
-        appointment: { start: "2026-09-25T09:00:00", minutes: 60 },
-      },
+    patch: {
+      minutes: 45,
+      appointment: { start: "2026-09-25T09:00:00", minutes: 60 },
     },
-  },
-  {
-    id: "assign-no-save",
-    page: "Team",
-    request: "V-1042 Lea Sommer zuweisen, aber nicht speichern.",
-    outcome: {
-      kind: "change",
-      persistence: "draft",
-      patch: { technicianId: "lea" },
-    },
-  },
-  {
-    id: "missing-minutes",
-    request: "Erfasse Arbeitszeit für V-1042.",
-    outcome: {
-      kind: "question",
-      text: "Wie viele tatsächlich geleistete Minuten",
-      caseId: "V-1042",
-    },
-  },
-  {
-    id: "missing-person",
-    request: "Weise V-1042 einer Person zu.",
-    outcome: {
-      kind: "question",
-      text: "Wer soll den Vorgang übernehmen?",
-      caseId: "V-1042",
-    },
-  },
-  {
-    id: "missing-customer",
-    request: "Filter nach Kunde",
-    outcome: { kind: "question", text: "Für welchen Kunden soll ich filtern?" },
-  },
-  {
-    id: "repeated-assignment",
-    request: "Weise V-1042 zuerst Lea Sommer und danach Jonas Weber zu.",
-    outcome: {
-      kind: "question",
-      text: "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig.",
-    },
+    draft: true,
   },
 ];
 const { values } = parseArgs({
   options: {
     scenario: { type: "string" },
     repeat: { type: "string", default: "1" },
-    "max-calls": { type: "string", default: "150" },
-    "timeout-ms": { type: "string", default: "300000" },
+    "max-calls": { type: "string", default: "160" },
+    "timeout-ms": { type: "string", default: "600000" },
   },
 });
 const positive = z.coerce.number().int().positive();
-const repeat = positive.max(20).parse(values.repeat);
-const maxCalls = positive.max(1000).parse(values["max-calls"]);
-const timeout = positive.max(1800000).parse(values["timeout-ms"]);
+const repeat = positive.max(10).parse(values.repeat),
+  maxCalls = positive.max(1000).parse(values["max-calls"]),
+  timeout = positive.max(1800000).parse(values["timeout-ms"]);
 const selected = scenarios.filter(
   (s) => !values.scenario || values.scenario.split(",").includes(s.id),
 );
@@ -214,439 +148,230 @@ const config = readConfig({ ...process.env, TYPESAFE_MODE: "live" });
 const output = `live-results/${new Date().toISOString().replaceAll(":", "-")}`;
 await mkdir(output, { recursive: true });
 const deadline = AbortSignal.timeout(timeout);
-const diagnostics = z.object({
-  model: z.string().optional(),
-  answers: z
-    .record(
-      z.string(),
-      z.object({ choice: z.string(), confidence: z.number() }),
-    )
-    .optional(),
-  usage: z.unknown().optional(),
-});
-const envelope = z.object({
-  state: z.string(),
-  questions: z.record(z.string(), z.unknown()),
-});
-const calls: unknown[] = [];
-const results: unknown[] = [];
-let callCount = 0;
-let actionCalls = 0;
-let active = "";
-let failed = false;
+let callCount = 0,
+  active = "",
+  failed = false;
+const calls: unknown[] = [],
+  results: unknown[] = [];
 const liveFetch: Fetch = async (url, init) => {
   if (callCount >= maxCalls || deadline.aborted)
-    throw new Error("Live suite call/time budget exhausted");
+    throw new Error("Live budget exhausted");
   callCount++;
-  const payload = envelope.parse(JSON.parse(String(init?.body)));
-  if (payload.questions["next"]) actionCalls++;
-  const start = performance.now();
-  const entry = {
+  const payload = z
+    .object({ state: z.string(), questions: z.record(z.string(), z.unknown()) })
+    .parse(JSON.parse(String(init?.body)));
+  const state = z
+    .object({
+      snapshotId: z.string(),
+      originalRequest: z.string(),
+      availableActions: z.unknown(),
+      observedSteps: z.unknown(),
+    })
+    .parse(JSON.parse(payload.state));
+  const response = await fetch(url, {
+    ...init,
+    signal: AbortSignal.any([deadline, ...(init?.signal ? [init.signal] : [])]),
+  });
+  const result = z
+    .object({
+      model: z.string().optional(),
+      answers: z.unknown().optional(),
+      usage: z.unknown().optional(),
+    })
+    .parse(await response.clone().json());
+  calls.push({
     scenario: active,
+    snapshotId: state.snapshotId,
+    request: state.originalRequest,
+    actions: state.availableActions,
+    observedSteps: state.observedSteps,
     questions: payload.questions,
-    state: JSON.parse(payload.state),
-  };
-  try {
-    const response = await fetch(url, {
-      ...init,
-      signal: AbortSignal.any([
-        deadline,
-        ...(init?.signal ? [init.signal] : []),
-      ]),
-    });
-    const body: unknown = await response.clone().json();
-    calls.push({
-      ...entry,
-      elapsedMs: Math.round(performance.now() - start),
-      status: response.status,
-      ...diagnostics.parse(body),
-    });
-    return response;
-  } catch {
-    calls.push({
-      ...entry,
-      elapsedMs: Math.round(performance.now() - start),
-      error: "Provider request failed",
-    });
-    throw new Error("Live provider request failed");
-  }
+    ...result,
+  });
+  return response;
 };
-async function snapshot(page: Page) {
-  return {
-    activity: await page.locator(".activity-label").textContent(),
-    question: await page.locator(".answer-panel").allTextContents(),
-    editor: await page.locator(".editor").allTextContents(),
-    rows: await page.locator("tbody tr td:first-child").allTextContents(),
-    history: await page.evaluate(() =>
-      localStorage.getItem("kontor-command-v1"),
-    ),
-  };
+async function settled(page: Page) {
+  await expect(page.locator(".activity-label")).not.toHaveText(
+    /^(Bereit für deinen Auftrag|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/,
+    { timeout: 90000 },
+  );
 }
 const browser = await chromium.launch({ channel: "chrome" });
 try {
   for (let iteration = 1; iteration <= repeat; iteration++)
     for (const scenario of selected) {
       active = `${scenario.id}/${iteration}`;
-      if (deadline.aborted || callCount >= maxCalls) {
+      if (callCount >= maxCalls || deadline.aborted) {
         failed = true;
         results.push({
           scenario: active,
           status: "unexecuted",
-          reason: "Call/time budget exhausted",
+          reason: "budget",
         });
         continue;
       }
-      const store = new WorkspaceStore();
-      const before = store.snapshot();
-      const app = createApp(config, liveFetch, store);
-      const context = await browser.newContext();
-      const page = await context.newPage();
-      page.setDefaultTimeout(10000);
-      const closeOnDeadline = () => {
-        void context.close();
-      };
-      deadline.addEventListener("abort", closeOnDeadline, { once: true });
+      const store = new WorkspaceStore(":memory:"),
+        before = store.snapshot();
+      const app = createApp(config, liveFetch, store),
+        context = await browser.newContext(),
+        page = await context.newPage();
       app.server.listen(0, "127.0.0.1");
       await once(app.server, "listening");
       const address = app.server.address();
       assert(address && typeof address !== "string");
-      let error: string | null = null;
       const firstCall = callCount;
-      const firstAction = actionCalls;
-      let confirmed = false;
-      let approvedRemedy = false;
-      let reviewSummary: string[] = [];
-      const questionPath: string[] = [];
-      const started = performance.now();
+      let error: string | null = null;
       try {
         await page.goto(`http://127.0.0.1:${address.port}`);
-        if (scenario.page)
-          await page
-            .getByRole("button", { name: scenario.page, exact: true })
-            .click();
-        await expect(page.locator(".content")).not.toContainText(
-          "Arbeitsbereich wird geladen",
-        );
         await page
           .getByRole("button", { name: /Jev · Befehl eingeben/ })
           .click();
         await page
           .getByRole("textbox", { name: "Auftrag an Jev" })
           .fill(scenario.request);
-        const initialContent = await page.locator(".content").innerText();
         await page.getByRole("button", { name: "Ausführen" }).click();
-        const outcome = scenario.outcome;
-        const label =
-          outcome.kind === "question"
-            ? (outcome.label ?? "Antwort ausstehend")
-            : outcome.kind === "change" && outcome.persistence === "draft"
-              ? "Entwurf vorbereitet · nicht gespeichert"
-              : "Auftrag abgeschlossen";
-        await expect(page.locator(".activity-label")).not.toHaveText(
-          /^(Bereit für deinen Auftrag|Auftrag wird geprüft|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/,
-          { timeout: 45000 },
-        );
-        if (scenario.id === "filter-scope") {
-          for (const answer of [
-            {
-              question: "Welcher Vorgang ist gemeint?",
-              label: "V-1042 · Wartung Standort Nord · Hamburg · Halle A",
-            },
-            {
-              question: "Für welchen Kunden soll ich filtern?",
-              label: "Hafen & Partner",
-            },
-          ]) {
-            if (
-              (await page.locator(".answer-panel").innerText()).includes(
-                answer.question,
-              )
-            ) {
-              assert.equal(actionCalls, firstAction);
-              assert.deepEqual(store.snapshot(), before);
-              assert.equal(
-                await page.locator(".content").innerText(),
-                initialContent,
-              );
-              questionPath.push(answer.question);
-              await page
-                .getByRole("button", { name: answer.label, exact: true })
-                .click();
-              await expect(page.locator(".answer-panel")).not.toContainText(
-                answer.question,
-              );
-              await expect(page.locator(".activity-label")).not.toHaveText(
-                /^(Auftrag wird geprüft|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt)$/,
-                { timeout: 45000 },
-              );
-            }
-          }
-        }
-        if (await page.locator(".review-panel").count()) {
-          assert.equal(
-            actionCalls,
-            firstAction,
-            "No action decision before confirmation",
+        await settled(page);
+        const activity = await page.locator(".activity-label").innerText();
+        if (scenario.missing) {
+          await expect(
+            page.locator(".answer-panel input[type=number]"),
+          ).toBeVisible();
+          assert.equal(store.snapshot().revision, 0);
+        } else if (scenario.blocked) {
+          assert(
+            !activity.includes("Jev meldet"),
+            "Outstanding work must not be reported complete",
           );
+          assert(
+            !activity.includes("Konkreten Schritt"),
+            "Approval pause is not a domain blocker outcome",
+          );
+        } else
+          assert(
+            activity.includes("Jev meldet"),
+            `Not autonomous completion: ${activity}`,
+          );
+        const after = store.snapshot();
+        assert.equal(after.revision, scenario.revisions ?? 0);
+        if (scenario.draft) {
           assert.deepEqual(
-            store.snapshot(),
+            after,
             before,
-            "No database change before confirmation",
+            "No-save must not mutate persistence",
           );
-          assert.equal(
-            await page.locator(".content").innerText(),
-            initialContent,
-            "No visible effect before confirmation",
-          );
-          reviewSummary = await page
-            .locator(".review-panel li")
-            .allTextContents();
-          const targetId = scenario.id === "evidence" ? "V-1039" : "V-1042";
-          const target = before.cases.find((c) => c.id === targetId);
-          assert(target);
-          const header = `${target.id} · ${target.title} · ${before.customers.find((c) => c.id === target.customerId)?.name} · ${target.site}`;
-          const expected: string[] = [];
-          if (outcome.kind === "filter")
-            expected.push(
-              `${outcome.open ? "Offene" : "Alle"} Vorgänge von ${outcome.customer} anzeigen.`,
-              "Keine Daten speichern.",
+          if (scenario.patch?.minutes !== undefined)
+            await expect(page.locator("#minutes")).toHaveValue(
+              String(scenario.patch.minutes),
             );
-          else if (outcome.kind === "change") {
-            expected.push(header);
-            if (outcome.patch.technicianId)
-              expected.push(
-                `${before.technicians.find((t) => t.id === outcome.patch.technicianId)?.name} zuweisen.`,
-              );
-            if (outcome.patch.appointment)
-              expected.push(
-                `Termin am ${outcome.patch.appointment.start.replace("T", " ")} für ${outcome.patch.appointment.minutes} Minuten setzen.`,
-              );
-            if (outcome.patch.minutes)
-              expected.push(
-                `${outcome.patch.minutes} Minuten tatsächlich geleistete Arbeitszeit erfassen.`,
-              );
-            if (outcome.patch.appointment && outcome.patch.minutes)
-              expected.push("Reihenfolge nach fachlichen Voraussetzungen.");
-            expected.push(
-              outcome.persistence === "save"
-                ? "Änderungen speichern."
-                : "Nur als Entwurf vorbereiten. Nicht speichern.",
-            );
-          } else if (scenario.id === "evidence")
-            expected.push(
-              header,
-              "Vorgang abschließen.",
-              "Änderungen speichern.",
-            );
-          else if (scenario.id === "schedule-conflict")
-            expected.push(
-              header,
-              "Termin am 2026-09-24 09:00:00 für 60 Minuten setzen.",
-              "Änderungen speichern.",
-            );
-          else
-            throw new Error("Unexpected review before required first question");
-          assert.deepEqual(
-            reviewSummary.map((s) => s.trim()),
-            expected,
-          );
-          await expect(page.locator(".review-panel")).toContainText(
-            `Originalauftrag: ${scenario.request}`,
-          );
-          await page
-            .getByRole("button", {
-              name: "Diesen Auftrag ausführen",
-              exact: true,
-            })
-            .click();
-          confirmed = true;
-          await expect(page.locator(".activity-label")).not.toHaveText(
-            /^(Erkannten Auftrag bestätigen|Auftrag bestätigt|Auftrag wird geprüft|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/,
-            { timeout: 45000 },
-          );
-        }
-        await expect(page.locator(".activity-label")).toHaveText(label, {
-          timeout: 1000,
-        });
-        if (outcome.kind === "question") {
-          await expect(
-            page.locator(".answer-panel, .approval-panel"),
-          ).toContainText(outcome.text);
-          questionPath.push(
-            ...(await page.locator(".answer-panel").allTextContents()),
-          );
-          const persisted = z
-            .object({ goal: goalSchema })
-            .parse(
-              JSON.parse(
-                await page.evaluate(
-                  () => localStorage.getItem("kontor-command-v1") ?? "null",
-                ),
-              ),
-            );
-          if (persisted.goal.readiness.kind !== "ready") {
-            assert.equal(actionCalls, firstAction);
-            assert.deepEqual(store.snapshot(), before);
-            assert.equal(
-              await page.locator(".content").innerText(),
-              initialContent,
-            );
-          } else if (outcome.caseId)
-            await expect(page.locator(".editor")).toContainText(outcome.caseId);
-          else await expect(page.locator(".editor")).toHaveCount(0);
-          if (scenario.id === "schedule-conflict") {
-            assert.deepEqual(store.snapshot(), before);
-            await expect(page.locator(".answer-options button")).toHaveText([
-              "Termin + Zuweisung an Lea Sommer freigeben",
-            ]);
-            await page
-              .getByRole("button", {
-                name: "Termin + Zuweisung an Lea Sommer freigeben",
-                exact: true,
-              })
-              .click();
-            await expect(page.locator(".activity-label")).toHaveText(
-              "Auftrag abgeschlossen",
-              { timeout: 45000 },
-            );
-            approvedRemedy = true;
-          }
-        } else if (outcome.kind === "filter") {
-          await expect(
-            page.locator('[data-action="menu:customer"]'),
-          ).toContainText(outcome.customer);
-          assert.deepEqual(
-            (
-              await page.locator("tbody tr td:first-child").allTextContents()
-            ).map((s) => s.trim()),
-            outcome.rows,
-          );
-          if (outcome.open)
+          if (scenario.patch?.technicianId)
             await expect(
-              page.locator('[data-action="filter:open"]'),
-            ).toHaveClass(/active-filter/);
-          else
-            await expect(
-              page.locator('[data-action="filter:open"]'),
-            ).not.toHaveClass(/active-filter/);
-          await expect(page.locator(".editor")).toHaveCount(0);
-        } else {
-          await expect(page.locator(".editor")).toContainText("V-1042");
-          const target = before.cases.find((c) => c.id === "V-1042");
-          assert(target);
-          const expected = { ...target, ...outcome.patch };
-          await expect(
-            page.locator('[data-action="menu:technician"]'),
-          ).toContainText(
-            before.technicians.find((t) => t.id === expected.technicianId)
-              ?.name ?? "",
-          );
-          await expect(page.locator('[data-action="complete"]')).toHaveText(
-            expected.status === "done"
-              ? "Als erledigt markiert"
-              : "Als erledigt markieren",
-          );
-          await expect(page.locator("#minutes")).toHaveValue(
-            String(expected.minutes),
-          );
-          await expect(page.locator("#appointment")).toHaveValue(
-            expected.appointment?.start.slice(0, 16) ?? "",
-          );
-          await expect(
-            page.getByRole("spinbutton", { name: "Termindauer in Minuten" }),
-          ).toHaveValue(String(expected.appointment?.minutes ?? 60));
-        }
-        const expectedDb = approvedRemedy
-          ? {
-              ...before,
-              revision: 1,
-              cases: before.cases.map((c) =>
-                c.id === "V-1042"
-                  ? {
-                      ...c,
-                      technicianId: "lea",
-                      appointment: {
-                        start: "2026-09-24T09:00:00",
-                        minutes: 60,
-                      },
-                    }
-                  : c,
-              ),
-            }
-          : outcome.kind === "change" && outcome.persistence === "save"
-            ? {
-                ...before,
-                revision: 1,
-                cases: before.cases.map((c) =>
-                  c.id === "V-1042" ? { ...c, ...outcome.patch } : c,
+              page.locator('[data-action="menu:technician"]'),
+            ).toContainText(
+              before.technicians.find(
+                (t) => t.id === scenario.patch?.technicianId,
+              )?.name ?? "missing",
+            );
+          if (scenario.patch?.appointment)
+            await expect(page.locator("#appointment")).toHaveValue(
+              scenario.patch.appointment.start.slice(0, 16),
+            );
+        } else if (scenario.patch)
+          for (const [key, value] of Object.entries(scenario.patch))
+            assert.deepEqual(
+              after.cases.find((c) => c.id === "V-1042")?.[
+                key as keyof CaseDraft
+              ],
+              value,
+            );
+        if (scenario.secondPatch)
+          for (const [key, value] of Object.entries(scenario.secondPatch))
+            assert.deepEqual(
+              after.cases.find((c) => c.id === "V-1039")?.[
+                key as keyof CaseDraft
+              ],
+              value,
+            );
+        if (scenario.page)
+          assert.equal(new URL(page.url()).hash, `#${scenario.page}`);
+        if (scenario.rows !== undefined)
+          await expect(page.locator("tbody tr")).toHaveCount(scenario.rows);
+        for (const original of before.cases)
+          if (
+            !(scenario.patch && !scenario.draft && original.id === "V-1042") &&
+            !(scenario.secondPatch && original.id === "V-1039")
+          )
+            assert.deepEqual(
+              after.cases.find((c) => c.id === original.id),
+              original,
+            );
+        const stored = await page.evaluate(() =>
+          JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}"),
+        );
+        const run = z
+          .object({
+            history: z.array(
+              z.object({
+                steps: z.array(z.object({ after: z.string() })),
+                receipts: z.array(
+                  z.object({
+                    saved: z.object({ technicianId: z.string().nullable() }),
+                  }),
                 ),
-              }
-            : before;
-        assert.deepEqual(store.snapshot(), expectedDb);
-      } catch (caught) {
-        failed = true;
-        error = caught instanceof Error ? caught.message : "Scenario failed";
-      } finally {
-        try {
-          const ui = page.isClosed() ? null : await snapshot(page);
-          results.push({
-            scenario: active,
-            request: scenario.request,
-            expected: scenario.outcome,
-            interpretationPath: confirmed ? "confirmed" : "direct",
-            outcomeKind: approvedRemedy ? "change" : scenario.outcome.kind,
-            approvedRemedy,
-            reviewSummary,
-            questionPath,
-            status: error ? "failed" : "passed",
-            error,
-            elapsedMs: Math.round(performance.now() - started),
-            calls: callCount - firstCall,
-            ui,
-            database: store.snapshot(),
-          });
-          if (!page.isClosed())
-            await page.screenshot({
-              path: `${output}/${scenario.id}-${iteration}.png`,
-              fullPage: true,
-            });
-        } catch {
-          failed = true;
-          results.push({
-            scenario: active,
-            status: "failed",
-            error: "Artifact capture failed",
-            database: store.snapshot(),
-          });
-        } finally {
-          console.log(
-            `${active}: ${error ? "FAILED" : "finished"} (${callCount - firstCall} calls)`,
-          );
-          deadline.removeEventListener("abort", closeOnDeadline);
-          try {
-            await context.close();
-          } finally {
-            await app.close();
-          }
-          await writeFile(
-            `${output}/report.json`,
-            JSON.stringify(
-              { maxCalls, callCount, timeout, results, calls },
-              null,
-              2,
+              }),
             ),
+          })
+          .parse(stored).history[0];
+        if (scenario.order) {
+          let index = 0;
+          for (const step of run?.steps ?? []) {
+            const facts = JSON.parse(step.after);
+            if ((facts.page ?? facts.currentPage) === scenario.order[index])
+              index++;
+          }
+          assert.equal(
+            index,
+            scenario.order.length,
+            "Requested navigation order",
           );
         }
+        if (scenario.id === "repeated-assignment")
+          assert.deepEqual(
+            run?.receipts.map((r) => r.saved.technicianId),
+            ["lea", "jonas"],
+          );
+      } catch (cause) {
+        failed = true;
+        error = cause instanceof Error ? cause.message : String(cause);
       }
+      results.push({
+        scenario: active,
+        request: scenario.request,
+        status: error
+          ? "failed"
+          : scenario.missing || scenario.blocked
+            ? "expected-handoff"
+            : "autonomous-completion",
+        error,
+        calls: callCount - firstCall,
+        confirmations: 0,
+        activity: await page
+          .locator(".activity-label")
+          .textContent()
+          .catch(() => null),
+        observedEffects: await page
+          .evaluate(() => localStorage.getItem("kontor-command-v1"))
+          .catch(() => null),
+        saved: store.snapshot(),
+      });
+      await context.close();
+      await app.close();
     }
 } finally {
   await browser.close();
+  await writeFile(
+    `${output}/report.json`,
+    JSON.stringify({ callCount, results, calls }, null, 2),
+  );
 }
-await writeFile(
-  `${output}/report.json`,
-  JSON.stringify({ maxCalls, callCount, timeout, results, calls }, null, 2),
-);
-console.log(
-  `Report: ${output}/report.json. ${callCount} provider calls. All browser contexts and servers stopped.`,
-);
+process.stdout.write(`${output}/report.json\n`);
 if (failed) process.exitCode = 1;

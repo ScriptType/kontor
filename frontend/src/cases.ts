@@ -10,7 +10,7 @@ import { FormsModule } from "@angular/forms";
 import { injectTable, tableFeatures } from "@tanstack/angular-table";
 import { ActionControl, FieldControl } from "./action-registry";
 import { ActionDispatcher, action } from "./action-dispatcher";
-import { blockers } from "../../shared/domain";
+import { blockers, type CaseDraft } from "../../shared/domain";
 const features = tableFeatures({});
 const columns = [
   { accessorKey: "id" },
@@ -60,11 +60,44 @@ export class Cases {
       : [];
   });
   readonly String = String;
-  field(id: string, label: string, type: "text" | "number" | "datetime-local", current: string, min?: number, max?: number) {
-    return { id, label: id === "search" ? label : `${this.ui.selectedId()} · ${label}`, type, current, ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }) };
+  field(
+    id: string,
+    label: string,
+    type: "text" | "number" | "datetime-local",
+    current: string,
+    min?: number,
+    max?: number,
+  ) {
+    return {
+      id,
+      scope: id === "search" ? "cases" : (this.ui.selectedId() ?? ""),
+      kind: id === "search" ? ("view" as const) : ("draft" as const),
+      label: id === "search" ? label : `${this.ui.selectedId()} · ${label}`,
+      type,
+      current,
+      ...(min === undefined ? {} : { min }),
+      ...(max === undefined ? {} : { max }),
+    };
   }
-  search(value: string) { if (this.runner.registry.actor === "manual") this.ui.manual(); this.ui.search.set(value); }
-  saveEffect() { return `${this.ui.selectedId()} verbindlich speichern. Vorher ${JSON.stringify(this.ui.selected())}. Entwurf ${JSON.stringify(this.ui.draft())}`; }
+  search(value: string) {
+    if (this.runner.registry.actor === "manual") this.ui.manual();
+    this.ui.search.set(value);
+  }
+  draftChanges() {
+    const before = this.ui.selected(), after = this.ui.draft();
+    if (!before || !after) return "";
+    const appointment = (value: CaseDraft["appointment"]) => value ? `${value.start.replace("T", " ").slice(0,16)} · ${value.minutes} Minuten` : "kein Termin";
+    const fields = [
+      ["Zuständigkeit", this.ui.technicianName(before.technicianId), this.ui.technicianName(after.technicianId)],
+      ["Arbeitszeit", `${before.minutes} Minuten`, `${after.minutes} Minuten`],
+      ["Termin", appointment(before.appointment), appointment(after.appointment)],
+      ["Status", before.status === "done" ? "erledigt" : "offen", after.status === "done" ? "erledigt" : "offen"],
+      ["Prüfbeleg", before.inspection?.note ?? "kein Beleg", after.inspection?.note ?? "kein Beleg"],
+    ];
+    return fields.filter(([, from, to]) => from !== to).map(([label, from, to]) => `${label} von ${from} auf ${to}`).join("; ");
+  }
+  saveEffect() { return `${this.ui.selectedId()} verbindlich speichern. ${this.draftChanges()}`; }
+  discardEffect() { return `${this.ui.selectedId()}: Folgende Entwurfsänderungen verwerfen und gespeicherten Stand wiederherstellen. ${this.draftChanges()}`; }
   number(event: Event) {
     if (event.target instanceof HTMLInputElement) {
       const value = Number(event.target.value);

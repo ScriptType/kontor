@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { z } from "zod";
 import { createApp } from "../server/app.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
-import type { Fetch } from "@typesafe-ai/sdk";
+import { decisionInputSchema } from "../shared/command.js";
 function barrier() {
   let release = () => {};
   const promise = new Promise<void>((resolve) => {
@@ -13,87 +13,79 @@ function barrier() {
 }
 async function withLive(
   page: Page,
-  holdAction: string,
+  sequence: string[],
   run: (
     store: WorkspaceStore,
     held: ReturnType<typeof barrier>,
     arrived: Promise<void>,
     snapshots: string[][],
   ) => Promise<void>,
-  persistence = "save",
-  interpretation: Record<string, string> = {},
-  confidence: Record<string, number> = {},
+  options: {
+    hold?: string;
+    low?: string;
+    assessment?: string;
+    forbidCommit?: boolean;
+    outstanding?: boolean;
+  } = {},
 ) {
   const held = barrier(),
     arrived = barrier();
   let heldOnce = false;
   const snapshots: string[][] = [];
-  const fetch: Fetch = async (_url, init) => {
-    const payload = z
-      .object({
-        state: z.string(),
-        questions: z.record(
-          z.string(),
-          z.object({ criteria: z.record(z.string(), z.string()) }),
-        ),
-      })
-      .parse(JSON.parse(String(init?.body)));
-    let values: Record<string, string>;
-    if (payload.questions["next"]) {
-      snapshots.push(Object.keys(payload.questions["next"].criteria));
-      const state = z
-        .object({ context: z.string() })
-        .parse(JSON.parse(payload.state));
-      const context = z
-        .object({ nextRequiredAction: z.string() })
-        .parse(JSON.parse(state.context));
-      if (context.nextRequiredAction === holdAction && !heldOnce) {
-        heldOnce = true;
-        arrived.release();
-        await held.promise;
-      }
-      values = { next: context.nextRequiredAction };
-    } else
-      values = {
-        remedy: "unclear",
-        capability: "yes",
-        coverage: "complete",
-        cardinality: "yes",
-        persistence,
-        openOnly: "no",
-        filter: "no",
-        assign: "yes",
-        schedule: "no",
-        time: "no",
-        complete: "no",
-        case: "V-1042",
-        technician: "lea",
-        customer: "unclear",
-        workMinutes: "unclear",
-        appointmentMinutes: "unclear",
-        slot: "unclear",
-        order: "no",
-        ...interpretation,
-      };
-    return Response.json({
-      model: "injected-test-provider",
-      answers: Object.fromEntries(
-        Object.entries(values).map(([k, v]) => [
-          k,
-          {
-            type: "choice",
-            choice: v,
-            confidence: confidence[k] ?? 1,
-            probabilities: { [v]: 1 },
-          },
-        ]),
-      ),
-    });
-  };
-  const store = new WorkspaceStore();
+  const store = new WorkspaceStore(":memory:");
   const app = createApp(
-    { mode: "live", apiKey: "injected-only", model: "jev-latest" },
-    fetch,
+    { mode: "live", apiKey: "test", model: "jev-latest" },
+    async (_url, init) => {
+      const payload = z
+        .object({
+          state: z.string(),
+          questions: z.record(
+            z.string(),
+            z.object({ criteria: z.record(z.string(), z.string()) }),
+          ),
+        })
+        .parse(JSON.parse(String(init?.body)));
+      const input = z
+        .object({ observedSteps: z.array(z.unknown()) })
+        .parse(JSON.parse(payload.state));
+      const key = payload.questions["next"] ? "next" : "assessment";
+      const next = sequence[input.observedSteps.length] ?? "done";
+      const selected = z
+        .object({ selected: z.unknown().optional() })
+        .parse(JSON.parse(payload.state)).selected;
+      const commit = z
+        .object({ kind: z.literal("commit") })
+        .safeParse(selected).success;
+      const choice =
+        key === "next"
+          ? next
+          : next === "done"
+            ? options.outstanding
+              ? "outstanding"
+              : "complete"
+            : options.forbidCommit && commit
+              ? "forbidden"
+              : (options.assessment ?? "authorized");
+      if (key === "next") {
+        snapshots.push(Object.keys(payload.questions["next"]?.criteria ?? {}));
+        if (next === options.hold && !heldOnce) {
+          heldOnce = true;
+          arrived.release();
+          await held.promise;
+        }
+      }
+      return Response.json({
+        model: "scripted-test-fixture",
+        answers: {
+          [key]: {
+            type: "choice",
+            choice,
+            confidence: next === options.low && key === "next" ? 0.4 : 1,
+            probabilities: { [choice]: 1 },
+          },
+        },
+      });
+    },
     store,
   );
   app.server.listen(0, "127.0.0.1");
@@ -108,17 +100,21 @@ async function withLive(
     await app.close();
   }
 }
-async function start(page: Page, request = "V-1042 Lea Sommer zuweisen") {
+async function start(
+  page: Page,
+  request = "Weise V-1042 Lea Sommer zu und speichere.",
+) {
   await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
   await page.getByRole("textbox", { name: "Auftrag an Jev" }).fill(request);
   await page.getByRole("button", { name: "Ausführen" }).click();
 }
-test("Stop discards a held late provider decision without hidden menu actions", async ({
+const assignment = ["case:V-1042", "menu:technician", "technician:lea", "save"];
+test("held decision cannot execute after stop and menu children remain hidden", async ({
   page,
 }) => {
   await withLive(
     page,
-    "menu:technician",
+    assignment,
     async (store, held, arrived, snapshots) => {
       await start(page);
       await arrived;
@@ -126,716 +122,263 @@ test("Stop discards a held late provider decision without hidden menu actions", 
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       held.release();
       await expect(page.locator(".activity-label")).toContainText("Gestoppt");
-      await page.getByRole("button", { name: "Verlauf", exact: true }).click();
-      await expect(page.locator(".history ol")).not.toContainText(
-        "Lea Sommer zuweisen",
-      );
-      expect(store.snapshot().revision).toBe(0);
-      await page.keyboard.press("Escape");
       await expect(
         page.locator('[data-action="menu:technician"]'),
       ).toHaveAttribute("aria-expanded", "false");
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { hold: "menu:technician" },
+  );
+});
+test("palette pauses a pending choice then closes and uses a fresh snapshot", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    assignment,
+    async (store, held, arrived, snapshots) => {
+      await start(page);
+      await arrived;
+      await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+      await expect(
+        page.getByRole("textbox", { name: "Auftrag an Jev" }),
+      ).toBeFocused();
+      held.release();
+      expect(store.snapshot().revision).toBe(0);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      expect(store.snapshot().revision).toBe(1);
+      expect(
+        snapshots.filter((s) => s.includes("save")).length,
+      ).toBeGreaterThanOrEqual(2);
+    },
+    { hold: "save" },
+  );
+});
+test("manual input invalidates held decision and reload retains paused history without execution", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    assignment,
+    async (store, held, arrived) => {
+      await start(page);
+      await arrived;
+      await page.locator("#minutes").fill("17");
+      held.release();
+      await expect(page.locator(".activity-label")).toContainText(
+        "manuellem Eingriff",
+      );
+      await expect(page.locator("#minutes")).toHaveValue("17");
+      await page.reload();
+      await expect(page.locator(".activity-label")).toContainText(
+        "Neuladen pausiert",
+      );
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { hold: "menu:technician" },
+  );
+});
+test("low confidence exposes exact chosen action and requires confirmation", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["nav:customers"],
+    async (store) => {
+      await start(page, "Zeige Kunden");
+      await expect(page.locator(".answer-panel")).toContainText("Kunden");
+      await expect(
+        page.getByRole("heading", { name: "Kunden & Standorte" }),
+      ).not.toBeVisible();
+      await page
+        .getByRole("button", { name: "Diesen Schritt freigeben" })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Kunden & Standorte" }),
+      ).toBeVisible();
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { low: "nav:customers" },
+  );
+});
+test("additional mutation pauses with exact target and does not execute before approval", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    assignment,
+    async (store) => {
+      await start(page);
+      await expect(page.locator(".answer-panel")).toContainText(
+        "V-1042: Zuständigkeit von Jonas Weber auf Lea Sommer",
+      );
+      expect(store.snapshot().revision).toBe(0);
+      await page.getByRole("button", { name: "Ablehnen und stoppen" }).click();
+      await expect(page.locator(".activity-label")).toContainText("Gestoppt");
+      expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
+    },
+    { assessment: "additional" },
+  );
+});
+test("forbidden no-save commit is rejected even if provider selects save", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["case:V-1042", "field:minutes:25", "save"],
+    async (store) => {
+      await start(page, "25 Minuten für V-1042, nicht speichern");
+      await expect(page.locator(".activity-label")).toContainText(
+        "widerspricht",
+      );
+      expect(store.snapshot().revision).toBe(0);
+      await page.keyboard.press("Escape");
+      await expect(page.locator("#minutes")).toHaveValue("25");
+    },
+    { forbidCommit: true },
+  );
+});
+test("visible report drilldown and actual search are selectable without a prescribed path", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["nav:reports", "customer-cases:nord", "field:search:Wartung"],
+    async (store, _held, _arrived, snapshots) => {
+      await start(page, 'Berichte, dann Nordwerk-Vorgänge und suche "Wartung"');
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      await expect(page.getByRole("searchbox")).toHaveValue("Wartung");
+      await expect(page.locator("tbody tr")).toHaveCount(2);
+      expect(snapshots[0]).not.toContain("customer-cases:nord");
+      expect(snapshots[1]).toContain("customer-cases:nord");
+      expect(store.snapshot().revision).toBe(0);
     },
   );
 });
-test("opening palette while own draft awaits Save pauses, closes, decides fresh and saves once", async ({
+test("multiple records and repeated assignments produce distinct saved receipts", async ({
   page,
 }) => {
-  await withLive(page, "save", async (store, held, arrived, snapshots) => {
-    await start(page);
-    await arrived;
-    expect(store.snapshot().revision).toBe(0);
-    await page.getByRole("button", { name: "Verlauf", exact: true }).click();
-    await expect(
-      page
-        .getByText("Pausiert, solange ein Dialog offen ist", {
-          exact: true,
-        })
-        .first(),
-    ).toBeVisible();
-    held.release();
-    expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".activity-label")).toHaveText(
-      "Auftrag abgeschlossen",
+  const sequence = [
+    ...assignment,
+    "menu:technician",
+    "technician:jonas",
+    "save",
+    "case:V-1039",
+    "menu:technician",
+    "technician:jonas",
+    "save",
+  ];
+  await withLive(page, sequence, async (store) => {
+    await start(
+      page,
+      "V-1042 Lea zuweisen und speichern, dann Jonas zuweisen und speichern; V-1039 Jonas zuweisen und speichern.",
     );
+    await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+    expect(store.snapshot().revision).toBe(3);
+    expect(
+      store.snapshot().cases.find((c) => c.id === "V-1039")?.technicianId,
+    ).toBe("jonas");
+    const history = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}"),
+    );
+    expect(
+      history.history[0].receipts.map(
+        (r: { saved: { technicianId: string } }) => r.saved.technicianId,
+      ),
+    ).toEqual(["lea", "jonas", "jonas"]);
+  });
+});
+test("unsupported trailing work remains partial after an authorized earlier save", async ({
+  page,
+}) => {
+  await withLive(page, [...assignment, "blocked"], async (store) => {
+    await start(
+      page,
+      "V-1042 Lea zuweisen und speichern, dann eine Mail senden.",
+    );
+    await expect(page.locator(".activity-label")).toContainText("teilweise");
     expect(store.snapshot().revision).toBe(1);
     expect(store.snapshot().cases[0]?.technicianId).toBe("lea");
-    expect(
-      snapshots.filter((s) => s.includes("save")).length,
-    ).toBeGreaterThanOrEqual(2);
   });
 });
-test("manual editing invalidates late decision and retains the user draft; reload never executes", async ({
+test("repeated no-op actions stop within a bounded number of decisions", async ({
   page,
 }) => {
-  await withLive(page, "menu:technician", async (store, held, arrived) => {
-    await start(page);
-    await arrived;
-    await page
-      .getByRole("spinbutton", { name: "Geleistete Arbeitszeit in Minuten" })
-      .fill("17");
-    held.release();
-    await expect(page.locator(".activity-label")).toContainText(
-      "manuellem Eingriff",
-    );
-    expect(store.snapshot().revision).toBe(0);
-    await expect(
-      page.getByRole("spinbutton", {
-        name: "Geleistete Arbeitszeit in Minuten",
-      }),
-    ).toHaveValue("17");
-    await page.reload();
-    await expect(page.locator(".activity-label")).toContainText(
-      "Nach Neuladen pausiert",
-    );
-    expect(store.snapshot().revision).toBe(0);
-  });
-});
-test("live draft authority never saves automatically", async ({ page }) => {
   await withLive(
     page,
-    "never",
+    Array.from({ length: 45 }, () => "nav:cases"),
     async (store) => {
-      await start(page);
-      await expect(page.locator(".activity-label")).toHaveText(
-        "Entwurf vorbereitet · nicht gespeichert",
-      );
-      expect(store.snapshot().revision).toBe(0);
-      await expect(
-        page.locator('[data-action="menu:technician"]'),
-      ).toContainText("Lea Sommer");
-    },
-    "draft",
-  );
-});
-
-test("explicit completion before time preserves ordered committed outcomes when existing time makes it feasible", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store) => {
-      await start(
-        page,
-        "Zuerst V-1041 abschließen, dann 60 Minuten erfassen und speichern",
-      );
-      await expect(page.locator(".activity-label")).toHaveText(
-        "Auftrag abgeschlossen",
-      );
-      const history = z
-        .object({
-          history: z.array(
-            z.object({
-              entries: z.array(z.string()),
-              operations: z.array(z.string()),
-            }),
-          ),
-        })
-        .parse(
-          JSON.parse(
-            await page.evaluate(
-              () => localStorage.getItem("kontor-command-v1") ?? "null",
-            ),
-          ),
-        ).history[0];
-      expect(history?.entries).toEqual([
-        "V-1041 öffnen",
-        "Vorgang als erledigt markieren",
-        "V-1041 gespeichert",
-        "60 angeforderte Minuten eintragen",
-        "V-1041 gespeichert",
-      ]);
-      const receipts = history?.operations.map((id) => store.receipt(id));
-      expect(
-        receipts?.map((receipt) => ({
-          revision: receipt?.revision,
-          status: receipt?.saved.status,
-          minutes: receipt?.saved.minutes,
-        })),
-      ).toEqual([
-        { revision: 1, status: "done", minutes: 45 },
-        { revision: 2, status: "done", minutes: 60 },
-      ]);
-    },
-    "save",
-    {
-      assign: "no",
-      time: "yes",
-      complete: "yes",
-      case: "V-1041",
-      technician: "unclear",
-      workMinutes: "60",
-      order: "yes",
-    },
-  );
-});
-
-for (const pageName of ["Kunden", "Team"]) {
-  test(`${pageName} registers mounted case links and Jev opens its target through that shared action`, async ({
-    page,
-  }) => {
-    await withLive(page, "never", async (store, _held, _arrived, snapshots) => {
-      await page.getByRole("button", { name: pageName, exact: true }).click();
-      await expect(
-        page.locator('kontor-overview [data-action="case:V-1042"]'),
-      ).toBeVisible();
-      const mounted = await page
-        .locator("kontor-overview [data-action]")
-        .evaluateAll((elements) =>
-          elements.map((element) => element.getAttribute("data-action")),
-        );
-      expect(mounted).toContain("case:V-1042");
-      await start(page);
-      await expect(page.locator(".activity-label")).toHaveText(
-        "Auftrag abgeschlossen",
-      );
-      for (const id of mounted) expect(snapshots[0]).toContain(id);
-      expect(snapshots[0]).not.toContain("menu:customer");
-      expect(snapshots[0]).not.toContain("technician:lea");
-      expect(snapshots[0]).not.toContain("customer-cases:nord");
-      if (pageName === "Team")
-        expect(snapshots[0]).not.toContain("case:V-1035");
-      const history = z
-        .object({
-          history: z.array(z.object({ entries: z.array(z.string()) })),
-        })
-        .parse(
-          JSON.parse(
-            await page.evaluate(
-              () => localStorage.getItem("kontor-command-v1") ?? "null",
-            ),
-          ),
-        ).history[0];
-      expect(history?.entries[0]).toBe("V-1042 öffnen");
-      expect(store.snapshot().cases[0]?.technicianId).toBe("lea");
-    });
-  });
-}
-
-test("report drilldown is a registered action chosen directly for a matching filter goal", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      await page.getByRole("button", { name: "Berichte", exact: true }).click();
-      await expect(
-        page.locator('[data-action="customer-cases:nord"]'),
-      ).toBeVisible();
-      await start(page, "Zeige offene Vorgänge von Nordwerk");
-      await expect(page.locator(".activity-label")).toHaveText(
-        "Auftrag abgeschlossen",
-      );
-      expect(snapshots[0]).toContain("customer-cases:nord");
-      expect(snapshots[0]).not.toContain("case:V-1042");
-      expect(snapshots[0]).not.toContain("menu:customer");
-      const history = z
-        .object({
-          history: z.array(z.object({ entries: z.array(z.string()) })),
-        })
-        .parse(
-          JSON.parse(
-            await page.evaluate(
-              () => localStorage.getItem("kontor-command-v1") ?? "null",
-            ),
-          ),
-        ).history[0];
-      expect(history?.entries).toEqual([
-        "Vorgänge von Nordwerk GmbH anzeigen",
-        "Nur offene Vorgänge anzeigen",
-      ]);
-      await expect(page.locator("tbody tr")).toHaveCount(2);
-      expect(store.snapshot().revision).toBe(0);
-    },
-    "save",
-    {
-      assign: "no",
-      filter: "yes",
-      openOnly: "yes",
-      customer: "nord",
-      case: "unclear",
-      technician: "unclear",
-    },
-  );
-});
-
-for (const target of [
-  { caseId: "V-1042", customer: "hafen", reason: "Nordwerk" },
-  { caseId: "V-1035", customer: "hafen", reason: "erledigt" },
-]) {
-  test(`requested filter excluding ${target.caseId} asks before writes and resumes only after scope answer`, async ({ page }) => {
-    await withLive(
-      page,
-      "never",
-      async (store, _held, _arrived, snapshots) => {
-        const before = store.snapshot();
-        await start(
-          page,
-          `Zeige offene Hafen-Vorgänge und weise ${target.caseId} Lea Sommer zu`,
-        );
-        await expect(page.locator(".activity-label")).toHaveText("Antwort ausstehend");
-        expect(snapshots).toHaveLength(0);
-        expect(store.snapshot()).toEqual(before);
-        await expect(page.locator(".answer-panel")).toBeVisible();
-        await expect(page.locator(".answer-panel")).toContainText(target.caseId);
-        await expect(page.locator(".answer-panel")).toContainText(target.reason);
-        await page.keyboard.press("Escape");
-        await expect(page.locator(".activity-label")).toHaveText("Antwort ausstehend");
-        expect(snapshots).toHaveLength(0);
-        expect(store.snapshot()).toEqual(before);
-        await page.getByRole("button", { name: "Antworten", exact: true }).click();
-        await page.getByRole("button", {
-          name: "Angeforderten Filter entfernen, Vorgang beibehalten",
-          exact: true,
-        }).click();
-        await expect(page.locator(".activity-label")).toHaveText("Auftrag abgeschlossen");
-        expect(store.snapshot()).toEqual({
-          ...before,
-          revision: before.revision + 1,
-          cases: before.cases.map((c) =>
-            c.id === target.caseId ? { ...c, technicianId: "lea" } : c,
-          ),
-        });
-        expect(snapshots.length).toBeLessThan(10);
-      },
-      "save",
-      {
-        case: target.caseId,
-        filter: "yes",
-        openOnly: "yes",
-        customer: target.customer,
-      },
-    );
-  });
-}
-
-for (const persistence of ["save", "draft"]) {
-  test(`recognized assignment has no effect before confirmation and exact ${persistence} afterward`, async ({
-    page,
-  }) => {
-    await withLive(
-      page,
-      "never",
-      async (store, _held, _arrived, snapshots) => {
-        const before = store.snapshot();
-        await page.getByRole("button", { name: "Kunden", exact: true }).click();
-        await start(page);
-        await expect(page.locator(".review-panel")).toBeVisible();
-        await expect(page.locator(".review-panel li")).toHaveText([
-          "V-1042 · Wartung Standort Nord · Nordwerk GmbH · Hamburg · Halle A",
-          "Lea Sommer zuweisen.",
-          persistence === "save"
-            ? "Änderungen speichern."
-            : "Nur als Entwurf vorbereiten. Nicht speichern.",
-        ]);
-        expect(snapshots).toEqual([]);
-        expect(store.snapshot()).toEqual(before);
-        await expect(page.locator(".editor")).toHaveCount(0);
-        await page
-          .getByRole("button", { name: "Diesen Auftrag ausführen" })
-          .click();
-        await expect(page.locator(".activity-label")).toHaveText(
-          persistence === "save"
-            ? "Auftrag abgeschlossen"
-            : "Entwurf vorbereitet · nicht gespeichert",
-        );
-        expect(snapshots.length).toBeGreaterThan(0);
-        expect(store.snapshot()).toEqual(
-          persistence === "save"
-            ? {
-                ...before,
-                revision: 1,
-                cases: before.cases.map((c) =>
-                  c.id === "V-1042" ? { ...c, technicianId: "lea" } : c,
-                ),
-              }
-            : before,
-        );
-        await expect(
-          page.locator('[data-action="menu:technician"]'),
-        ).toContainText("Lea Sommer");
-      },
-      persistence,
-      {},
-      { capability: 0.3 },
-    );
-  });
-}
-
-test("missing value answer retains review and cannot navigate before confirmation", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      const before = store.snapshot();
-      await start(page);
-      await expect(page.locator(".answer-panel")).toContainText(
-        "Welcher Vorgang ist gemeint?",
-      );
-      expect(snapshots).toEqual([]);
-      await page.getByRole("button", { name: /V-1042 · Wartung/ }).click();
-      await expect(page.locator(".review-panel")).toBeVisible();
-      expect(snapshots).toEqual([]);
-      expect(store.snapshot()).toEqual(before);
-      await page.getByRole("button", { name: "Auftrag stoppen" }).click();
-      await expect(page.locator(".review-panel")).toHaveCount(0);
-      expect(store.snapshot()).toEqual(before);
-    },
-    "save",
-    { case: "unclear" },
-    { coverage: 0.6 },
-  );
-});
-
-test("review survives reload and replacement never reuses confirmation", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      const before = store.snapshot();
-      await start(page);
-      await expect(page.locator(".review-panel")).toBeVisible();
-      await page.reload();
-      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
-      await page
-        .locator(".answer-panel")
-        .getByRole("button", { name: "Fortsetzen", exact: true })
-        .click();
-      await expect(page.locator(".review-panel")).toBeVisible();
-      await page
-        .getByRole("textbox", { name: "Auftrag an Jev" })
-        .fill("V-1042 erneut Lea zuweisen");
-      await page
-        .getByRole("button", { name: "Ausführen", exact: false })
-        .filter({ hasText: "Ausführen ↵" })
-        .click();
-      await expect(page.locator(".review-panel")).toContainText(
-        "Originalauftrag: V-1042 erneut Lea zuweisen",
-      );
-      expect(snapshots).toEqual([]);
-      expect(store.snapshot()).toEqual(before);
-    },
-    "save",
-    {},
-    { coverage: 0.6 },
-  );
-});
-
-test("unfinished confirmed run requires another review after reload", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "case:V-1042",
-    async (store, held, arrived) => {
-      const before = store.snapshot();
-      await start(page);
-      await page
-        .getByRole("button", { name: "Diesen Auftrag ausführen" })
-        .click();
-      await arrived;
-      await page.reload();
-      held.release();
-      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
-      await page
-        .locator(".answer-panel")
-        .getByRole("button", { name: "Fortsetzen", exact: true })
-        .click();
-      await expect(page.locator(".review-panel")).toBeVisible();
-      expect(store.snapshot()).toEqual(before);
-      await expect(page.locator(".editor")).toHaveCount(0);
-    },
-    "save",
-    {},
-    { capability: 0.3 },
-  );
-});
-
-test("changed workspace cannot accept displayed old review", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      await start(page);
-      await expect(page.locator(".review-panel")).toBeVisible();
-      store.reset(0);
-      await page
-        .getByRole("button", { name: "Diesen Auftrag ausführen" })
-        .click();
-      await expect(page.locator(".answer-panel")).toContainText(
-        "Daten geändert",
-      );
-      expect(snapshots).toEqual([]);
-      expect(store.snapshot().revision).toBe(1);
-      await page
-        .locator(".answer-panel")
-        .getByRole("button", { name: "Fortsetzen", exact: true })
-        .click();
-      await expect(page.locator(".review-panel")).toBeVisible();
-      expect(snapshots).toEqual([]);
-    },
-    "save",
-    {},
-    { capability: 0.3 },
-  );
-});
-
-test("plan confirmation does not bypass low action confidence", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store) => {
-      const before = store.snapshot();
-      await start(page);
-      await page
-        .getByRole("button", { name: "Diesen Auftrag ausführen" })
-        .click();
+      await start(page, "Zeige Vorgänge");
       await expect(page.locator(".activity-label")).toContainText(
-        "Keine sichere zielkonforme Entscheidung",
+        "Wiederholter Schritt",
       );
-      await expect(page.locator(".editor")).toHaveCount(0);
-      expect(store.snapshot()).toEqual(before);
-    },
-    "save",
-    {},
-    { capability: 0.3, next: 0.6 },
-  );
-});
-
-test("uncertain remedy lists only domain alternatives and requires actual choice", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store) => {
-      const before = store.snapshot();
-      await start(page, "Termin V-1042 2026-09-24 09:00 für 60 Minuten");
-      await expect(page.locator(".answer-panel")).toContainText(
-        "Bitte eine verfügbare Person auswählen.",
-      );
-      await expect(page.locator(".answer-options button")).toHaveText([
-        "Termin + Zuweisung an Lea Sommer freigeben",
-      ]);
-      expect(store.snapshot()).toEqual(before);
-      await page
-        .getByRole("button", {
-          name: "Termin + Zuweisung an Lea Sommer freigeben",
-        })
-        .click();
-      await expect(page.locator(".activity-label")).toHaveText(
-        "Auftrag abgeschlossen",
-      );
-      expect(store.snapshot()).toEqual({
-        ...before,
-        revision: 1,
-        cases: before.cases.map((c) =>
-          c.id === "V-1042"
-            ? {
-                ...c,
-                technicianId: "lea",
-                appointment: { start: "2026-09-24T09:00:00", minutes: 60 },
-              }
-            : c,
-        ),
-      });
-    },
-    "save",
-    {
-      assign: "no",
-      schedule: "yes",
-      slot: "2026-09-24T09:00:00",
-      appointmentMinutes: "60",
-    },
-  );
-});
-
-const refusedInterpretations: Record<string, string>[] = [
-  { capability: "no", filter: "yes", customer: "hafen" },
-  { cardinality: "no" },
-  { coverage: "mismatch" },
-];
-for (const interpretation of refusedInterpretations) {
-  test(`refused ${JSON.stringify(interpretation)} never offers confirmation or effects`, async ({
-    page,
-  }) => {
-    await withLive(
-      page,
-      "never",
-      async (store, _held, _arrived, snapshots) => {
-        const before = store.snapshot();
-        await start(
-          page,
-          "Weise V-1042 zuerst Lea und dann Jonas zu und lösche alle Kunden",
-        );
-        await expect(page.locator(".answer-panel")).toContainText(
-          "Der vollständige Auftrag ist nicht unterstützt",
-        );
-        await expect(page.locator(".review-panel")).toHaveCount(0);
-        expect(snapshots).toEqual([]);
-        expect(store.snapshot()).toEqual(before);
-        await expect(page.locator(".editor")).toHaveCount(0);
-      },
-      "save",
-      interpretation,
-      { capability: 0.3, cardinality: 0.3, coverage: 0.3 },
-    );
-  });
-}
-
-test("manual navigation invalidates review until refreshed and reset discards it", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      await start(page);
-      await expect(page.locator(".review-panel")).toBeVisible();
-      await page
-        .getByRole("button", { name: "Befehlspalette schließen" })
-        .click();
-      await page.getByRole("button", { name: "Kunden", exact: true }).click();
-      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
-      await expect(page.locator(".review-panel")).toHaveCount(0);
-      await page
-        .locator(".answer-panel")
-        .getByRole("button", { name: "Fortsetzen", exact: true })
-        .click();
-      await expect(page.locator(".review-panel")).toBeVisible();
-      expect(snapshots).toEqual([]);
       expect(store.snapshot().revision).toBe(0);
-      await page
-        .getByRole("button", { name: "Befehlspalette schließen" })
-        .click();
-      await page
-        .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
-        .click();
-      await page.getByRole("button", { name: "Jetzt zurücksetzen" }).click();
-      await expect(page.locator(".activity-label")).toHaveText(
-        "Bereit für deinen Auftrag",
+    },
+  );
+});
+
+test("independent outstanding verdict prevents an early done claim", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["nav:customers"],
+    async (store) => {
+      await start(page, "Kunden öffnen und danach Team");
+      await expect(page.locator(".activity-label")).toContainText(
+        "nicht vollständig",
       );
-      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
-      await expect(page.locator(".review-panel")).toHaveCount(0);
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { outstanding: true },
+  );
+});
+test("reloading a concrete confirmation revokes approval authority", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    assignment,
+    async (store) => {
+      await start(page);
+      await expect(
+        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+      ).toBeVisible();
+      await page.reload();
+      await expect(page.locator(".activity-label")).toContainText(
+        "Neuladen pausiert",
+      );
+      await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+      ).not.toBeVisible();
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { low: "technician:lea" },
+  );
+});
+test("changed revision revokes a displayed concrete confirmation", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    assignment,
+    async (store) => {
+      await start(page);
+      await expect(
+        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+      ).toBeVisible();
+      store.reset(store.snapshot().revision);
+      await page
+        .getByRole("button", { name: "Diesen Schritt freigeben" })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+      ).toBeVisible();
       expect(store.snapshot().revision).toBe(1);
-      expect(snapshots).toEqual([]);
+      expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
     },
-    "save",
-    {},
-    { capability: 0.3 },
-  );
-});
-
-test("old persisted command retains history but discards pending execution authority", async ({
-  page,
-}) => {
-  await withLive(page, "never", async (store, _held, _arrived, snapshots) => {
-    const before = store.snapshot();
-    await page.evaluate(() =>
-      localStorage.setItem(
-        "kontor-command-v1",
-        JSON.stringify({
-          version: 1,
-          command: "Alter Auftrag",
-          goal: { request: "Alter Auftrag", supported: true },
-          unfinished: true,
-          history: [
-            {
-              id: "old",
-              request: "Alter Auftrag",
-              entries: ["Vorheriger Schritt"],
-              createdAt: "2026-09-20T12:00:00Z",
-              outcome: "In Arbeit",
-            },
-          ],
-        }),
-      ),
-    );
-    await page.reload();
-    await expect(page.locator(".activity-label")).toHaveText(
-      "Bereit für deinen Auftrag",
-    );
-    await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
-    await expect(
-      page.getByRole("textbox", { name: "Auftrag an Jev" }),
-    ).toHaveValue("Alter Auftrag");
-    await expect(page.locator(".history")).toContainText("Alter Auftrag");
-    await expect(page.locator(".review-panel")).toHaveCount(0);
-    expect(snapshots).toEqual([]);
-    expect(store.snapshot()).toEqual(before);
-  });
-});
-
-test("filter-scope answer changes concrete review without granting execution", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      const before = store.snapshot();
-      await start(
-        page,
-        "Zeige offene Hafen-Vorgänge und weise V-1042 Lea Sommer zu",
-      );
-      await expect(page.locator(".answer-panel")).toContainText(
-        "Soll ich den angeforderten Filter entfernen",
-      );
-      await page
-        .getByRole("button", {
-          name: "Angeforderten Filter entfernen, Vorgang beibehalten",
-          exact: true,
-        })
-        .click();
-      await expect(page.locator(".review-panel li")).toHaveText([
-        "V-1042 · Wartung Standort Nord · Nordwerk GmbH · Hamburg · Halle A",
-        "Lea Sommer zuweisen.",
-        "Änderungen speichern.",
-      ]);
-      expect(snapshots).toEqual([]);
-      expect(store.snapshot()).toEqual(before);
-      await expect(page.locator(".editor")).toHaveCount(0);
-    },
-    "save",
-    { filter: "yes", customer: "hafen", openOnly: "yes" },
-    { cardinality: 0.3 },
-  );
-});
-
-test("captured repeated-assignment misclassification has no confirmation or person choice", async ({
-  page,
-}) => {
-  await withLive(
-    page,
-    "never",
-    async (store, _held, _arrived, snapshots) => {
-      const before = store.snapshot();
-      await start(
-        page,
-        "Weise V-1042 zuerst Lea Sommer und danach Jonas Weber zu.",
-      );
-      await expect(page.locator(".answer-panel")).toContainText(
-        "Er nennt mehrere bekannte Personen.",
-      );
-      await expect(page.locator(".answer-options button")).toHaveCount(0);
-      await expect(page.locator(".review-panel")).toHaveCount(0);
-      await expect(page.locator(".editor")).toHaveCount(0);
-      expect(snapshots).toEqual([]);
-      expect(store.snapshot()).toEqual(before);
-    },
-    "save",
-    { technician: "unclear" },
-    { cardinality: 0.37, coverage: 0.71, technician: 0.45 },
+    { low: "technician:lea" },
   );
 });

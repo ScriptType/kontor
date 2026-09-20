@@ -129,7 +129,14 @@
         {{ selected.site }} · Qualifikation {{ selected.skill }}
       </p>
     </div>
-    <button aria-label="Vorgang schließen" [disabled]="ui.dirty()" [kontorAction]="action('close', selected.id + ' schließen')" (invoked)="actions.execute('close', $event)">✕</button>
+    <button
+      aria-label="Vorgang schließen"
+      [disabled]="ui.dirty()"
+      [kontorAction]="action('close', selected.id + ' schließen')"
+      (invoked)="actions.execute('close', $event)"
+    >
+      ✕
+    </button>
   </header>
   <div class="editor-grid">
     <div>
@@ -256,7 +263,11 @@
     <span role="status" [class.unsaved]="ui.dirty()"
       >{{ ui.busy() ? 'Wird gespeichert …' : ui.message() || (ui.dirty() ?
       'Ungespeicherter Entwurf' : 'Gespeicherter Stand') }}</span
-    ><button [disabled]="ui.busy() || !ui.dirty()" [kontorAction]="action('discard', 'Entwurf verwerfen', selected.id + ': Entwurf ' + String(draft.minutes) + ' Minuten verwerfen und gespeicherten Stand wiederherstellen', 'discard')" (invoked)="actions.execute('discard', $event)">
+    ><button
+      [disabled]="ui.busy() || !ui.dirty()"
+      [kontorAction]="action('discard', 'Entwurf verwerfen', discardEffect(), 'discard')"
+      (invoked)="actions.execute('discard', $event)"
+    >
       Entwurf verwerfen</button
     ><button
       class="primary"

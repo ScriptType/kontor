@@ -28,8 +28,7 @@ export class Palette {
   private focusedAttention = 0;
   readonly focusTarget = computed(() => {
     const state = this.runner.state();
-    return state.kind === "needs_input" ||
-      state.kind === "needs_approval"
+    return state.kind === "needs_input" || state.kind === "needs_approval"
       ? ".answer-panel input, .answer-panel button"
       : "textarea";
   });

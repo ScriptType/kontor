@@ -64,6 +64,11 @@ export class ActionDispatcher {
     }
   }
 }
-export function action(id: string, label: string, effect = label, kind: "view" | "draft" | "commit" | "discard" = "view") {
+export function action(
+  id: string,
+  label: string,
+  effect = label,
+  kind: "view" | "draft" | "commit" | "discard" = "view",
+) {
   return { id, label, effect, kind };
 }
