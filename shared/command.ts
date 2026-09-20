@@ -22,7 +22,14 @@ export const goalSchema = z.object({
   caseId: z.string().nullable(),
   objectives: z.array(objectiveSchema),
   order: z.enum(["flexible", "listed"]),
-  supported: z.boolean(),
+  readiness: z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("ready"),
+      basis: z.enum(["high_confidence", "user_confirmed"]),
+    }),
+    z.object({ kind: z.literal("review") }),
+    z.object({ kind: z.literal("refused") }),
+  ]),
   persistence: z.enum(["save", "draft", "unclear"]),
 });
 export type Goal = z.infer<typeof goalSchema>;
@@ -61,7 +68,7 @@ export function demoGoal(request: string): Goal {
     caseId: "V-1042",
     objectives: [],
     order: "flexible",
-    supported: true,
+    readiness: { kind: "ready", basis: "high_confidence" },
     persistence: "save",
   };
   switch (request) {
@@ -115,6 +122,6 @@ export function demoGoal(request: string): Goal {
     case demos[6]:
       return { ...base, caseId: "V-1039", objectives: [{ kind: "complete" }] };
     default:
-      return { ...base, caseId: null, supported: false };
+      return { ...base, caseId: null, readiness: { kind: "refused" } };
   }
 }

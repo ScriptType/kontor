@@ -26,11 +26,17 @@ export type Proposal = {
   revision: number;
   before: CaseDraft;
   requested: CaseDraft;
-  after: CaseDraft;
+  after: Omit<CaseDraft, "technicianId"> & { technicianId: string | null };
   message: string;
   alternatives: { id: string; label: string }[];
 };
+export type GoalReview = {
+  revision: number;
+  request: string;
+  summary: string[];
+};
 export type Preparation =
+  | { kind: "review"; review: GoalReview }
   | { kind: "ready"; desired: CaseDraft | null }
   | { kind: "question"; question: Question }
   | { kind: "proposal"; proposal: Proposal };
@@ -43,7 +49,7 @@ export function prepareGoal(
     kind: "question",
     question: value,
   });
-  if (!goal.supported || !goal.objectives.length)
+  if (goal.readiness.kind === "refused" || !goal.objectives.length)
     return question({
       kind: "unsupported",
       message:
@@ -92,7 +98,7 @@ export function prepareGoal(
   for (const objective of goal.objectives) {
     switch (objective.kind) {
       case "filter":
-        if (!objective.customerId)
+        if (!workspace.customers.some((c) => c.id === objective.customerId))
           return question({
             kind: "customer",
             message: "Für welchen Kunden soll ich filtern?",
@@ -103,7 +109,10 @@ export function prepareGoal(
           });
         break;
       case "assign":
-        if (!objective.technicianId)
+        if (
+          !objective.technicianId ||
+          !workspace.technicians.some((t) => t.id === objective.technicianId)
+        )
           return question({
             kind: "technician",
             message: "Wer soll den Vorgang übernehmen?",
@@ -138,11 +147,63 @@ export function prepareGoal(
         break;
     }
   }
+  if (goal.readiness.kind === "review") {
+    const summary: string[] = [];
+    if (selected)
+      summary.push(
+        `${selected.id} · ${selected.title} · ${workspace.customers.find((c) => c.id === selected.customerId)?.name ?? selected.customerId} · ${selected.site}`,
+      );
+    for (const objective of goal.objectives) {
+      switch (objective.kind) {
+        case "filter":
+          summary.push(
+            `${objective.openOnly ? "Offene" : "Alle"} Vorgänge von ${workspace.customers.find((c) => c.id === objective.customerId)?.name ?? objective.customerId} anzeigen.`,
+          );
+          break;
+        case "assign":
+          summary.push(
+            `${workspace.technicians.find((t) => t.id === objective.technicianId)?.name ?? objective.technicianId} zuweisen.`,
+          );
+          break;
+        case "schedule":
+          summary.push(
+            `Termin am ${objective.appointment?.start.replace("T", " ")} für ${objective.appointment?.minutes} Minuten setzen.`,
+          );
+          break;
+        case "time":
+          summary.push(
+            `${objective.minutes} Minuten tatsächlich geleistete Arbeitszeit erfassen.`,
+          );
+          break;
+        case "complete":
+          summary.push("Vorgang abschließen.");
+          break;
+      }
+    }
+    if (goal.objectives.length > 1)
+      summary.push(
+        goal.order === "listed"
+          ? "Angegebene Reihenfolge einhalten."
+          : "Reihenfolge nach fachlichen Voraussetzungen.",
+      );
+    summary.push(
+      needsCase
+        ? goal.persistence === "save"
+          ? "Änderungen speichern."
+          : "Nur als Entwurf vorbereiten. Nicht speichern."
+        : "Keine Daten speichern.",
+    );
+    return {
+      kind: "review",
+      review: { revision: workspace.revision, request: goal.request, summary },
+    };
+  }
   if (!selected || !desired) return { kind: "ready", desired };
   if (
     approved &&
     approved.revision === workspace.revision &&
-    approved.caseId === selected.id
+    approved.caseId === selected.id &&
+    approved.after.technicianId !== null
   )
     desired.technicianId = approved.after.technicianId;
   const blocked = blockers(workspace, { ...selected, ...desired });

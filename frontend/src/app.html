@@ -36,7 +36,7 @@
       ><span class="activity-label">{{ runner.label() }}</span
       ><button class="text-button" (click)="palette.setOpen(true)">
         {{ runner.state().kind === 'needs_input' || runner.state().kind ===
-        'needs_approval' ? 'Antworten' : 'Verlauf' }}</button
+        'needs_approval' || runner.state().kind === 'needs_review' ? 'Antworten' : 'Verlauf' }}</button
       >@if (runner.state().kind === 'paused') {
       <button (click)="runner.resume()">Fortsetzen</button> }@if
       (!['idle','done','stopped'].includes(runner.state().kind)) {

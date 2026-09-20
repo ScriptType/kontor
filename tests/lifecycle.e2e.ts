@@ -22,6 +22,7 @@ async function withLive(
   ) => Promise<void>,
   persistence = "save",
   interpretation: Record<string, string> = {},
+  confidence: Record<string, number> = {},
 ) {
   const held = barrier(),
     arrived = barrier();
@@ -54,6 +55,7 @@ async function withLive(
       values = { next: context.nextRequiredAction };
     } else
       values = {
+        remedy: "unclear",
         capability: "yes",
         coverage: "complete",
         cardinality: "yes",
@@ -81,7 +83,7 @@ async function withLive(
           {
             type: "choice",
             choice: v,
-            confidence: 1,
+            confidence: confidence[k] ?? 1,
             probabilities: { [v]: 1 },
           },
         ]),
@@ -409,3 +411,328 @@ for (const target of [
     );
   });
 }
+
+for (const persistence of ["save", "draft"]) {
+  test(`recognized assignment has no effect before confirmation and exact ${persistence} afterward`, async ({
+    page,
+  }) => {
+    await withLive(
+      page,
+      "never",
+      async (store, _held, _arrived, snapshots) => {
+        const before = store.snapshot();
+        await page.getByRole("button", { name: "Kunden", exact: true }).click();
+        await start(page);
+        await expect(page.locator(".review-panel")).toBeVisible();
+        await expect(page.locator(".review-panel li")).toHaveText([
+          "V-1042 · Wartung Standort Nord · Nordwerk GmbH · Hamburg · Halle A",
+          "Lea Sommer zuweisen.",
+          persistence === "save"
+            ? "Änderungen speichern."
+            : "Nur als Entwurf vorbereiten. Nicht speichern.",
+        ]);
+        expect(snapshots).toEqual([]);
+        expect(store.snapshot()).toEqual(before);
+        await expect(page.locator(".editor")).toHaveCount(0);
+        await page
+          .getByRole("button", { name: "Diesen Auftrag ausführen" })
+          .click();
+        await expect(page.locator(".activity-label")).toHaveText(
+          persistence === "save"
+            ? "Auftrag abgeschlossen"
+            : "Entwurf vorbereitet · nicht gespeichert",
+        );
+        expect(snapshots.length).toBeGreaterThan(0);
+        expect(store.snapshot()).toEqual(
+          persistence === "save"
+            ? {
+                ...before,
+                revision: 1,
+                cases: before.cases.map((c) =>
+                  c.id === "V-1042" ? { ...c, technicianId: "lea" } : c,
+                ),
+              }
+            : before,
+        );
+        await expect(
+          page.locator('[data-action="menu:technician"]'),
+        ).toContainText("Lea Sommer");
+      },
+      persistence,
+      {},
+      { capability: 0.3 },
+    );
+  });
+}
+
+test("missing value answer retains review and cannot navigate before confirmation", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store, _held, _arrived, snapshots) => {
+      const before = store.snapshot();
+      await start(page);
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Welcher Vorgang ist gemeint?",
+      );
+      expect(snapshots).toEqual([]);
+      await page.getByRole("button", { name: /V-1042 · Wartung/ }).click();
+      await expect(page.locator(".review-panel")).toBeVisible();
+      expect(snapshots).toEqual([]);
+      expect(store.snapshot()).toEqual(before);
+      await page.getByRole("button", { name: "Auftrag stoppen" }).click();
+      await expect(page.locator(".review-panel")).toHaveCount(0);
+      expect(store.snapshot()).toEqual(before);
+    },
+    "save",
+    { case: "unclear" },
+    { coverage: 0.6 },
+  );
+});
+
+test("review survives reload and replacement never reuses confirmation", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store, _held, _arrived, snapshots) => {
+      const before = store.snapshot();
+      await start(page);
+      await expect(page.locator(".review-panel")).toBeVisible();
+      await page.reload();
+      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+      await page
+        .locator(".answer-panel")
+        .getByRole("button", { name: "Fortsetzen", exact: true })
+        .click();
+      await expect(page.locator(".review-panel")).toBeVisible();
+      await page
+        .getByRole("textbox", { name: "Auftrag an Jev" })
+        .fill("V-1042 erneut Lea zuweisen");
+      await page
+        .getByRole("button", { name: "Ausführen", exact: false })
+        .filter({ hasText: "Ausführen ↵" })
+        .click();
+      await expect(page.locator(".review-panel")).toContainText(
+        "Originalauftrag: V-1042 erneut Lea zuweisen",
+      );
+      expect(snapshots).toEqual([]);
+      expect(store.snapshot()).toEqual(before);
+    },
+    "save",
+    {},
+    { coverage: 0.6 },
+  );
+});
+
+test("unfinished confirmed run requires another review after reload", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "case:V-1042",
+    async (store, held, arrived) => {
+      const before = store.snapshot();
+      await start(page);
+      await page
+        .getByRole("button", { name: "Diesen Auftrag ausführen" })
+        .click();
+      await arrived;
+      await page.reload();
+      held.release();
+      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+      await page
+        .locator(".answer-panel")
+        .getByRole("button", { name: "Fortsetzen", exact: true })
+        .click();
+      await expect(page.locator(".review-panel")).toBeVisible();
+      expect(store.snapshot()).toEqual(before);
+      await expect(page.locator(".editor")).toHaveCount(0);
+    },
+    "save",
+    {},
+    { capability: 0.3 },
+  );
+});
+
+test("changed workspace cannot accept displayed old review", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store, _held, _arrived, snapshots) => {
+      await start(page);
+      await expect(page.locator(".review-panel")).toBeVisible();
+      store.reset(0);
+      await page
+        .getByRole("button", { name: "Diesen Auftrag ausführen" })
+        .click();
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Daten geändert",
+      );
+      expect(snapshots).toEqual([]);
+      expect(store.snapshot().revision).toBe(1);
+      await page
+        .locator(".answer-panel")
+        .getByRole("button", { name: "Fortsetzen", exact: true })
+        .click();
+      await expect(page.locator(".review-panel")).toBeVisible();
+      expect(snapshots).toEqual([]);
+    },
+    "save",
+    {},
+    { capability: 0.3 },
+  );
+});
+
+test("plan confirmation does not bypass low action confidence", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store) => {
+      const before = store.snapshot();
+      await start(page);
+      await page
+        .getByRole("button", { name: "Diesen Auftrag ausführen" })
+        .click();
+      await expect(page.locator(".activity-label")).toContainText(
+        "Keine sichere zielkonforme Entscheidung",
+      );
+      await expect(page.locator(".editor")).toHaveCount(0);
+      expect(store.snapshot()).toEqual(before);
+    },
+    "save",
+    {},
+    { capability: 0.3, next: 0.6 },
+  );
+});
+
+test("uncertain remedy lists only domain alternatives and requires actual choice", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store) => {
+      const before = store.snapshot();
+      await start(page, "Termin V-1042 2026-09-24 09:00 für 60 Minuten");
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Bitte eine verfügbare Person auswählen.",
+      );
+      await expect(page.locator(".answer-options button")).toHaveText([
+        "Termin + Zuweisung an Lea Sommer freigeben",
+      ]);
+      expect(store.snapshot()).toEqual(before);
+      await page
+        .getByRole("button", {
+          name: "Termin + Zuweisung an Lea Sommer freigeben",
+        })
+        .click();
+      await expect(page.locator(".activity-label")).toHaveText(
+        "Auftrag abgeschlossen",
+      );
+      expect(store.snapshot()).toEqual({
+        ...before,
+        revision: 1,
+        cases: before.cases.map((c) =>
+          c.id === "V-1042"
+            ? {
+                ...c,
+                technicianId: "lea",
+                appointment: { start: "2026-09-24T09:00:00", minutes: 60 },
+              }
+            : c,
+        ),
+      });
+    },
+    "save",
+    {
+      assign: "no",
+      schedule: "yes",
+      slot: "2026-09-24T09:00:00",
+      appointmentMinutes: "60",
+    },
+  );
+});
+
+const refusedInterpretations: Record<string, string>[] = [
+  { capability: "no", filter: "yes", customer: "hafen" },
+  { cardinality: "no" },
+  { coverage: "mismatch" },
+];
+for (const interpretation of refusedInterpretations) {
+  test(`refused ${JSON.stringify(interpretation)} never offers confirmation or effects`, async ({
+    page,
+  }) => {
+    await withLive(
+      page,
+      "never",
+      async (store, _held, _arrived, snapshots) => {
+        const before = store.snapshot();
+        await start(
+          page,
+          "Weise V-1042 zuerst Lea und dann Jonas zu und lösche alle Kunden",
+        );
+        await expect(page.locator(".answer-panel")).toContainText(
+          "Der vollständige Auftrag ist nicht unterstützt",
+        );
+        await expect(page.locator(".review-panel")).toHaveCount(0);
+        expect(snapshots).toEqual([]);
+        expect(store.snapshot()).toEqual(before);
+        await expect(page.locator(".editor")).toHaveCount(0);
+      },
+      "save",
+      interpretation,
+      { capability: 0.3, cardinality: 0.3, coverage: 0.3 },
+    );
+  });
+}
+
+test("manual navigation invalidates review until refreshed and reset discards it", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store, _held, _arrived, snapshots) => {
+      await start(page);
+      await expect(page.locator(".review-panel")).toBeVisible();
+      await page
+        .getByRole("button", { name: "Befehlspalette schließen" })
+        .click();
+      await page.getByRole("button", { name: "Kunden", exact: true }).click();
+      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+      await expect(page.locator(".review-panel")).toHaveCount(0);
+      await page
+        .locator(".answer-panel")
+        .getByRole("button", { name: "Fortsetzen", exact: true })
+        .click();
+      await expect(page.locator(".review-panel")).toBeVisible();
+      expect(snapshots).toEqual([]);
+      expect(store.snapshot().revision).toBe(0);
+      await page
+        .getByRole("button", { name: "Befehlspalette schließen" })
+        .click();
+      await page
+        .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Jetzt zurücksetzen" }).click();
+      await expect(page.locator(".activity-label")).toHaveText(
+        "Bereit für deinen Auftrag",
+      );
+      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+      await expect(page.locator(".review-panel")).toHaveCount(0);
+      expect(store.snapshot().revision).toBe(1);
+      expect(snapshots).toEqual([]);
+    },
+    "save",
+    {},
+    { capability: 0.3 },
+  );
+});

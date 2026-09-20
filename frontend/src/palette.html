@@ -115,6 +115,15 @@
           Auftrag stoppen
         </button>
       </section>
+      } @if (state.kind === 'needs_review') {
+      <section #attentionPanel class="answer-panel review-panel">
+        <h3>Erkannten Auftrag bestätigen</h3>
+        <p>Jev hat diesen Auftrag erkannt und benötigt deine Bestätigung. Bitte prüfe, ob er deiner Absicht entspricht.</p>
+        <ul>@for (line of state.review.summary; track $index) { <li>{{ line }}</li> }</ul>
+        <p>Originalauftrag: {{ state.review.request }}</p>
+        <button class="primary" (click)="confirmPlan()">Diesen Auftrag ausführen</button>
+        <button class="danger text-button" (click)="runner.stop()">Auftrag stoppen</button>
+      </section>
       } @if (state.kind === 'needs_approval') {
       <section #attentionPanel class="answer-panel">
         <h3>Zusätzliche Änderung freigeben</h3>
@@ -143,8 +152,9 @@
           </dd>
           <dt>Zusätzliche Änderung</dt>
           <dd>
-            {{ runner.ui.technicianName(state.proposal.after.technicianId) }}
-            übernimmt
+            @if (state.proposal.after.technicianId; as technicianId) {
+              {{ runner.ui.technicianName(technicianId) }} übernimmt
+            } @else { Bitte eine verfügbare Person auswählen. }
           </dd>
         </dl>
         <div class="answer-options">

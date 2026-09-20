@@ -28,7 +28,9 @@ export class Palette {
   private focusedAttention = 0;
   readonly focusTarget = computed(() => {
     const state = this.runner.state();
-    return state.kind === "needs_input" || state.kind === "needs_approval"
+    return state.kind === "needs_input" ||
+      state.kind === "needs_approval" ||
+      state.kind === "needs_review"
       ? ".answer-panel input, .answer-panel button"
       : "textarea";
   });
@@ -107,6 +109,11 @@ export class Palette {
       return;
     }
     this.scheduleError.set("");
+    this.setOpen(false);
+    await this.runner.resume();
+  }
+  async confirmPlan() {
+    if (!(await this.runner.confirmPlan())) return;
     this.setOpen(false);
     await this.runner.resume();
   }

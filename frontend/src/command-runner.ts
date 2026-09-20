@@ -17,7 +17,12 @@ import {
 } from "../../shared/domain";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
-import { prepareGoal, type Proposal, type Question } from "./command-plan";
+import {
+  prepareGoal,
+  type Proposal,
+  type Question,
+  type GoalReview,
+} from "./command-plan";
 
 export type RunState =
   | {
@@ -36,7 +41,8 @@ export type RunState =
       message: string;
     }
   | { kind: "needs_input"; question: Question }
-  | { kind: "needs_approval"; proposal: Proposal };
+  | { kind: "needs_approval"; proposal: Proposal }
+  | { kind: "needs_review"; review: GoalReview };
 const historySchema = z.object({
   id: z.string(),
   request: z.string(),
@@ -47,7 +53,7 @@ const historySchema = z.object({
   outcome: z.string(),
 });
 const persistedSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   command: z.string(),
   goal: goalSchema.nullable(),
   history: z.array(historySchema),
@@ -106,7 +112,7 @@ export class CommandRunner {
     effect(() => {
       this.historyStored.set(
         writeBrowserState("kontor-command-v1", {
-          version: 1,
+          version: 2,
           command: this.command(),
           goal: this.goal(),
           history: this.history(),
@@ -116,7 +122,10 @@ export class CommandRunner {
     });
   }
   private requestAttention(
-    state: Extract<RunState, { kind: "needs_input" | "needs_approval" }>,
+    state: Extract<
+      RunState,
+      { kind: "needs_input" | "needs_approval" | "needs_review" }
+    >,
   ) {
     this.evidenceCaseId.set(
       state.kind === "needs_input" && state.question.kind === "evidence"
@@ -139,6 +148,8 @@ export class CommandRunner {
         return "Schritt wird ausgeführt";
       case "needs_input":
         return "Antwort ausstehend";
+      case "needs_review":
+        return "Erkannten Auftrag bestätigen";
       case "needs_approval":
         return "Freigabe ausstehend";
       case "paused":
@@ -286,7 +297,8 @@ export class CommandRunner {
         waitingEpoch !== this.epoch ||
         this.registry.modal ||
         this.ui.unknownSave()
-      ) return;
+      )
+        return;
     }
     if (!this.goal()) {
       await this.start(true);
@@ -416,12 +428,54 @@ export class CommandRunner {
     });
     return true;
   }
+  async confirmPlan() {
+    const state = this.state(),
+      goal = this.goal();
+    if (state.kind !== "needs_review" || goal?.readiness.kind !== "review")
+      return false;
+    try {
+      await this.ui.refresh();
+      await this.render();
+      if (this.state() !== state || this.goal() !== goal) return false;
+      const workspace = this.ui.data();
+      if (!workspace) return false;
+      const preparation = prepareGoal(goal, workspace, null);
+      if (
+        workspace.revision !== state.review.revision ||
+        preparation.kind !== "review"
+      ) {
+        this.state.set({
+          kind: "paused",
+          reason: "manual",
+          message: "Daten geändert · Auftrag erneut prüfen",
+        });
+        return false;
+      }
+      this.goal.set({
+        ...goal,
+        readiness: { kind: "ready", basis: "user_confirmed" },
+      });
+      this.log(
+        `Auftrag bestätigt: ${state.review.summary.join(" ")} Originalauftrag: ${state.review.request}`,
+      );
+      this.state.set({
+        kind: "paused",
+        reason: "manual",
+        message: "Auftrag bestätigt",
+      });
+      return true;
+    } catch (error) {
+      if (this.state() === state) this.fail(error);
+      return false;
+    }
+  }
   async approve(technicianId: string) {
     const state = this.state();
     if (state.kind !== "needs_approval") return;
     const proposal = state.proposal;
     if (!proposal.alternatives.some((a) => a.id === technicianId)) return;
     await this.ui.refresh();
+    await this.render();
     if (this.state() !== state) return;
     if (this.ui.data()?.revision !== proposal.revision) {
       this.approved.set(null);
@@ -451,6 +505,7 @@ export class CommandRunner {
     const selected = workspace?.cases.find((c) => c.id === initialGoal?.caseId);
     const filter = initialGoal?.objectives.find((o) => o.kind === "filter");
     if (
+      initialGoal?.readiness.kind !== "refused" &&
       selected &&
       filter?.customerId &&
       initialGoal?.objectives.some((o) => o.kind !== "filter")
@@ -505,8 +560,15 @@ export class CommandRunner {
       await this.render();
       if (epoch !== this.epoch) return;
       const preparation = prepareGoal(goal, workspace, this.approved());
+      if (preparation.kind === "review") {
+        this.requestAttention({
+          kind: "needs_review",
+          review: preparation.review,
+        });
+        return;
+      }
       const contextAction =
-        goal.supported &&
+        goal.readiness.kind === "ready" &&
         goal.objectives.length > 0 &&
         !goal.objectives.some((o) => o.kind === "filter" && !o.customerId) &&
         workspace.cases.some((c) => c.id === goal.caseId)
@@ -534,17 +596,6 @@ export class CommandRunner {
           { signal: this.abort.signal },
         );
         if (epoch !== this.epoch) return;
-        if (
-          !selected.technicianId ||
-          !proposal.alternatives.some((a) => a.id === selected.technicianId)
-        ) {
-          this.fail(
-            new Error(
-              "Kein sicherer Vorschlag. Bitte den Termin manuell prüfen.",
-            ),
-          );
-          return;
-        }
         this.requestAttention({
           kind: "needs_approval",
           proposal: {
@@ -718,8 +769,23 @@ export class CommandRunner {
     const parsed = persistedSchema.safeParse(
       readBrowserState("kontor-command-v1"),
     );
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      const legacy = persistedSchema
+        .extend({ version: z.literal(1), goal: z.unknown() })
+        .safeParse(readBrowserState("kontor-command-v1"));
+      if (legacy.success) {
+        this.command.set(legacy.data.command);
+        this.history.set(legacy.data.history);
+      }
+      return;
+    }
     const stored = parsed.data;
+    if (
+      stored.unfinished &&
+      stored.goal?.readiness.kind === "ready" &&
+      stored.goal.readiness.basis === "user_confirmed"
+    )
+      stored.goal.readiness = { kind: "review" };
     this.command.set(stored.command);
     this.history.set(stored.history);
     this.goal.set(stored.goal);

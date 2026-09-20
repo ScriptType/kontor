@@ -99,7 +99,7 @@ test("unsupported multi-record or partial request does not produce executable pl
     seedWorkspace(),
   );
   assert.equal(prepareGoal(goal, seedWorkspace(), null).kind, "question");
-  assert.equal(goal.supported, false);
+  assert.equal(goal.readiness.kind, "refused");
 });
 test("live rejects invented slots and controls outside the current candidate snapshot", async () => {
   await assert.rejects(
@@ -209,7 +209,7 @@ test("intent payload separates requested capability from mutable execution prere
     },
   );
   const goal = await jev.interpret("Schließe V-1039 ab.", workspace);
-  assert.equal(goal.supported, true);
+  assert.equal(goal.readiness.kind, "ready");
   assert.equal(goal.persistence, "save");
   const prepared = prepareGoal(goal, workspace, null);
   assert.equal(prepared.kind, "question");
@@ -222,7 +222,7 @@ test("intent confidence below the existing threshold remains non-executable", as
     "V-1042 45 Minuten Arbeit erfassen, Termin 2026-09-24 09:00 für 60 Minuten, NICHT speichern",
     seedWorkspace(),
   );
-  assert.equal(goal.supported, false);
+  assert.equal(goal.readiness.kind, "refused");
   assert.equal(goal.persistence, "unclear");
   assert.equal(prepareGoal(goal, seedWorkspace(), null).kind, "question");
 });
@@ -266,7 +266,7 @@ test("read-only filter needs neither save authority nor a case draft", async () 
     "Filter nach nordwerk",
     workspace,
   );
-  assert.equal(goal.supported, true);
+  assert.equal(goal.readiness.kind, "ready");
   assert.equal(goal.caseId, null);
   assert.equal(goal.persistence, "unclear");
   assert.deepEqual(goal.objectives, [
@@ -295,7 +295,7 @@ for (const item of [
       technician: "lea",
       [item.key]: "unclear",
     }).interpret("Bitte zuweisen", seedWorkspace());
-    assert.equal(goal.supported, true);
+    assert.equal(goal.readiness.kind, "ready");
     const result = prepareGoal(goal, seedWorkspace(), null);
     assert.equal(result.kind, "question");
     if (result.kind === "question")
@@ -309,7 +309,7 @@ for (const key of ["capability", "cardinality", "assign"]) {
       [key]: "unclear",
       coverage: "mismatch",
     }).interpret("Filter und Änderung", seedWorkspace());
-    assert.equal(goal.supported, false);
+    assert.equal(goal.readiness.kind, "refused");
     const result = prepareGoal(goal, seedWorkspace(), null);
     assert.equal(result.kind, "question");
     if (result.kind === "question")
@@ -345,7 +345,7 @@ for (const choice of ["yes", "no"]) {
         "Filter nach Nordwerk und erfasse 25 Minuten für V-1042",
         seedWorkspace(),
       );
-      assert.equal(goal.supported, false);
+      assert.equal(goal.readiness.kind, "refused");
       const result = prepareGoal(goal, seedWorkspace(), null);
       assert.equal(result.kind, "question");
       if (result.kind === "question")
@@ -357,7 +357,7 @@ test("explicit coverage permits an irrelevant uncertain negative without inventi
   const goal = await provider({ ...filterAnswers, time: "no" }, () => {}, {
     time: 0.6,
   }).interpret("Filter nach Nordwerk", seedWorkspace());
-  assert.equal(goal.supported, true);
+  assert.equal(goal.readiness.kind, "ready");
   assert.deepEqual(goal.objectives, [
     { kind: "filter", customerId: "nord", openOnly: false },
   ]);
@@ -366,11 +366,12 @@ test("explicit coverage permits an irrelevant uncertain negative without inventi
     desired: null,
   });
 });
-test("uncertain coverage cannot authorize a partially understood request", async () => {
+test("affirmative weak coverage requires concrete review", async () => {
   const goal = await provider(filterAnswers, () => {}, {
     coverage: 0.74,
-  }).interpret("Filter und Arbeitszeit", seedWorkspace());
-  assert.equal(goal.supported, false);
+  }).interpret("Filter nach Nordwerk", seedWorkspace());
+  assert.equal(goal.readiness.kind, "review");
+  assert.equal(prepareGoal(goal, seedWorkspace(), null).kind, "review");
 });
 
 test("uncertain selected identity reaches a case question while clear assignment survives", async () => {
@@ -385,7 +386,7 @@ test("uncertain selected identity reaches a case question while clear assignment
     () => {},
     { case: 0.6 },
   ).interpret("Weise die Wartung Lea Sommer zu", seedWorkspace());
-  assert.equal(goal.supported, true);
+  assert.equal(goal.readiness.kind, "ready");
   assert.equal(goal.caseId, null);
   assert.deepEqual(goal.objectives, [{ kind: "assign", technicianId: "lea" }]);
   const result = prepareGoal(goal, seedWorkspace(), null);
@@ -399,6 +400,86 @@ test("an empty confident kind set never reaches coverage or becomes executable",
     calls++;
   }).interpret("Unklarer Auftrag", seedWorkspace());
   assert.equal(calls, 1);
-  assert.equal(goal.supported, false);
+  assert.equal(goal.readiness.kind, "refused");
   assert.deepEqual(goal.objectives, []);
+});
+
+for (const key of ["capability", "cardinality", "coverage"]) {
+  test(`weak affirmative ${key} produces exact read-only review`, async () => {
+    const workspace = seedWorkspace();
+    const goal = await provider(filterAnswers, () => {}, {
+      [key]: 0.33,
+    }).interpret("Filter nach Nordwerk", workspace);
+    assert.equal(goal.readiness.kind, "review");
+    assert.deepEqual(prepareGoal(goal, workspace, null), {
+      kind: "review",
+      review: {
+        revision: 0,
+        request: "Filter nach Nordwerk",
+        summary: [
+          "Alle Vorgänge von Nordwerk GmbH anzeigen.",
+          "Keine Daten speichern.",
+        ],
+      },
+    });
+  });
+}
+for (const key of ["capability", "cardinality", "coverage"]) {
+  test(`weak negative ${key} cannot become a confirmable plan`, async () => {
+    const goal = await provider(
+      { ...filterAnswers, [key]: key === "coverage" ? "mismatch" : "no" },
+      () => {},
+      { [key]: 0.2 },
+    ).interpret("Filter und verbotene Änderung", seedWorkspace());
+    assert.equal(goal.readiness.kind, "refused");
+    assert.equal(prepareGoal(goal, seedWorkspace(), null).kind, "question");
+  });
+}
+test("review waits for actual values then distinguishes work and schedule duration", async () => {
+  const workspace = seedWorkspace();
+  const goal = await provider(answers, () => {}, {
+    capability: 0.3,
+    workMinutes: 0.4,
+  }).interpret(
+    "V-1042 45 Minuten Arbeit, Termin 2026-09-24 09:00 für 60 Minuten, nicht speichern",
+    workspace,
+  );
+  const question = prepareGoal(goal, workspace, null);
+  assert.equal(question.kind, "question");
+  if (question.kind === "question")
+    assert.equal(question.question.kind, "minutes");
+  goal.objectives = goal.objectives.map((o) =>
+    o.kind === "time" ? { ...o, minutes: 45 } : o,
+  );
+  const review = prepareGoal(goal, workspace, null);
+  assert.equal(review.kind, "review");
+  if (review.kind === "review")
+    assert.deepEqual(review.review.summary.slice(1), [
+      "Termin am 2026-09-24 09:00:00 für 60 Minuten setzen.",
+      "45 Minuten tatsächlich geleistete Arbeitszeit erfassen.",
+      "Reihenfolge nach fachlichen Voraussetzungen.",
+      "Nur als Entwurf vorbereiten. Nicht speichern.",
+    ]);
+});
+for (const key of ["openOnly", "order"]) {
+  test(`weak ${key} refuses rather than silently selecting a default`, async () => {
+    const goal = await provider(
+      { ...answers, filter: "yes", customer: "nord" },
+      () => {},
+      { [key]: 0.2 },
+    ).interpret(
+      "Nordwerk filtern, V-1042 45 Minuten und Termin 2026-09-24 09:00 60 Minuten",
+      seedWorkspace(),
+    );
+    assert.equal(goal.readiness.kind, "refused");
+  });
+}
+test("remedy candidate outside domain alternatives remains a transport error", async () => {
+  await assert.rejects(
+    provider({ remedy: "invented" }).remedy(
+      "Termin",
+      [{ id: "lea", label: "Lea" }],
+      "{}",
+    ),
+  );
 });

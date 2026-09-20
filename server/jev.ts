@@ -312,8 +312,8 @@ export function createJev(config: Config, fetch?: Fetch) {
         (key) => selected(classification[key]) === "yes",
       );
       if (
-        selected(classification["capability"]) !== "yes" ||
-        selected(classification["cardinality"]) !== "yes" ||
+        classification["capability"]?.choice !== "yes" ||
+        classification["cardinality"]?.choice !== "yes" ||
         requested.length === 0
       )
         return {
@@ -322,7 +322,7 @@ export function createJev(config: Config, fetch?: Fetch) {
           objectives: [],
           persistence: "unclear",
           order: "flexible",
-          supported: false,
+          readiness: { kind: "refused" },
         };
       const slotKeys = new Set<string>();
       if (requested.some((kind) => kind !== "filter")) {
@@ -405,11 +405,17 @@ export function createJev(config: Config, fetch?: Fetch) {
               ? "draft"
               : "unclear",
         order: value("order") === "yes" ? "listed" : "flexible",
-        supported:
-          !(value("filter") === "yes" && value("openOnly") === null) &&
-          (objectives.length < 2 || value("order") !== null) &&
-          value("coverage") === "complete" &&
-          objectives.length > 0,
+        readiness:
+          (value("filter") === "yes" && value("openOnly") === null) ||
+          (objectives.length > 1 && value("order") === null) ||
+          answers["coverage"]?.choice !== "complete" ||
+          objectives.length === 0
+            ? { kind: "refused" }
+            : ["capability", "cardinality", "coverage"].some(
+                  (key) => selected(answers[key]) === null,
+                )
+              ? { kind: "review" }
+              : { kind: "ready", basis: "high_confidence" },
       };
     },
     async decide(
