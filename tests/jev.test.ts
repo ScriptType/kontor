@@ -483,3 +483,78 @@ test("remedy candidate outside domain alternatives remains a transport error", a
     ),
   );
 });
+
+for (const request of [
+  "Weise V-1042 zuerst Lea Sommer und danach Jonas Weber zu.",
+  "Weise V-1042 LEA SOMMER statt Jonas Weber zu.",
+]) {
+  test(`explicit multiple known technicians refuse even positive provider scope: ${request}`, async () => {
+    let calls = 0;
+    const goal = await provider(
+      { ...filterAnswers, filter: "no", assign: "yes", technician: "unclear" },
+      () => {
+        calls++;
+      },
+      { cardinality: 0.37, coverage: 0.71, technician: 0.45 },
+    ).interpret(request, seedWorkspace());
+    assert.deepEqual(goal.readiness, {
+      kind: "refused",
+      reason: "multiple_technicians",
+    });
+    assert.equal(calls, 1);
+    const result = prepareGoal(goal, seedWorkspace(), null);
+    assert.equal(result.kind, "question");
+    if (result.kind === "question") {
+      assert.equal(result.question.kind, "multiple_technicians");
+      assert.deepEqual(result.question.options, []);
+    }
+  });
+}
+test("known-person refusal uses full names and word boundaries", async () => {
+  const goal = await provider({
+    ...filterAnswers,
+    filter: "no",
+    assign: "yes",
+    technician: "lea",
+  }).interpret(
+    "Weise V-1042 Lea Sommer zu, Bezug SuperJonas Weber",
+    seedWorkspace(),
+  );
+  assert.equal(goal.readiness.kind, "ready");
+});
+
+test("described work minutes remain bounded candidates without case, date or clock fragments", async () => {
+  let checked = false;
+  const goal = await provider(
+    {
+      ...answers,
+      schedule: "no",
+      case: "V-1041",
+      workMinutes: "35",
+      persistence: "save",
+    },
+    (raw) => {
+      const payload = z
+        .object({
+          questions: z.record(
+            z.string(),
+            z.object({ criteria: z.record(z.string(), z.string()) }),
+          ),
+        })
+        .parse(raw);
+      if (!payload.questions["workMinutes"]) return;
+      checked = true;
+      assert.deepEqual(
+        Object.keys(payload.questions["workMinutes"].criteria).sort(),
+        ["35", "unclear"],
+      );
+    },
+  ).interpret(
+    "V-1041 Minuten, 2026-09-24 Minuten, 09:00 Minuten. Speichere 35 tatsächlich geleistete Minuten für V-1041.",
+    seedWorkspace(),
+  );
+  assert(checked);
+  assert.equal(goal.caseId, "V-1041");
+  assert.equal(goal.persistence, "save");
+  assert.deepEqual(goal.objectives, [{ kind: "time", minutes: 35 }]);
+});

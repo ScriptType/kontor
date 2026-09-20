@@ -120,7 +120,9 @@ export function createJev(config: Config, fetch?: Fetch) {
     ): Promise<Goal> {
       if (!client) return demoGoal(request);
       const minuteValues = [
-        ...request.matchAll(/\b(\d{1,4})\s*(?:Minuten|min)\b/gi),
+        ...request.matchAll(
+          /(?<![\p{L}\p{N}_.,:/+-])(\d{1,4})\s*(?:[\p{L}]+\s+){0,3}(?:Minuten|min)\b/giu,
+        ),
       ]
         .map((m) => Number(m[1]))
         .filter((n) => n > 0);
@@ -322,8 +324,25 @@ export function createJev(config: Config, fetch?: Fetch) {
           objectives: [],
           persistence: "unclear",
           order: "flexible",
-          readiness: { kind: "refused" },
+          readiness: { kind: "refused", reason: "scope" },
         };
+      if (requested.includes("assign")) {
+        const namedTechnicians = workspace.technicians.filter(({ name }) =>
+          new RegExp(
+            `(?<![\\p{L}\\p{N}_])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`,
+            "iu",
+          ).test(request),
+        );
+        if (namedTechnicians.length > 1)
+          return {
+            request,
+            caseId: null,
+            objectives: [],
+            persistence: "unclear",
+            order: "flexible",
+            readiness: { kind: "refused", reason: "multiple_technicians" },
+          };
+      }
       const slotKeys = new Set<string>();
       if (requested.some((kind) => kind !== "filter")) {
         slotKeys.add("case");
@@ -410,7 +429,7 @@ export function createJev(config: Config, fetch?: Fetch) {
           (objectives.length > 1 && value("order") === null) ||
           answers["coverage"]?.choice !== "complete" ||
           objectives.length === 0
-            ? { kind: "refused" }
+            ? { kind: "refused", reason: "scope" }
             : ["capability", "cardinality", "coverage"].some(
                   (key) => selected(answers[key]) === null,
                 )

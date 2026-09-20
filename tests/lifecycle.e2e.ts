@@ -736,3 +736,106 @@ test("manual navigation invalidates review until refreshed and reset discards it
     { capability: 0.3 },
   );
 });
+
+test("old persisted command retains history but discards pending execution authority", async ({
+  page,
+}) => {
+  await withLive(page, "never", async (store, _held, _arrived, snapshots) => {
+    const before = store.snapshot();
+    await page.evaluate(() =>
+      localStorage.setItem(
+        "kontor-command-v1",
+        JSON.stringify({
+          version: 1,
+          command: "Alter Auftrag",
+          goal: { request: "Alter Auftrag", supported: true },
+          unfinished: true,
+          history: [
+            {
+              id: "old",
+              request: "Alter Auftrag",
+              entries: ["Vorheriger Schritt"],
+              createdAt: "2026-09-20T12:00:00Z",
+              outcome: "In Arbeit",
+            },
+          ],
+        }),
+      ),
+    );
+    await page.reload();
+    await expect(page.locator(".activity-label")).toHaveText(
+      "Bereit für deinen Auftrag",
+    );
+    await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Auftrag an Jev" }),
+    ).toHaveValue("Alter Auftrag");
+    await expect(page.locator(".history")).toContainText("Alter Auftrag");
+    await expect(page.locator(".review-panel")).toHaveCount(0);
+    expect(snapshots).toEqual([]);
+    expect(store.snapshot()).toEqual(before);
+  });
+});
+
+test("filter-scope answer changes concrete review without granting execution", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store, _held, _arrived, snapshots) => {
+      const before = store.snapshot();
+      await start(
+        page,
+        "Zeige offene Hafen-Vorgänge und weise V-1042 Lea Sommer zu",
+      );
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Soll ich den angeforderten Filter entfernen",
+      );
+      await page
+        .getByRole("button", {
+          name: "Angeforderten Filter entfernen, Vorgang beibehalten",
+          exact: true,
+        })
+        .click();
+      await expect(page.locator(".review-panel li")).toHaveText([
+        "V-1042 · Wartung Standort Nord · Nordwerk GmbH · Hamburg · Halle A",
+        "Lea Sommer zuweisen.",
+        "Änderungen speichern.",
+      ]);
+      expect(snapshots).toEqual([]);
+      expect(store.snapshot()).toEqual(before);
+      await expect(page.locator(".editor")).toHaveCount(0);
+    },
+    "save",
+    { filter: "yes", customer: "hafen", openOnly: "yes" },
+    { cardinality: 0.3 },
+  );
+});
+
+test("captured repeated-assignment misclassification has no confirmation or person choice", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    "never",
+    async (store, _held, _arrived, snapshots) => {
+      const before = store.snapshot();
+      await start(
+        page,
+        "Weise V-1042 zuerst Lea Sommer und danach Jonas Weber zu.",
+      );
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Er nennt mehrere bekannte Personen.",
+      );
+      await expect(page.locator(".answer-options button")).toHaveCount(0);
+      await expect(page.locator(".review-panel")).toHaveCount(0);
+      await expect(page.locator(".editor")).toHaveCount(0);
+      expect(snapshots).toEqual([]);
+      expect(store.snapshot()).toEqual(before);
+    },
+    "save",
+    { technician: "unclear" },
+    { cardinality: 0.37, coverage: 0.71, technician: 0.45 },
+  );
+});

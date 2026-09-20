@@ -28,7 +28,10 @@ export const goalSchema = z.object({
       basis: z.enum(["high_confidence", "user_confirmed"]),
     }),
     z.object({ kind: z.literal("review") }),
-    z.object({ kind: z.literal("refused") }),
+    z.object({
+      kind: z.literal("refused"),
+      reason: z.enum(["scope", "multiple_technicians"]).default("scope"),
+    }),
   ]),
   persistence: z.enum(["save", "draft", "unclear"]),
 });
@@ -122,6 +125,10 @@ export function demoGoal(request: string): Goal {
     case demos[6]:
       return { ...base, caseId: "V-1039", objectives: [{ kind: "complete" }] };
     default:
-      return { ...base, caseId: null, readiness: { kind: "refused" } };
+      return {
+        ...base,
+        caseId: null,
+        readiness: { kind: "refused", reason: "scope" },
+      };
   }
 }

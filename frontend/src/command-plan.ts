@@ -12,6 +12,7 @@ export type Question = {
     | "technician"
     | "order"
     | "unsupported"
+    | "multiple_technicians"
     | "evidence"
     | "draft"
     | "schedule"
@@ -49,6 +50,16 @@ export function prepareGoal(
     kind: "question",
     question: value,
   });
+  if (
+    goal.readiness.kind === "refused" &&
+    goal.readiness.reason === "multiple_technicians"
+  )
+    return question({
+      kind: "multiple_technicians",
+      message:
+        "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig. Er nennt mehrere bekannte Personen. Bitte einen neuen Auftrag mit genau einer Zielperson formulieren. Auch ein Vergleich zwischen zwei Personen wird hier nicht ausgeführt.",
+      options: [],
+    });
   if (goal.readiness.kind === "refused" || !goal.objectives.length)
     return question({
       kind: "unsupported",
