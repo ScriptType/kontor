@@ -22,14 +22,14 @@ Das Auftragsfenster zeigt die verfügbaren Beispielaufträge. Im Demo-Modus funk
 | Einen Termin mit belegter zuständiger Person planen. | Konflikt und freie qualifizierte Alternative anzeigen. Nur die konkret genehmigte zusätzliche Zuweisung ausführen. |
 | "Plane V-1042 und speichere" ohne konkrete Zeitangaben. | Datum, Beginn und Dauer als strukturierte Eingabe erfragen. |
 | Offene Hafen-Vorgänge anzeigen und den Nordwerk-Vorgang V-1042 Lea Sommer zuweisen. | Den Widerspruch zwischen gewünschtem Filter und Zielvorgang zeigen. Erst nach Zustimmung den widersprechenden Filter aus dem Auftrag entfernen und den Vorgang bearbeiten. |
-| V-1039 ohne Prüfbeleg abschließen. | Den fehlenden Beleg erklären. Jev erzeugt oder ändert keinen Prüfbeleg. |
+| V-1039 ohne Prüfbeleg abschließen. | Den Vorgang öffnen und die Rückfrage automatisch anzeigen. **Prüfbeleg erfassen** führt zum manuellen Feld. Nach eigener Eingabe, Übernahme und Speicherung kann der ursprüngliche Auftrag ausdrücklich fortgesetzt werden. Jev erzeugt oder ändert keinen Prüfbeleg. |
 | Einen unbekannten Text im Demo-Modus eingeben. | Die Einschränkung des Demo-Modus erklären und keine ähnliche Beispielaktion starten. |
 
 Ein bereits erfülltes Teilziel benötigt keine erneute Speicherung. Bereits gespeicherte Änderungen aus einem früheren Beispiel bleiben bestehen.
 
 ## Rückfragen und Unterbrechungen
 
-Rückfragen stehen im Auftragsfenster. Escape schließt das Fenster; der Status bleibt bei "Antwort ausstehend". Eine bestätigte zusätzliche Änderung gilt nur für den angezeigten Vorschlag und den dazugehörigen Datenstand.
+Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Escape schließt das Fenster; der Status bleibt bei "Antwort ausstehend". Dieselbe Rückfrage öffnet sich dadurch nicht erneut. Eine bestätigte zusätzliche Änderung gilt nur für den angezeigten Vorschlag und den dazugehörigen Datenstand.
 
 Das Öffnen des Auftragsfensters pausiert einen laufenden Auftrag. Manuelle Änderungen pausieren ebenfalls. Ein fremder ungespeicherter Entwurf muss vor einem neuen Auftrag bewusst gespeichert oder verworfen werden. Jev übernimmt ihn nicht stillschweigend.
 

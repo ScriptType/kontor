@@ -37,13 +37,17 @@ npm start
 
 `npm test` prüft Fachregeln, den WebSocket-Transport und das SDK mit lokal simulierten Provider-Antworten. Es sendet keine Anfrage an TypeSafe. Die Sprachqualität deutscher Aufträge benötigt eine gesonderte Prüfung mit einem echten Jev-Aufruf.
 
-[Offene Prüfungen](docs/known-issues.md) dokumentiert einen einmalig beobachteten Fehler der simulierten Jev-Antwort beim Fortsetzen nach einer Pause und die noch ausstehende Auswertung mit dem echten Modell.
+[Offene Prüfungen](docs/known-issues.md) dokumentiert einen einmalig beobachteten Fehler der simulierten Jev-Antwort beim Fortsetzen nach einer Pause und Grenzen der bisher geprüften echten Jev-Aufträge.
 
 ## Aufträge ausführen
 
 Öffne Jev über den sichtbaren Button oder mit `⌘K` unter macOS beziehungsweise `Strg+K` unter Windows. Nach dem Absenden schließt sich das Fenster. Die Statusleiste zeigt den Fortschritt und einen Stopp-Schalter. Der Verlauf enthält tatsächlich ausgeführte Schritte.
 
 Das Öffnen des Auftragsfensters pausiert die Bedienung. Escape schließt das Fenster und behält den Eingabeentwurf. Eine offene Rückfrage bleibt unbeantwortet. Stoppen verhindert weitere Schritte und macht gespeicherte Änderungen nicht rückgängig.
+
+Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Bei einem eindeutig bekannten Vorgang zeigt die Anwendung zuvor den passenden Kontext, soweit kein offener Entwurf oder widersprüchlicher Filter das verhindert. Escape schließt die aktuelle Rückfrage, ohne sie sofort erneut zu öffnen. Über **Antworten** erreichst du sie wieder.
+
+Bei einem fehlenden Prüfbeleg führt **Prüfbeleg erfassen** direkt zum Feld im betroffenen Vorgang. Trage deine tatsächliche Beobachtung ein, übernimm sie in den Entwurf und speichere. Mit **Auftrag fortsetzen** prüft Jev anschließend den ursprünglichen Abschlussauftrag erneut.
 
 Zusätzliche fachliche Änderungen, etwa ein Personenwechsel zum Beheben eines Terminkonflikts, erscheinen als konkreter Vorschlag. Eine fehlende Prüfung vor Ort lässt sich nicht durch Jev bestätigen. Werte stammen aus dem Auftrag oder vorhandenen Daten.
 

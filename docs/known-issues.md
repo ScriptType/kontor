@@ -10,6 +10,12 @@ Anschließend bestanden der vollständige Browserlauf und 13 gezielte Wiederholu
 
 Bei erneutem Auftreten müssen die erhaltene Provider-Antwort, die Optionen derselben Anfrage und der Playwright-Trace erhalten bleiben. Ein weiterer erfolgreicher Wiederholungslauf klärt die Ursache nicht.
 
-## Echte Jev-Auswertung
+## KI-002: Unterstützte Formulierungen werden teilweise zurückgewiesen
 
-Die lokalen Tests prüfen das SDK mit simulierten Antworten. Es war kein TypeSafe-Schlüssel konfiguriert. Sprachverständnis, Confidence-Verhalten, Anbieter-Latenz und die Zuverlässigkeit deutscher mehrteiliger Aufträge sind deshalb nicht mit dem tatsächlichen Modell geprüft.
+Status: mit echtem Jev beobachtet, weitere Auswertung offen.
+
+Am 20. September 2026 wurde die echte TypeSafe-Anbindung geprüft. Der Auftrag "Schließe V-1039 ab." liefert nach der Trennung von Absicht und Abschlussvoraussetzungen den richtigen Vorgang, das Abschlussziel und die Speicherabsicht. Der vollständige Browserablauf bestand mit separaten Testdaten und fünf echten Jev-Aufrufen. Er umfasst Navigation aus den Berichten, automatische Rückfrage, manuelle Belegeingabe, Speicherung, ausdrückliches Fortsetzen und Abschluss. Desktop und mobile Darstellung wurden dabei geprüft.
+
+Zwei weitere Formulierungen wurden wegen einzelner Bewertungen unter der vorhandenen Confidence-Schwelle von 0,75 als nicht unterstützt behandelt. Das betraf "Trage für V-1042 25 Minuten Arbeitszeit als Entwurf ein, nicht speichern." und "Weise die Wartung Lea Sommer zu und speichere." Die erste Antwort erkannte den Entwurfswunsch. Die zweite erkannte die Zuweisung und ließ den mehrdeutigen Vorgang offen. Die zusätzliche Umfangsprüfung verhinderte aber den Übergang zur passenden Ausführung beziehungsweise Rückfrage.
+
+Einzelne erfolgreiche Modellaufrufe belegen keine allgemeine Sprachqualität. Die automatisierten Tests verwenden weiterhin simulierte Antworten. Eine reproduzierbare Live-Auswertung muss erwartete Ziele, erforderliche Rückfragen und erlaubte Änderungen prüfen. Die Confidence-Schwelle wurde nicht abgesenkt.

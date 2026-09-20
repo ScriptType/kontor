@@ -80,6 +80,8 @@ Die erste Umsetzung unterstützt Filter, Zuweisung, Termin, Arbeitsminuten und A
 
 Angular meldet nur aktuell zugängliche Bedienelemente als ausführbare Aktionen. Menüeinträge werden erst nach dem Öffnen angeboten. Nach jeder Änderung der Oberfläche wartet der Ablauf auf das Rendering und erstellt einen neuen Zustand. Fachliche Blockaden bleiben als Information getrennt von ausführbaren Aktionen.
 
+Die Navigation zum bekannten Zielvorgang kann vor einer fachlichen Rückfrage erfolgen. Sie verwendet dieselben registrierten Aktionen und verändert keine Fachdaten. Neue Rückfragen und Freigaben erhalten eine fortlaufende Kennung. Die Palette öffnet sie einmalig. Das Schließen entwertet den ausstehenden Inhalt nicht und löst keine erneute Öffnung aus.
+
 Jede Entscheidung gehört zu einem bestimmten Lauf und Bildschirmzustand. Öffnen des Auftragsfensters, manuelle Änderungen und Stoppen machen ausstehende Entscheidungen unbrauchbar. Eine alte Antwort kann deshalb keinen inzwischen anderen Bildschirm bedienen. Ein bereits gestarteter Speichervorgang kann trotzdem abgeschlossen werden. Der Beleg bestimmt dann das tatsächliche Ergebnis.
 
 Eine offene Rückfrage bleibt beim Schließen des Auftragsfensters offen. Nach einem Neuladen wird ein unterbrochener Auftrag nicht automatisch fortgesetzt. Vor weiteren Aktionen müssen die gespeicherten Daten und zugänglichen Bedienelemente erneut gelesen werden.
@@ -87,6 +89,8 @@ Eine offene Rückfrage bleibt beim Schließen des Auftragsfensters offen. Nach e
 ## Jev und seine Grenzen
 
 Jev wählt aus vorgegebenen Bedeutungen, Datensätzen, Wertkandidaten und sichtbaren Aktionen. Anwendungscode erkennt wörtliche Zahlen und Datumswerte als Kandidaten. Jev bewertet ihre Zuordnung zum Auftrag. Es erzeugt keine freien Texte oder beliebige Funktionsargumente. Der Browser erhält weder den API-Key noch rohe Fehlerantworten des Anbieters. Eingaben, gespeicherte Daten und Anbieterantworten werden an ihren Schnittstellen mit Zod geprüft.
+
+Die Auftragserkennung erhält Namen, Kennungen und Standorte zur Zuordnung. Veränderliche Abschlussvoraussetzungen gehören nicht in diese Erkennung. Ein unterstützter Abschlusswunsch bleibt unterstützt, wenn noch ein Prüfbeleg fehlt. Die Anwendung prüft diese Voraussetzung danach. Für die Auswahl des nächsten Bedienelements erhält Jev weiterhin den aktuellen Ausführungszustand.
 
 Die Fragen eines Aufrufs bewerten denselben Zustand unabhängig. Eine Frage kann in diesem Aufruf keine vorherige Antwort verwenden. Regeln, die Ergebnisse kombinieren, gehören in den Anwendungscode. Neue Informationen nach einer Navigation erfordern einen neuen Aufruf. [TypeSafe-Einführung](https://docs.typesafe.ai/introduction).
 

@@ -43,6 +43,10 @@ Gewählt ist die erste Variante mit einem Auftragsfenster nach dem Muster von Sp
 
 Der Verlauf gruppiert nach Nutzerauftrag. Jeder Eintrag enthält Auftrag, Zeitpunkt, Status und aufklappbare ausgeführte Schritte. Ein erneutes Öffnen startet keinen Auftrag und wiederholt keine Speicherung. Die Oberfläche verwendet feste Statusmeldungen; sie benötigt keine freie Textgenerierung durch Jev.
 
+Eine neue Rückfrage oder Freigabe öffnet das Fenster automatisch und fokussiert die passende Antwort, Eingabe oder Handlung. Escape schließt dieselbe Rückfrage dauerhaft bis zum bewussten erneuten Öffnen über **Antworten**. Eine spätere neue Rückfrage öffnet das Fenster wieder. Der ausstehende Inhalt bleibt beim Schließen erhalten.
+
+Ein bekannter Zielvorgang wird vor einer vorgangsbezogenen Rückfrage über die sichtbaren Bedienaktionen geöffnet. Ein fremder ungespeicherter Entwurf und ein ausdrücklich widersprüchlicher Filter müssen zuerst geklärt werden. Der Dialog nennt den Vorgang und seinen Kontext. Bei einem fehlenden Prüfbeleg schließt **Prüfbeleg erfassen** den Dialog und setzt den Fokus in das tatsächliche Feld. Die Anleitung im Vorgang nennt die manuellen Schritte bis zum ausdrücklichen Fortsetzen.
+
 Beim Absenden schließt sich das Auftragsfenster. Eine kompakte Statusleiste zeigt den aktuellen Schritt und **Stoppen**, während Jev die Arbeitsfläche bedient. Bereits gespeicherte Änderungen bleiben nach einem Stopp bestehen. `Escape` schließt das Fenster, ohne den Auftrag abzubrechen.
 
 Ein modales Auftragsfenster sperrt die dahinterliegenden Bedienelemente. Deshalb pausiert der Lauf, solange es geöffnet ist. Nach dem Schließen muss das Frontend den aktuellen Zustand erneut melden, bevor Jev weiter entscheidet. Die Umsetzung muss auch ein noch ausstehendes Ergebnis abfangen, damit keine verspätete Aktion hinter dem Modal ausgeführt wird. Fokus bleibt im geöffneten Fenster und kehrt beim Schließen an einen sinnvollen Ort zurück. [WAI-ARIA-Dialogmuster](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
