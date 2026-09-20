@@ -24,8 +24,24 @@ type Scenario = {
   search?: string;
   revisions?: number;
   order?: string[];
+  detail?: string;
 };
 const scenarios: Scenario[] = [
+  {
+    id: "detail-short-id",
+    request: "Öffne Details von 1042.",
+    detail: "V-1042",
+  },
+  {
+    id: "detail-first-row",
+    request: "Zeige mir die Details des ersten Vorgangs in der Tabelle.",
+    detail: "first",
+  },
+  {
+    id: "detail-last-row",
+    request: "Öffne die Details des letzten Vorgangs in der Tabelle.",
+    detail: "last",
+  },
   { id: "customers", request: "Zeig mir die Kunden.", page: "customers" },
   {
     id: "navigation",
@@ -182,6 +198,7 @@ const liveFetch: Fetch = async (url, init) => {
       snapshotId: z.string(),
       originalRequest: z.string(),
       availableActions: z.unknown(),
+      currentFacts: z.unknown(),
       observedSteps: z.unknown(),
     })
     .parse(JSON.parse(payload.state));
@@ -201,6 +218,7 @@ const liveFetch: Fetch = async (url, init) => {
     snapshotId: state.snapshotId,
     request: state.originalRequest,
     actions: state.availableActions,
+    currentFacts: state.currentFacts,
     observedSteps: state.observedSteps,
     questions: payload.questions,
     ...result,
@@ -230,7 +248,9 @@ try {
       const store = new WorkspaceStore(":memory:"),
         before = store.snapshot();
       const app = createApp(config, liveFetch, store),
-        context = await browser.newContext(),
+        context = await browser.newContext({
+          viewport: { width: 1280, height: 720 },
+        }),
         page = await context.newPage();
       app.server.listen(0, "127.0.0.1");
       await once(app.server, "listening");
@@ -240,6 +260,16 @@ try {
       let error: string | null = null;
       try {
         await page.goto(`http://127.0.0.1:${address.port}`);
+        await expect(page.locator("tbody tr")).toHaveCount(before.cases.length);
+        const rowIds = await page
+          .locator("tbody tr td:first-child")
+          .allTextContents();
+        const detailId =
+          scenario.detail === "first"
+            ? rowIds[0]
+            : scenario.detail === "last"
+              ? rowIds.at(-1)
+              : scenario.detail;
         await page
           .getByRole("button", { name: /Jev · Befehl eingeben/ })
           .click();
@@ -277,6 +307,48 @@ try {
             `Not autonomous completion: ${activity}`,
           );
         const after = store.snapshot();
+        if (scenario.detail) {
+          const selected = before.cases.find((c) => c.id === detailId);
+          assert(selected, "Expected detail must name a rendered row");
+          const heading = page.locator(".editor h2");
+          await expect(heading).toHaveText(selected.title);
+          await expect(page.locator(".editor .eyebrow")).toContainText(
+            selected.id,
+          );
+          await expect(heading).toBeFocused();
+          const bounds = await heading.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const activity = document
+              .querySelector(".activity")
+              ?.getBoundingClientRect();
+            return {
+              top: rect.top,
+              bottom: rect.bottom,
+              left: rect.left,
+              right: rect.right,
+              visibleTop:
+                activity &&
+                rect.left < activity.right &&
+                rect.right > activity.left
+                  ? activity.bottom
+                  : 0,
+              width: innerWidth,
+              height: innerHeight,
+            };
+          });
+          assert(
+            bounds.top >= bounds.visibleTop &&
+              bounds.bottom <= bounds.height &&
+              bounds.left >= 0 &&
+              bounds.right <= bounds.width,
+            `Detail heading outside visible viewport: ${JSON.stringify(bounds)}`,
+          );
+          assert.deepEqual(
+            after,
+            before,
+            "Opening details must not change persistence",
+          );
+        }
         assert.equal(after.revision, scenario.revisions ?? 0);
         if (scenario.draft) {
           assert.deepEqual(

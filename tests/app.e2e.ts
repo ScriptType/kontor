@@ -42,7 +42,9 @@ test("opening a case reveals and focuses its detail heading without changing dat
         .querySelector(".activity")
         ?.getBoundingClientRect();
       const overlapsActivity =
-        activity && heading.left < activity.right && heading.right > activity.left;
+        activity &&
+        heading.left < activity.right &&
+        heading.right > activity.left;
       return {
         top: heading.top,
         bottom: heading.bottom,
@@ -61,6 +63,79 @@ test("opening a case reveals and focuses its detail heading without changing dat
   await expect(heading).toBeFocused();
   expect(workspace.snapshot()).toEqual(before);
 });
+test("mobile cross-page opening reveals details and reopening preserves the draft and input focus", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const before = workspace.snapshot();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(address);
+  await page.locator('[data-action="nav:team"]').click();
+  await page.locator('[data-action="case:V-1042"]').click();
+  const heading = page.locator(".editor h2");
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport({ ratio: 1 });
+  expect(
+    await heading.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const activity = document
+        .querySelector(".activity")
+        ?.getBoundingClientRect();
+      return rect.top >= (activity?.bottom ?? 0) && rect.bottom <= innerHeight;
+    }),
+  ).toBe(true);
+  await page.locator("#minutes").fill("17");
+  await expect(page.locator("#minutes")).toBeFocused();
+  await page.locator('[data-action="case:V-1042"]').click();
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport({ ratio: 1 });
+  await expect(page.locator("#minutes")).toHaveValue("17");
+  await page.locator("#minutes").fill("18");
+  await expect(page.locator("#minutes")).toBeFocused();
+  await page.locator('[data-action="nav:reports"]').click();
+  await page.locator('[data-action="nav:cases"]').click();
+  await expect(page.locator("#minutes")).toHaveValue("18");
+  await expect(heading).not.toBeFocused();
+  expect(workspace.snapshot()).toEqual(before);
+});
+
+test("a modal or navigation cancels a detail reveal before rendering", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const before = workspace.snapshot();
+  await page.goto(address);
+  await expect(page.locator('[data-action="case:V-1042"]')).toBeVisible();
+  await page.evaluate(() => {
+    document
+      .querySelector<HTMLButtonElement>('[data-action="case:V-1042"]')
+      ?.click();
+    document.querySelector<HTMLButtonElement>(".command-trigger")?.click();
+  });
+  await expect(
+    page.getByRole("textbox", { name: "Auftrag an Jev" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".editor h2")).not.toBeFocused();
+  await page.evaluate(() => {
+    document
+      .querySelector<HTMLButtonElement>('[data-action="case:V-1042"]')
+      ?.click();
+    document
+      .querySelector<HTMLButtonElement>('[data-action="nav:reports"]')
+      ?.click();
+  });
+  await expect(
+    page.getByRole("heading", { name: "Berichte", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".editor")).toHaveCount(0);
+  await page.locator('[data-action="nav:cases"]').click();
+  await expect(page.locator(".editor h2")).not.toBeFocused();
+  expect(workspace.snapshot()).toEqual(before);
+});
+
 test("finite demo fixture saves once and reports saved state across reload", async ({
   page,
   address,
@@ -89,6 +164,10 @@ test("finite demo missing value goes through actual input and saves the explicit
   workspace,
 }) => {
   await page.goto(address);
+  await page.addStyleTag({
+    content:
+      '@keyframes close-palette { from { opacity: 1; } to { opacity: 0.99; } } .cdk-overlay-pane[data-state="closed"] { animation: close-palette 250ms linear; }',
+  });
   await command(page, demos[4]);
   await expect(page.locator(".answer-panel input")).toBeFocused();
   expect(workspace.snapshot().revision).toBe(0);

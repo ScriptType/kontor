@@ -7,7 +7,14 @@ import { ActionControl, RegionControl } from "./action-registry";
 import { ActionDispatcher, action } from "./action-dispatcher";
 @Component({
   selector: "app-root",
-  imports: [Cases, Overview, Palette, ActionControl, RegionControl, ResetWorkspace],
+  imports: [
+    Cases,
+    Overview,
+    Palette,
+    ActionControl,
+    RegionControl,
+    ResetWorkspace,
+  ],
   templateUrl: "./app.html",
 })
 export class App {

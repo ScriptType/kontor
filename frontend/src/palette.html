@@ -5,6 +5,7 @@
 <brn-dialog
   [state]="open() ? 'open' : 'closed'"
   (stateChanged)="setOpen($event === 'open')"
+  (closed)="closed()"
   [autoFocus]="focusTarget()"
 >
   <ng-template brnDialogContent

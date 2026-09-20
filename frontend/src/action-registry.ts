@@ -97,33 +97,42 @@ export class ActionRegistry {
               ? "below"
               : rect.right <= 0 || rect.left >= innerWidth
                 ? "outside"
-                : rect.top >= 0 && rect.bottom <= innerHeight &&
-                    rect.left >= 0 && rect.right <= innerWidth
+                : rect.top >= 0 &&
+                    rect.bottom <= innerHeight &&
+                    rect.left >= 0 &&
+                    rect.right <= innerWidth
                   ? "fully-visible"
                   : "partly-visible";
         return {
           id: description.id,
           kind: description.kind,
-          role: element.getAttribute("role") ?? nativeRoles.get(element.tagName) ?? "group",
+          role:
+            element.getAttribute("role") ??
+            nativeRoles.get(element.tagName) ??
+            "group",
           label: (element.getAttribute("aria-label") ?? "").slice(0, 160),
           parentId: parent?.kontorRegion().id ?? null,
           order,
           viewport: {
             visibility,
-            start: rect.top < 0
-              ? "above"
-              : rect.top >= innerHeight
-                ? "below"
-                : rect.top < innerHeight / 3
-                  ? "top"
-                  : rect.top < innerHeight * 2 / 3 ? "middle" : "bottom",
-            horizontal: rect.width > innerWidth * 2 / 3
-              ? "wide"
-              : (rect.left + rect.right) / 2 < innerWidth / 3
-                ? "left"
-                : (rect.left + rect.right) / 2 < innerWidth * 2 / 3
-                  ? "center"
-                  : "right",
+            start:
+              rect.top < 0
+                ? "above"
+                : rect.top >= innerHeight
+                  ? "below"
+                  : rect.top < innerHeight / 3
+                    ? "top"
+                    : rect.top < (innerHeight * 2) / 3
+                      ? "middle"
+                      : "bottom",
+            horizontal:
+              rect.width > (innerWidth * 2) / 3
+                ? "wide"
+                : (rect.left + rect.right) / 2 < innerWidth / 3
+                  ? "left"
+                  : (rect.left + rect.right) / 2 < (innerWidth * 2) / 3
+                    ? "center"
+                    : "right",
           },
           actionIds: actions
             .filter((control) => owner(control.element) === region)
@@ -168,7 +177,7 @@ export class ActionRegistry {
     };
     for (const control of this.entries)
       if (control.available())
-        add(control.kontorAction(), control, () => control.element.click());
+        add(describeAction(control), control, () => control.element.click());
     for (const control of this.fields)
       if (control.available()) {
         const field = control.description();
@@ -216,10 +225,31 @@ export class ActionRegistry {
     }
   }
 }
+function describeAction(control: ActionControl): ActionDescription {
+  const description = control.kontorAction();
+  const row = control.element.closest("tbody > tr");
+  const table = row?.closest("table");
+  if (
+    !(row instanceof HTMLTableRowElement) ||
+    !(table instanceof HTMLTableElement)
+  )
+    return description;
+  const rows = Array.from(table.tBodies)
+    .flatMap((body) => Array.from(body.rows))
+    .filter(rendered);
+  const index = rows.indexOf(row);
+  if (index < 0) return description;
+  const name = table.getAttribute("aria-label")?.slice(0, 160) || "Tabelle";
+  return {
+    ...description,
+    label: `${description.label} · ${name}, Zeile ${index + 1} von ${rows.length}${index === 0 ? ", erste Zeile" : ""}${index === rows.length - 1 ? ", letzte Zeile" : ""}`,
+  };
+}
 function domOrder(a: { element: HTMLElement }, b: { element: HTMLElement }) {
   return a.element === b.element
     ? 0
-    : a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING
+    : a.element.compareDocumentPosition(b.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING
       ? -1
       : 1;
 }
