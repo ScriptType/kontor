@@ -133,17 +133,36 @@ export function createJev(config: Config, fetch?: Fetch) {
       const answers = await ask(
         JSON.stringify({
           originalRequest: request,
-          workspace,
+          references: {
+            cases: workspace.cases.map(({ id, title, site, customerId }) => ({
+              id,
+              title,
+              site,
+              customerId,
+            })),
+            technicians: workspace.technicians.map(({ id, name }) => ({
+              id,
+              name,
+            })),
+            customers: workspace.customers.map(({ id, name }) => ({
+              id,
+              name,
+            })),
+          },
           instructions:
-            "Beurteile jede Frage unabhängig. Keine Teilaufträge übergehen. Keine Werte erfinden. Bei Mehrdeutigkeit unclear wählen. Die Reihenfolge der Zielarten ist filter, assign, schedule, time, complete; beurteile explizite Reihenfolge getrennt.",
+            "Erkenne ausschließlich die Bedeutung des Originalauftrags. Die Referenzen dienen nur zur Identifikation. Ob eine Änderung aktuell ausgeführt werden darf, prüft die Anwendung danach anhand von Arbeitszeit, Prüfbelegen, Qualifikation und Terminkonflikten. Solche Voraussetzungen ändern die angeforderte Absicht nicht. Beurteile jede Frage unabhängig. Keine Teilaufträge übergehen. Keine Werte erfinden. Bei Mehrdeutigkeit unclear wählen. Die Reihenfolge der Zielarten ist filter, assign, schedule, time, complete; beurteile explizite Reihenfolge getrennt.",
         }),
         {
           supported: {
-            text: "Ist der vollständige Auftrag mit Filtern, Zuweisen, Termin setzen, vorgegebene Minuten erfassen und Abschließen erfüllbar? Unterstützt ist genau ein Zielvorgang und höchstens ein Ziel je Art. Mehrere Vorgänge, wiederholte unterschiedliche Zuweisungen oder zusätzliche/verbotene Änderungen machen den GESAMTEN Auftrag nicht unterstützt. Dann no wählen; bei fehlender Klarheit unclear.",
-            options: yesNo,
+            text: "Besteht der vollständige Auftrag ausschließlich aus den unterstützten Zielarten Filtern, Zuweisen, Termin setzen, vorgegebene Minuten erfassen und Abschließen? Beurteile die Zielarten, nicht die aktuelle Ausführbarkeit. Ein angeforderter Abschluss bleibt unterstützt, auch wenn die Anwendung vorher fehlende Arbeitszeit oder Prüfbelege klären muss. Unterstützt ist genau ein Zielvorgang und höchstens ein Ziel je Art. Mehrere Vorgänge, wiederholte unterschiedliche Zuweisungen oder zusätzliche/verbotene Änderungen machen den GESAMTEN Auftrag nicht unterstützt. Dann no wählen; bei fehlender Klarheit unclear.",
+            options: {
+              yes: "Alle Teilaufträge gehören zu den unterstützten Zielarten",
+              no: "Mindestens ein Teilauftrag überschreitet den unterstützten Umfang",
+              unclear: "Umfang des vollständigen Auftrags unklar",
+            },
           },
           persistence: {
-            text: "Soll die gewünschte Änderung gespeichert oder nur als Entwurf eingetragen werden? Ein ausdrückliches Nicht-speichern bedeutet draft.",
+            text: "Soll die gewünschte Änderung gespeichert oder nur als Entwurf eingetragen werden? Ein direkter Änderungsauftrag wie weise zu, erfasse oder schließe ab bedeutet save, auch ohne das Wort speichern. Ein ausdrückliches Nicht-speichern oder nur als Entwurf bedeutet draft und hat Vorrang. Bei widersprüchlicher oder unklarer Änderungsabsicht unclear wählen. Fehlende Ausführungsvoraussetzungen ändern diese Speicherabsicht nicht.",
             options: {
               save: "Änderung verbindlich speichern",
               draft: "Nur Entwurf, nicht speichern",

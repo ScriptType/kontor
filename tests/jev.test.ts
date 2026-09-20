@@ -13,6 +13,7 @@ const config = {
 const provider = (
   values: Record<string, string>,
   inspect: (raw: unknown) => void = () => {},
+  confidence = 0.95,
 ) =>
   createJev(config, async (_url, init) => {
     const payload: unknown = JSON.parse(String(init?.body));
@@ -25,7 +26,7 @@ const provider = (
           {
             type: "choice",
             choice: value,
-            confidence: 0.95,
+            confidence,
             probabilities: { [value]: 1 },
           },
         ]),
@@ -135,4 +136,114 @@ test("planner keeps fixed order, physical facts, and stale approvals as blockers
     ).kind,
     "proposal",
   );
+});
+
+test("intent payload separates requested capability from mutable execution prerequisites", async () => {
+  const workspace = seedWorkspace();
+  const jev = provider(
+    {
+      ...answers,
+      persistence: "save",
+      schedule: "no",
+      time: "no",
+      complete: "yes",
+      case: "V-1039",
+      workMinutes: "unclear",
+      appointmentMinutes: "unclear",
+      slot: "unclear",
+    },
+    (raw) => {
+      const payload = z
+        .object({
+          state: z.string(),
+          questions: z.record(
+            z.string(),
+            z.object({
+              instructions: z.string(),
+              criteria: z.record(z.string(), z.string()),
+            }),
+          ),
+        })
+        .parse(raw);
+      const state = z
+        .object({
+          originalRequest: z.string(),
+          references: z.unknown(),
+          workspace: z.unknown().optional(),
+        })
+        .parse(JSON.parse(payload.state));
+      assert.equal(state.originalRequest, "Schließe V-1039 ab.");
+      assert.deepEqual(state.references, {
+        cases: workspace.cases.map(({ id, title, site, customerId }) => ({
+          id,
+          title,
+          site,
+          customerId,
+        })),
+        technicians: workspace.technicians.map(({ id, name }) => ({
+          id,
+          name,
+        })),
+        customers: workspace.customers.map(({ id, name }) => ({ id, name })),
+      });
+      assert.equal(state.workspace, undefined);
+      assert.match(
+        payload.questions["supported"]?.instructions ?? "",
+        /nicht die aktuelle Ausführbarkeit/,
+      );
+      assert.match(
+        payload.questions["supported"]?.instructions ?? "",
+        /GESAMTEN Auftrag/,
+      );
+      assert.match(
+        payload.questions["persistence"]?.instructions ?? "",
+        /direkter Änderungsauftrag/,
+      );
+      assert.match(
+        payload.questions["persistence"]?.instructions ?? "",
+        /draft und hat Vorrang/,
+      );
+      assert.deepEqual(
+        Object.keys(payload.questions["case"]?.criteria ?? {}).sort(),
+        ["unclear", ...workspace.cases.map((c) => c.id)].sort(),
+      );
+    },
+  );
+  const goal = await jev.interpret("Schließe V-1039 ab.", workspace);
+  assert.equal(goal.supported, true);
+  assert.equal(goal.persistence, "save");
+  const prepared = prepareGoal(goal, workspace, null);
+  assert.equal(prepared.kind, "question");
+  if (prepared.kind === "question")
+    assert.equal(prepared.question.kind, "evidence");
+});
+
+test("intent confidence below the existing threshold remains non-executable", async () => {
+  const goal = await provider(answers, () => {}, 0.74).interpret(
+    "V-1042 45 Minuten Arbeit erfassen, Termin 2026-09-24 09:00 für 60 Minuten, NICHT speichern",
+    seedWorkspace(),
+  );
+  assert.equal(goal.supported, false);
+  assert.equal(goal.persistence, "unclear");
+  assert.equal(prepareGoal(goal, seedWorkspace(), null).kind, "question");
+});
+
+test("action selection still receives current execution context", async () => {
+  const context = JSON.stringify(seedWorkspace());
+  let checked = false;
+  await provider({ next: "visible" }, (raw) => {
+    const payload = z.object({ state: z.string() }).parse(raw);
+    const state = z
+      .object({ context: z.string() })
+      .parse(JSON.parse(payload.state));
+    assert.equal(state.context, context);
+    checked = true;
+  }).decide({
+    request: "Schließe V-1039 ab.",
+    context,
+    actions: [{ id: "visible", label: "Visible", effect: "Open case" }],
+    expectedDemoAction: null,
+    snapshotId: "one",
+  });
+  assert(checked);
 });
