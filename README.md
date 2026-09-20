@@ -1,6 +1,6 @@
 # TypeSafe Lab
 
-Lokales Angular-Lab mit typisiertem oRPC-v2-Vertrag, Hono und dem TypeSafe SDK. Der Demo-Modus zeigt feste Beispielwerte für Choice, Score und Noul. Er wertet den Text nicht aus und ruft TypeSafe auch bei vorhandenem API-Key nicht auf.
+Lokales Angular-Lab mit oRPC v2 über WebSockets, TanStack Query, Hono und dem TypeSafe SDK. Der Demo-Modus zeigt feste Beispielwerte für Choice, Score und Noul. Er wertet den Text nicht aus und ruft TypeSafe auch bei vorhandenem API-Key nicht auf.
 
 oRPC ist exakt auf `2.0.0-beta.37` festgelegt. Client und Server nutzen dieselbe Beta-Version.
 
@@ -14,7 +14,9 @@ cp .env.example .env
 npm run dev
 ```
 
-Die Oberfläche läuft auf http://127.0.0.1:4200. Angular leitet `/rpc` an den lokalen Server auf Port 3000 weiter. `.env` wird automatisch geladen und bleibt außerhalb von Git.
+Die Oberfläche läuft auf http://127.0.0.1:4200. Angular leitet den WebSocket unter `/rpc` an den lokalen Server auf Port 3000 weiter. `.env` wird automatisch geladen und bleibt außerhalb von Git. TanStack Query Devtools stehen im Entwicklungsmodus bereit.
+
+Alle Anwendungsaufrufe zwischen Frontend und Backend verwenden denselben WebSocket. HTML, Assets und der WebSocket-Handshake verwenden HTTP. Die Verbindung vom Backend zur TypeSafe-API verwendet HTTPS.
 
 ## Live-Modus
 
@@ -27,10 +29,30 @@ npm run verify
 npm start
 ```
 
-`verify` prüft Typen, baut Frontend und Server und führt HTTP- sowie Browser-Tests aus. Der Browser-Test benötigt lokal installiertes Google Chrome und startet immer einen Demo-Server ohne API-Key. `npm start` stellt den Build unter http://127.0.0.1:3000 bereit. Nur Loopback wird gebunden.
+`verify` prüft Typen, baut Frontend und Server und führt WebSocket- sowie Browser-Tests aus. Der Browser-Test benötigt lokal installiertes Google Chrome und startet immer einen Demo-Server ohne API-Key. `npm start` stellt den Build unter http://127.0.0.1:3000 bereit. Nur Loopback wird gebunden.
 
-`npm test` prüft den echten HTTP-Transport sowie das SDK mit lokal simulierten Provider-Antworten. Es sendet keine Anfrage an TypeSafe. Ein erfolgreicher echter Live-Aufruf wurde nicht geprüft.
+`npm test` prüft den echten WebSocket-Transport sowie das SDK mit lokal simulierten Provider-Antworten. Es sendet keine Anfrage an TypeSafe. Ein erfolgreicher echter Live-Aufruf wurde nicht geprüft.
 
-Der öffentliche Vertrag liegt in `shared/contract.ts`, das SDK ausschließlich in `server/evaluator.ts`. Die Angular-Komponente nutzt `api.evaluate({ text })` über einen injizierten Client. Der angezeigte Score darf Nachkommastellen haben. Noul besitzt keinen Confidence-Wert; Confidence ist keine gemessene Genauigkeit.
+## Aufrufe in Angular
+
+Der öffentliche Vertrag liegt in `shared/contract.ts`, das SDK ausschließlich in `server/evaluator.ts`. Die oRPC-Utilities erzeugen typisierte Optionen und Query-Keys. Komponenten verwalten keinen Socket und schreiben keine `queryFn` von Hand.
+
+```ts
+private readonly orpc = inject(ORPC);
+readonly status = injectQuery(() => this.orpc.status.queryOptions());
+readonly evaluation = injectMutation(() =>
+  this.orpc.evaluate.mutationOptions({ retry: false }),
+);
+
+evaluate() {
+  this.evaluation.mutate({ text: this.text() });
+}
+```
+
+Die Ergebnisse stehen als Angular-Signals bereit, beispielsweise `evaluation.data()` und `evaluation.isPending()`. Eine neue Prozedur wird im gemeinsamen Vertrag und im Server-Router ergänzt. Der Client und seine Query-Optionen erhalten die Typen daraus ohne Codegenerierung.
+
+Nach einem Verbindungsabbruch öffnet der nächste Aufruf einen neuen Socket. Laufende Auswertungen werden nicht automatisch wiederholt. Ein Abbruch nach dem Senden kann bedeuten, dass TypeSafe den Text bereits verarbeitet hat.
+
+Der angezeigte Score darf Nachkommastellen haben. Noul besitzt keinen Confidence-Wert; Confidence ist keine gemessene Genauigkeit.
 
 [Architektur und Bibliotheksvergleich](docs/architecture.md) erläutern die Auswahl. [Mögliche Anwendungen](docs/use-cases.md) beschreiben Incident-Triage, Quellenprüfung und Katalogabgleich als nächsten Ausbau.
