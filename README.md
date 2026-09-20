@@ -33,11 +33,13 @@ npm run verify
 npm start
 ```
 
-`verify` prüft Typen, baut Frontend und Server und führt WebSocket- sowie Browser-Tests aus. Der Browser-Test benötigt lokal installiertes Google Chrome und startet immer einen Demo-Server ohne API-Key. `npm start` stellt den Build unter http://127.0.0.1:3000 bereit. Nur Loopback wird gebunden.
+`verify` prüft Typen, baut Frontend und Server und führt WebSocket- sowie Browser-Tests aus. Die Browser-Tests benötigen lokal installiertes Google Chrome. Sie verwenden den Demo-Modus oder simulierte Provider-Antworten und benötigen keinen API-Key. `npm start` stellt den Build unter http://127.0.0.1:3000 bereit. Nur Loopback wird gebunden.
 
-`npm test` prüft Fachregeln, den WebSocket-Transport und das SDK mit lokal simulierten Provider-Antworten. Es sendet keine Anfrage an TypeSafe. Die Sprachqualität deutscher Aufträge benötigt eine gesonderte Prüfung mit einem echten Jev-Aufruf.
+`npm test` prüft Fachregeln, den WebSocket-Transport und das SDK mit lokal simulierten Provider-Antworten. Es sendet keine Anfrage an TypeSafe.
 
-[Offene Prüfungen](docs/known-issues.md) dokumentiert einen einmalig beobachteten Fehler der simulierten Jev-Antwort beim Fortsetzen nach einer Pause und Grenzen der bisher geprüften echten Jev-Aufträge.
+`npm run test:live` prüft deutsche Aufträge im Browser mit echten Jev-Antworten. Der Lauf benötigt den API-Key aus `.env` und verwendet für jedes Szenario frische Beispieldaten in einer eigenen Datenbank im Arbeitsspeicher. Er prüft sichtbare Filter, Rückfragen und Formulare sowie die tatsächlich gespeicherten Änderungen. Die lokale `kontor.sqlite` wird dabei nicht verwendet. Die Aufrufe können Kosten verursachen. [Live-Szenarien und Auswertung](docs/jev-live.md) beschreibt Aufruf, Ergebnisse und Grenzen.
+
+[Offene Prüfungen](docs/known-issues.md) dokumentiert einen einmalig beobachteten Fehler der simulierten Jev-Antwort beim Fortsetzen nach einer Pause sowie die gemessene Live-Variabilität und die konservative Grenze bei mehreren Personennamen.
 
 ## Aufträge ausführen
 
