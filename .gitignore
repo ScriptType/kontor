@@ -12,3 +12,5 @@ todo.md
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+
+live-results/
