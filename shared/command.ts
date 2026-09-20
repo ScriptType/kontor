@@ -1,134 +1,29 @@
 import { z } from "zod";
-import { appointmentSchema } from "./domain.js";
-export const objectiveSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("filter"),
-    customerId: z.string().nullable(),
-    openOnly: z.boolean(),
-  }),
-  z.object({ kind: z.literal("assign"), technicianId: z.string().nullable() }),
-  z.object({
-    kind: z.literal("schedule"),
-    appointment: appointmentSchema.nullable(),
-  }),
-  z.object({
-    kind: z.literal("time"),
-    minutes: z.number().int().positive().max(10000).nullable(),
-  }),
-  z.object({ kind: z.literal("complete") }),
-]);
-export const goalSchema = z.object({
-  request: z.string(),
-  caseId: z.string().nullable(),
-  objectives: z.array(objectiveSchema),
-  order: z.enum(["flexible", "listed"]),
-  readiness: z.discriminatedUnion("kind", [
-    z.object({
-      kind: z.literal("ready"),
-      basis: z.enum(["high_confidence", "user_confirmed"]),
-    }),
-    z.object({ kind: z.literal("review") }),
-    z.object({
-      kind: z.literal("refused"),
-      reason: z.enum(["scope", "multiple_technicians"]).default("scope"),
-    }),
-  ]),
-  persistence: z.enum(["save", "draft", "unclear"]),
-});
-export type Goal = z.infer<typeof goalSchema>;
-export type Objective = z.infer<typeof objectiveSchema>;
 export const actionSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  effect: z.string(),
+  id: z.string(), label: z.string(), effect: z.string(),
+  kind: z.enum(["view", "draft", "commit", "discard"]),
 });
+export const fieldSchema = z.object({
+  id: z.string(), label: z.string(), type: z.enum(["text", "number", "datetime-local"]),
+  current: z.string(), min: z.number().optional(), max: z.number().optional(),
+});
+export const answerSchema = z.object({ fieldId: z.string(), value: z.string() });
+export const stepSchema = z.object({ snapshotId: z.string(), action: actionSchema, before: z.string(), after: z.string() });
 export const decisionInputSchema = z.object({
-  request: z.string(),
-  context: z.string().max(40000),
-  actions: z.array(actionSchema).max(100),
-  expectedDemoAction: z.string().nullable(),
-  snapshotId: z.string(),
+  request: z.string().max(20000), snapshotId: z.string(), context: z.string().max(40000),
+  actions: z.array(actionSchema).max(100), fields: z.array(fieldSchema).max(30),
+  answers: z.array(answerSchema).max(100), steps: z.array(stepSchema).max(60),
 });
-export const decisionSchema = z.object({
-  snapshotId: z.string(),
-  actionId: z.string().nullable(),
-});
+export const decisionSchema = z.object({ snapshotId: z.string(), choice: z.string(), confidence: z.number().min(0).max(1) });
+export const assessmentInputSchema = decisionInputSchema.extend({ selected: z.union([actionSchema, z.literal("done")]) });
+export const assessmentSchema = z.object({ snapshotId: z.string(), verdict: z.enum(["authorized", "additional", "forbidden", "complete", "outstanding", "unclear"]), confidence: z.number().min(0).max(1) });
 export type ActionDescription = z.infer<typeof actionSchema>;
+export type FieldDescription = z.infer<typeof fieldSchema>;
+export type DecisionInput = z.infer<typeof decisionInputSchema>;
 export const demos = [
-  "Zeige offene Nordwerk-Vorgänge, weise V-1042 Lea Sommer zu und speichere.",
-  "Weise die Wartung Lea Sommer zu und speichere.",
+  "Zeig mir die Kunden.",
+  "Zeige zuerst Kunden, danach Berichte und zuletzt Team.",
+  "Weise V-1042 Lea Sommer zu und speichere.",
+  "Erfasse 45 Minuten für V-1042 und speichere.",
   "Erfasse Arbeitszeit für V-1042 und speichere.",
-  "Schließe V-1042 ab und erfasse 45 Minuten.",
-  "Zuerst V-1042 abschließen, dann 45 Minuten erfassen.",
-  "Plane V-1042 am 2026-09-24 um 09:00 für 60 Minuten.",
-  "Schließe V-1039 ab.",
-  "Plane V-1042 und speichere.",
-  "Zeige offene Hafen-Vorgänge, weise V-1042 Lea Sommer zu und speichere.",
 ] as const;
-export function demoGoal(request: string): Goal {
-  const base: Goal = {
-    request,
-    caseId: "V-1042",
-    objectives: [],
-    order: "flexible",
-    readiness: { kind: "ready", basis: "high_confidence" },
-    persistence: "save",
-  };
-  switch (request) {
-    case demos[0]:
-      return {
-        ...base,
-        objectives: [
-          { kind: "filter", customerId: "nord", openOnly: true },
-          { kind: "assign", technicianId: "lea" },
-        ],
-      };
-    case demos[8]:
-      return {
-        ...base,
-        objectives: [
-          { kind: "filter", customerId: "hafen", openOnly: true },
-          { kind: "assign", technicianId: "lea" },
-        ],
-      };
-    case demos[1]:
-      return {
-        ...base,
-        caseId: null,
-        objectives: [{ kind: "assign", technicianId: "lea" }],
-      };
-    case demos[2]:
-      return { ...base, objectives: [{ kind: "time", minutes: null }] };
-    case demos[3]:
-      return {
-        ...base,
-        objectives: [{ kind: "complete" }, { kind: "time", minutes: 45 }],
-      };
-    case demos[4]:
-      return {
-        ...base,
-        order: "listed",
-        objectives: [{ kind: "complete" }, { kind: "time", minutes: 45 }],
-      };
-    case demos[5]:
-      return {
-        ...base,
-        objectives: [
-          {
-            kind: "schedule",
-            appointment: { start: "2026-09-24T09:00:00", minutes: 60 },
-          },
-        ],
-      };
-    case demos[7]:
-      return { ...base, objectives: [{ kind: "schedule", appointment: null }] };
-    case demos[6]:
-      return { ...base, caseId: "V-1039", objectives: [{ kind: "complete" }] };
-    default:
-      return {
-        ...base,
-        caseId: null,
-        readiness: { kind: "refused", reason: "scope" },
-      };
-  }
-}

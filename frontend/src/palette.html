@@ -50,129 +50,26 @@
           </button>
         </div>
       </form>
-      @if (runner.state(); as state) { @if (state.kind === 'needs_input') {
+      @if (runner.state(); as state) {
+      @if (state.kind === 'needs_input') {
       <section #attentionPanel class="answer-panel">
-        <h3>Antwort ausstehend</h3>
-        @if (state.question.kind !== 'draft' && runner.targetCase(); as target)
-        {
-        <p>
-          {{ target.id }} · {{ target.title }} · {{
-          runner.ui.customerName(target.customerId) }} · {{ target.site }}
-        </p>
-        }
-        <p>
-          {{ state.question.kind === 'unsupported' &&
-          runner.ui.source.data()?.mode === 'live' ? 'Der vollständige Auftrag
-          ist nicht unterstützt oder nicht eindeutig. Bitte beschreibe die gewünschte Filterung
-          oder Änderung genauer.' : state.question.message }}
-        </p>
-        @if (state.question.kind === 'evidence') {
-        <p>
-          Eigene Beobachtung dokumentieren, in den Entwurf übernehmen und
-          speichern. Danach den Auftrag ausdrücklich fortsetzen.
-        </p>
-        <button class="primary" (click)="editEvidence()">
-          Prüfbeleg erfassen
-        </button>
-        } @if (state.question.kind === 'draft') {
-        <button (click)="editDraft()">Offenen Entwurf prüfen</button>
-        }
-        <div class="answer-options">
-          @for (option of state.question.options; track option.id) {
-          <button (click)="answer(option.id)">{{ option.label }}</button> }
-        </div>
-        @if (state.question.kind === 'minutes') {
-        <div class="inline-fields">
-          <input
-            type="number"
-            min="1"
-            max="10000"
-            aria-label="Tatsächlich geleistete Minuten"
-            [ngModel]="minutes()"
-            (ngModelChange)="minutes.set($event)"
-          /><button (click)="answer(minutes())">Minuten bestätigen</button>
-        </div>
-        } @if (state.question.kind === 'schedule') {
-        <label class="field-label" for="answer-date">Gewünschter Termin</label
-        ><input #answerDate id="answer-date" type="datetime-local" />
-        <label class="field-label" for="answer-duration"
-          >Termindauer in Minuten</label
-        ><input
-          #answerDuration
-          id="answer-duration"
-          type="number"
-          min="15"
-          max="480"
-          value="60"
-        />
-        <button (click)="schedule(answerDate.value, +answerDuration.value)">
-          Diesen Termin bestätigen
-        </button>
-        @if (scheduleError()) {
-        <p role="alert">{{ scheduleError() }}</p>
-        } }
-        <button class="danger text-button" (click)="runner.stop()">
-          Auftrag stoppen
-        </button>
+        <h3>Antwort ausstehend</h3><p>{{ state.field.label }}</p>
+        <input #answerValue [type]="state.field.type" [attr.min]="state.field.min" [attr.max]="state.field.max" [attr.aria-label]="state.field.label" />
+        <button (click)="answer(answerValue.value)">Wert bestätigen</button>
+        <button (click)="runner.stop()">Auftrag stoppen</button>
       </section>
-      } @if (state.kind === 'needs_review') {
-      <section #attentionPanel class="answer-panel review-panel">
-        <h3>Erkannten Auftrag bestätigen</h3>
-        <p>Jev hat diesen Auftrag erkannt und benötigt deine Bestätigung. Bitte prüfe, ob er deiner Absicht entspricht.</p>
-        <ul>@for (line of state.review.summary; track $index) { <li>{{ line }}</li> }</ul>
-        <p>Originalauftrag: {{ state.review.request }}</p>
-        <button class="primary" (click)="confirmPlan()">Diesen Auftrag ausführen</button>
-        <button class="danger text-button" (click)="runner.stop()">Auftrag stoppen</button>
-      </section>
-      } @if (state.kind === 'needs_approval') {
+      }
+      @if (state.kind === 'needs_approval') {
       <section #attentionPanel class="answer-panel">
-        <h3>Zusätzliche Änderung freigeben</h3>
-        @if (runner.targetCase(); as target) {
-        <p>
-          {{ target.id }} · {{ target.title }} · {{
-          runner.ui.customerName(target.customerId) }} · {{ target.site }}
-        </p>
-        }
-        <p>{{ state.proposal.message }}</p>
-        <dl class="proposal">
-          <dt>Vorgang</dt>
-          <dd>{{ state.proposal.caseId }}</dd>
-          <dt>Termin vorher</dt>
-          <dd>
-            {{ state.proposal.before.appointment?.start ?? 'Kein Termin' }}
-          </dd>
-          <dt>Termin nachher</dt>
-          <dd>
-            {{ state.proposal.after.appointment?.start?.replace('T',' ') }} · {{
-            state.proposal.after.appointment?.minutes }} min
-          </dd>
-          <dt>Zuständig vorher</dt>
-          <dd>
-            {{ runner.ui.technicianName(state.proposal.before.technicianId) }}
-          </dd>
-          <dt>Zusätzliche Änderung</dt>
-          <dd>
-            @if (state.proposal.after.technicianId; as technicianId) {
-              {{ runner.ui.technicianName(technicianId) }} übernimmt
-            } @else { Bitte eine verfügbare Person auswählen. }
-          </dd>
-        </dl>
-        <div class="answer-options">
-          @for (option of state.proposal.alternatives; track option.id) {
-          <button class="primary" (click)="approve(option.id)">
-            Termin + Zuweisung an {{ option.label }} freigeben
-          </button>
-          }
-        </div>
-        <button class="danger text-button" (click)="runner.stop()">
-          Ablehnen und stoppen
-        </button>
+        <h3>Konkreten Schritt bestätigen</h3><p>{{ state.message }}</p>
+        <button class="primary" (click)="approve()">Diesen Schritt freigeben</button>
+        <button (click)="runner.stop()">Ablehnen und stoppen</button>
       </section>
-      } @if (state.kind === 'paused') {
-      <section class="answer-panel">
-        <p>{{ state.message }}</p>
-        <button (click)="continueRun()">Fortsetzen</button
-        ><button (click)="runner.stop()">Stoppen</button>
+      }
+      @if (state.kind === 'paused' || state.kind === 'blocked') {
+      <section class="answer-panel"><p>{{ state.message }}</p>
+        @if (runner.evidenceGuidance()) { <button (click)="editEvidence()">Prüfbeleg erfassen</button> }
+        <button (click)="continueRun()">Fortsetzen</button><button (click)="runner.stop()">Stoppen</button>
       </section>
       } } @if (runner.ui.source.data()?.mode === 'demo') {
       <details class="demo-examples">

@@ -128,8 +128,8 @@ export class WorkspaceUi {
     this.draft.update((d) => (d ? { ...d, ...patch } : d));
     this.message.set("Ungespeicherter Entwurf");
   }
-  discard() {
-    this.manual();
+  discard(actor: Actor = "manual") {
+    if (actor === "manual") this.manual();
     const c = this.selected();
     if (c) {
       this.draft.set(draftOf(c));
@@ -138,8 +138,8 @@ export class WorkspaceUi {
     }
     this.message.set("Entwurf verworfen");
   }
-  closeCase() {
-    this.manual();
+  closeCase(actor: Actor = "manual") {
+    if (actor === "manual") this.manual();
     if (this.dirty()) {
       this.message.set(
         "Der Entwurf bleibt offen. Zuerst speichern oder verwerfen.",

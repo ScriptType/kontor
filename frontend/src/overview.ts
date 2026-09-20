@@ -23,6 +23,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
               {{ casesFor(customer.id).length }} Vorgänge ·
               {{ minutesFor(customer.id) }} Minuten erfasst
             </p>
+            <button [kontorAction]="action('customer-cases:' + customer.id, 'Vorgänge von ' + customer.name + ' anzeigen')" (invoked)="actions.execute('customer-cases:' + customer.id, $event)">Alle Vorgänge anzeigen</button>
             <div class="linked-list">
               @for (c of casesFor(customer.id); track c.id) {
                 <button

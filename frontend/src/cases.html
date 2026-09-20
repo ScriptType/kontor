@@ -18,7 +18,8 @@
     aria-label="Vorgänge durchsuchen"
     placeholder="Vorgänge durchsuchen …"
     [ngModel]="ui.search()"
-    (ngModelChange)="ui.manual(); ui.search.set($event)"
+    (ngModelChange)="search($event)"
+    [kontorField]="field('search', 'Vorgänge durchsuchen', 'text', ui.search())"
   />
   <div class="menu-wrap">
     <button
@@ -128,7 +129,7 @@
         {{ selected.site }} · Qualifikation {{ selected.skill }}
       </p>
     </div>
-    <button aria-label="Vorgang schließen" (click)="ui.closeCase()">✕</button>
+    <button aria-label="Vorgang schließen" [disabled]="ui.dirty()" [kontorAction]="action('close', selected.id + ' schließen')" (invoked)="actions.execute('close', $event)">✕</button>
   </header>
   <div class="editor-grid">
     <div>
@@ -147,7 +148,7 @@
           @for (t of ui.data()?.technicians; track t.id) {
           <button
             [disabled]="!t.skills.includes(selected.skill)"
-            [kontorAction]="action('technician:' + t.id, t.name + ' zuweisen', 'Ändert nur den offenen Entwurf')"
+            [kontorAction]="action('technician:' + t.id, t.name + ' zuweisen', selected.id + ': Zuständigkeit von ' + ui.technicianName(draft.technicianId) + ' auf ' + t.name + ' im Entwurf ändern', 'draft')"
             (invoked)="actions.execute('technician:' + t.id, $event)"
           >
             {{ t.name }} <small>{{ t.skills.join(', ') }}</small>
@@ -165,26 +166,20 @@
         max="10000"
         [value]="draft.minutes"
         (input)="number($event)"
+        [kontorField]="field('minutes', 'Geleistete Arbeitszeit in Minuten', 'number', String(draft.minutes), 0, 10000)"
       />
-      @if (runner.desired(); as desired) { @if (desired.minutes !==
-      draft.minutes) {
-      <button
-        class="suggestion"
-        [kontorAction]="action('time:requested', desired.minutes + ' angeforderte Minuten eintragen', 'Nur Entwurf, noch nicht gespeichert')"
-        (invoked)="actions.execute('time:requested', $event)"
-      >
-        {{ desired.minutes }} Minuten aus Auftrag übernehmen
-      </button>
-      } } <label class="field-label" for="appointment">Termin</label>
+      <label class="field-label" for="appointment">Termin</label>
       <div class="inline-fields">
         <input
           #appointmentDate
           id="appointment"
+          [kontorField]="field('appointment', 'Termin', 'datetime-local', draft.appointment?.start?.slice(0,16) ?? '')"
           type="datetime-local"
           [value]="draft.appointment?.start?.slice(0,16) ?? ''"
           (change)="appointment(appointmentDate.value, +appointmentDuration.value)"
         /><input
           #appointmentDuration
+          [kontorField]="field('duration', 'Termindauer in Minuten', 'number', String(draft.appointment?.minutes ?? 60), 15, 480)"
           aria-label="Termindauer in Minuten"
           type="number"
           min="15"
@@ -193,18 +188,6 @@
           (change)="appointment(appointmentDate.value, +appointmentDuration.value)"
         />
       </div>
-      @if (runner.desired(); as desired) { @if (desired.appointment &&
-      (desired.appointment.start !== draft.appointment?.start ||
-      desired.appointment.minutes !== draft.appointment.minutes)) {
-      <button
-        class="suggestion"
-        [kontorAction]="action('appointment:requested', 'Angeforderten Termin eintragen', desired.appointment.start + ' · ' + desired.appointment.minutes + ' Minuten, nur Entwurf')"
-        (invoked)="actions.execute('appointment:requested', $event)"
-      >
-        {{ desired.appointment.start.replace('T', ' ').slice(0,16) }} · {{
-        desired.appointment.minutes }} min übernehmen
-      </button>
-      } }
     </div>
     <div>
       <h3>Aufgaben für diesen Vorgang</h3>
@@ -258,7 +241,7 @@
       }
       <button
         [disabled]="completionBlockers().length > 0 || draft.status === 'done'"
-        [kontorAction]="action('complete', 'Vorgang als erledigt markieren', 'Ändert den Entwurf, Speichern erforderlich')"
+        [kontorAction]="action('complete', 'Vorgang als erledigt markieren', selected.id + ': Status auf erledigt im Entwurf ändern', 'draft')"
         (invoked)="actions.execute('complete', $event)"
       >
         {{ draft.status === 'done' ? 'Als erledigt markiert' : 'Als erledigt
@@ -273,12 +256,12 @@
     <span role="status" [class.unsaved]="ui.dirty()"
       >{{ ui.busy() ? 'Wird gespeichert …' : ui.message() || (ui.dirty() ?
       'Ungespeicherter Entwurf' : 'Gespeicherter Stand') }}</span
-    ><button [disabled]="ui.busy() || !ui.dirty()" (click)="ui.discard()">
+    ><button [disabled]="ui.busy() || !ui.dirty()" [kontorAction]="action('discard', 'Entwurf verwerfen', selected.id + ': Entwurf ' + String(draft.minutes) + ' Minuten verwerfen und gespeicherten Stand wiederherstellen', 'discard')" (invoked)="actions.execute('discard', $event)">
       Entwurf verwerfen</button
     ><button
       class="primary"
       [disabled]="ui.busy() || !ui.dirty() || ui.blocked().length > 0 || !!ui.unknownSave()"
-      [kontorAction]="action('save', 'Änderungen speichern', 'Speichert den angezeigten Entwurf verbindlich')"
+      [kontorAction]="action('save', 'Änderungen speichern', saveEffect(), 'commit')"
       (invoked)="actions.execute('save', $event)"
     >
       Speichern

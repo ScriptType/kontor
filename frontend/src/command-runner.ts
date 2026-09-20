@@ -1,64 +1,23 @@
-import {
-  Injectable,
-  afterNextRender,
-  inject,
-  Injector,
-  signal,
-  computed,
-  effect,
-} from "@angular/core";
+import { Injectable, afterNextRender, inject, Injector, signal, computed, effect } from "@angular/core";
 import { z } from "zod";
 import { readBrowserState, writeBrowserState } from "./browser-state";
-import { goalSchema, type Goal } from "../../shared/command";
-import {
-  appointmentSchema,
-  draftOf,
-  type CaseDraft,
-} from "../../shared/domain";
+import { actionSchema, answerSchema, stepSchema, type ActionDescription, type DecisionInput, type FieldDescription } from "../../shared/command";
+import { validFieldValue } from "../../shared/field-values";
+import { blockers, receiptSchema } from "../../shared/domain";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
-import {
-  prepareGoal,
-  type Proposal,
-  type Question,
-  type GoalReview,
-} from "./command-plan";
-
 export type RunState =
-  | {
-      kind:
-        | "idle"
-        | "interpreting"
-        | "deciding"
-        | "executing"
-        | "done"
-        | "stopped"
-        | "reconciling";
-    }
-  | {
-      kind: "paused";
-      reason: "modal" | "manual" | "reload" | "error";
-      message: string;
-    }
-  | { kind: "needs_input"; question: Question }
-  | { kind: "needs_approval"; proposal: Proposal }
-  | { kind: "needs_review"; review: GoalReview };
+  | { kind: "idle" | "deciding" | "executing" | "done" | "stopped" | "reconciling" }
+  | { kind: "paused"; reason: "modal" | "manual" | "reload" | "error"; message: string }
+  | { kind: "blocked"; message: string }
+  | { kind: "needs_input"; field: FieldDescription }
+  | { kind: "needs_approval"; action: ActionDescription; fingerprint: string; message: string };
 const historySchema = z.object({
-  id: z.string(),
-  request: z.string(),
-  entries: z.array(z.string()),
-  operations: z.array(z.string()).default([]),
-  savedOperations: z.array(z.string()).default([]),
-  createdAt: z.string(),
-  outcome: z.string(),
+  id: z.string(), request: z.string(), entries: z.array(z.string()),
+  operations: z.array(z.string()), savedOperations: z.array(z.string()), receipts: z.array(receiptSchema),
+  answers: z.array(answerSchema), steps: z.array(stepSchema), createdAt: z.string(), outcome: z.string(),
 });
-const persistedSchema = z.object({
-  version: z.literal(2),
-  command: z.string(),
-  goal: goalSchema.nullable(),
-  history: z.array(historySchema),
-  unfinished: z.boolean(),
-});
+const persistedSchema = z.object({ version: z.literal(3), command: z.string(), history: z.array(historySchema), unfinished: z.boolean() });
 @Injectable({ providedIn: "root" })
 export class CommandRunner {
   readonly ui = inject(WorkspaceUi);
@@ -66,735 +25,165 @@ export class CommandRunner {
   private readonly injector = inject(Injector);
   readonly state = signal<RunState>({ kind: "idle" });
   readonly attention = signal(0);
-  readonly targetCase = computed(() =>
-    this.ui.data()?.cases.find((c) => c.id === this.goal()?.caseId),
-  );
-  private readonly evidenceCaseId = signal<string | null>(null);
-  readonly evidenceGuidance = computed(() => {
-    const caseId = this.evidenceCaseId();
-    return caseId !== null && this.ui.selectedId() === caseId;
-  });
-  readonly goal = signal<Goal | null>(null);
+  readonly targetCase = this.ui.selected;
+  readonly evidenceGuidance = computed(() => this.state().kind === "blocked" && !!this.ui.selected()?.requiresInspection);
   readonly command = signal("");
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
-  readonly approved = signal<Proposal | null>(null);
-  readonly desired = signal<CaseDraft | null>(null);
-  private epoch = 0;
   private activeId: string | null = null;
+  private epoch = 0;
   private abort: AbortController | null = null;
+  private approved: { action: ActionDescription; fingerprint: string } | null = null;
   constructor() {
     this.restore();
     this.ui.beforeManual = () => this.pauseManual();
-    this.ui.onSave = (input) => {
-      if (input.actor === "jev")
-        this.history.update((h) =>
-          h.map((r) =>
-            r.id === this.activeId
-              ? { ...r, operations: [...r.operations, input.operationId] }
-              : r,
-          ),
-        );
-    };
-    this.ui.onReceipt = (receipt) =>
-      this.history.update((h) =>
-        h.map((r) =>
-          r.operations.includes(receipt.operationId) &&
-          !r.savedOperations.includes(receipt.operationId)
-            ? {
-                ...r,
-                savedOperations: [...r.savedOperations, receipt.operationId],
-                entries: [...r.entries, `${receipt.caseId} gespeichert`],
-              }
-            : r,
-        ),
-      );
-    effect(() => {
-      this.historyStored.set(
-        writeBrowserState("kontor-command-v1", {
-          version: 2,
-          command: this.command(),
-          goal: this.goal(),
-          history: this.history(),
-          unfinished: !["idle", "done", "stopped"].includes(this.state().kind),
-        }),
-      );
-    });
+    this.ui.onSave = input => { if (input.actor === "jev") this.update(r => ({ ...r, operations: [...r.operations, input.operationId] })); };
+    this.ui.onReceipt = receipt => this.history.update(history => history.map(r => r.operations.includes(receipt.operationId) && !r.savedOperations.includes(receipt.operationId) ? {
+      ...r, receipts: [...r.receipts, receipt], savedOperations: [...r.savedOperations, receipt.operationId], entries: [...r.entries, `${receipt.caseId} gespeichert · Revision ${receipt.revision}`],
+    } : r));
+    effect(() => this.historyStored.set(writeBrowserState("kontor-command-v1", { version: 3, command: this.command(), history: this.history(), unfinished: !["idle", "done", "stopped"].includes(this.state().kind) })));
   }
-  private requestAttention(
-    state: Extract<
-      RunState,
-      { kind: "needs_input" | "needs_approval" | "needs_review" }
-    >,
-  ) {
-    this.evidenceCaseId.set(
-      state.kind === "needs_input" && state.question.kind === "evidence"
-        ? (this.goal()?.caseId ?? null)
-        : null,
-    );
-    this.state.set(state);
-    this.attention.update((value) => value + 1);
-  }
+  private run() { return this.history().find(r => r.id === this.activeId); }
+  private update(change: (run: z.infer<typeof historySchema>) => z.infer<typeof historySchema>) { this.history.update(h => h.map(r => r.id === this.activeId ? change(r) : r)); }
   label() {
-    const s = this.state();
-    switch (s.kind) {
-      case "idle":
-        return "Bereit für deinen Auftrag";
-      case "interpreting":
-        return "Auftrag wird geprüft";
-      case "deciding":
-        return "Jev wählt den nächsten sichtbaren Schritt";
-      case "executing":
-        return "Schritt wird ausgeführt";
-      case "needs_input":
-        return "Antwort ausstehend";
-      case "needs_review":
-        return "Erkannten Auftrag bestätigen";
-      case "needs_approval":
-        return "Freigabe ausstehend";
-      case "paused":
-        return s.message;
-      case "reconciling":
-        return "Speicherergebnis wird geprüft";
-      case "done":
-        return this.goal()?.persistence === "draft"
-          ? "Entwurf vorbereitet · nicht gespeichert"
-          : "Auftrag abgeschlossen";
-      case "stopped":
-        return "Gestoppt · bereits gespeicherte Änderungen bleiben erhalten";
+    const state = this.state();
+    switch (state.kind) {
+      case "idle": return "Bereit für deinen Auftrag";
+      case "deciding": return "Jev wählt den nächsten sichtbaren Schritt";
+      case "executing": return "Schritt wird ausgeführt";
+      case "needs_input": return "Antwort ausstehend";
+      case "needs_approval": return "Konkreten Schritt bestätigen";
+      case "paused": case "blocked": return state.message;
+      case "reconciling": return "Speicherergebnis wird geprüft";
+      case "done": return this.ui.dirty() ? "Entwurf vorbereitet · nicht gespeichert · Jev meldet Auftrag erledigt" : "Jev meldet den Auftrag als erledigt";
+      case "stopped": return "Gestoppt · bereits gespeicherte Änderungen bleiben erhalten";
     }
   }
-  running() {
-    return ["interpreting", "deciding", "executing"].includes(
-      this.state().kind,
-    );
-  }
-  private invalidate() {
-    this.epoch++;
-    this.abort?.abort();
-    this.abort = null;
-  }
+  running() { return this.state().kind === "deciding" || this.state().kind === "executing"; }
+  private invalidate() { this.epoch++; this.abort?.abort(); this.abort = null; }
   modal(open: boolean) {
     this.registry.modal = open;
-    if (open && this.running()) {
-      this.invalidate();
-      this.state.set({
-        kind: "paused",
-        reason: "modal",
-        message: "Pausiert, solange ein Dialog offen ist",
-      });
-    }
-    if (!open && this.state().kind === "paused") {
-      const s = this.state();
-      if (s.kind === "paused" && s.reason === "modal") void this.resume();
-    }
+    if (open && this.running()) { this.invalidate(); this.state.set({ kind: "paused", reason: "modal", message: "Palette schließen zum Fortsetzen" }); }
+    else if (!open) { const state = this.state(); if (state.kind === "paused" && state.reason === "modal") void this.resume(); }
   }
   pauseManual() {
+    this.approved = null;
     if (!["idle", "done", "stopped"].includes(this.state().kind)) {
-      this.invalidate();
-      this.approved.set(null);
-      this.state.set({
-        kind: "paused",
-        reason: "manual",
-        message: "Pausiert nach manuellem Eingriff · ausdrücklich fortsetzen",
-      });
+      this.invalidate(); this.state.set({ kind: "paused", reason: "manual", message: "Pausiert nach manuellem Eingriff · ausdrücklich fortsetzen" });
     }
   }
-  stop() {
-    this.evidenceCaseId.set(null);
-    this.invalidate();
-    this.approved.set(null);
-    this.state.set({ kind: "stopped" });
-    this.finish("Gestoppt");
-  }
+  stop() { this.invalidate(); this.approved = null; this.state.set({ kind: "stopped" }); this.finish(this.label()); }
   clearAfterReset() {
-    this.invalidate();
-    this.evidenceCaseId.set(null);
-    this.activeId = null;
-    this.goal.set(null);
-    this.desired.set(null);
-    this.approved.set(null);
-    this.command.set("");
-    this.history.set([]);
-    this.state.set({ kind: "idle" });
-    const stored = writeBrowserState("kontor-command-v1", null);
-    this.historyStored.set(stored);
-    return stored;
+    this.stop(); this.activeId = null; this.command.set(""); this.history.set([]); this.state.set({ kind: "idle" });
+    return writeBrowserState("kontor-command-v1", null);
   }
-  async start(reuse = false) {
-    this.evidenceCaseId.set(null);
-    this.invalidate();
-    if (this.ui.dirty() || this.ui.unknownSave()) {
-      this.requestAttention({
-        kind: "needs_input",
-        question: {
-          kind: "draft",
-          message: `Es gibt einen offenen Entwurf oder ein unbekanntes Speicherergebnis für ${this.ui.selectedId() ?? "den aktuellen Vorgang"}. Bitte zuerst speichern, verwerfen oder Ergebnis prüfen. Danach den Auftrag erneut starten.`,
-          options: [],
-        },
-      });
-      return;
-    }
-    const epoch = this.epoch;
-    this.goal.set(null);
-    this.approved.set(null);
-    this.desired.set(null);
-    if (!reuse) {
-      if (
-        this.activeId &&
-        !["idle", "done", "stopped"].includes(this.state().kind)
-      )
-        this.finish("Durch neuen Auftrag beendet");
-      this.activeId = crypto.randomUUID();
-      this.history.update((h) =>
-        [
-          {
-            id: this.activeId ?? "",
-            request: this.command(),
-            entries: [],
-            operations: [],
-            savedOperations: [],
-            createdAt: new Date().toISOString(),
-            outcome: "In Arbeit",
-          },
-          ...h,
-        ].slice(0, 20),
-      );
-    }
-    const request =
-      this.history().find((h) => h.id === this.activeId)?.request ??
-      this.command();
-    this.state.set({ kind: "interpreting" });
-    this.abort = new AbortController();
-    try {
-      await this.ui.refresh();
-      if (epoch !== this.epoch) return;
-      const goal = await this.ui.api.interpret.call(
-        { text: request },
-        { signal: this.abort.signal },
-      );
-      if (epoch !== this.epoch) return;
-      this.goal.set(goal);
-      await this.loop(epoch);
-    } catch (error) {
-      if (epoch === this.epoch) this.fail(error);
-    }
+  async start() {
+    this.invalidate(); this.approved = null;
+    if (!this.command().trim()) return;
+    if (this.ui.dirty() || this.ui.unknownSave()) { this.block("Offenen Entwurf oder unbekanntes Speicherergebnis zuerst prüfen. Danach den Auftrag erneut starten."); return; }
+    this.activeId = crypto.randomUUID();
+    this.history.update(h => [{ id: this.activeId ?? "", request: this.command(), entries: [], operations: [], savedOperations: [], receipts: [], answers: [], steps: [], createdAt: new Date().toISOString(), outcome: "In Arbeit" }, ...h].slice(0, 20));
+    await this.resume();
   }
   async resume() {
-    if (this.registry.modal) return;
-    const waitingEpoch = this.epoch;
-    if (this.ui.busy()) await this.ui.pending;
-    if (
-      waitingEpoch !== this.epoch ||
-      this.registry.modal ||
-      this.state().kind === "stopped"
-    )
-      return;
-    if (this.ui.unknownSave()) {
-      this.state.set({ kind: "reconciling" });
-      await this.ui.reconcile();
-      if (
-        waitingEpoch !== this.epoch ||
-        this.registry.modal ||
-        this.ui.unknownSave()
-      )
-        return;
-    }
-    if (!this.goal()) {
-      await this.start(true);
-      return;
-    }
-    if (this.ui.dirty() && this.ui.draftOwner() !== "jev") {
-      this.requestAttention({
-        kind: "needs_input",
-        question: {
-          kind: "draft",
-          message:
-            "Der offene Entwurf muss vor dem Fortsetzen gespeichert oder verworfen werden. Jev übernimmt keine fremden Änderungen.",
-          options: [],
-        },
-      });
-      return;
-    }
-    this.invalidate();
-    const epoch = this.epoch;
+    if (this.registry.modal || !this.run()) return;
+    this.invalidate(); const epoch = this.epoch;
+    this.abort = new AbortController(); this.state.set({ kind: "deciding" });
     try {
-      await this.ui.refresh();
-      if (
-        epoch === this.epoch &&
-        this.ui.draftOwner() === "jev" &&
-        this.ui.data()?.revision !== this.ui.draftRevision()
-      ) {
-        const selected = this.ui.selected();
-        if (selected) {
-          this.ui.draft.set(draftOf(selected));
-          this.ui.draftRevision.set(this.ui.data()?.revision ?? 0);
-          this.approved.set(null);
-        }
-      }
-      if (epoch === this.epoch) await this.loop(epoch);
-    } catch (error) {
-      if (epoch === this.epoch) this.fail(error);
-    }
-  }
-  async answer(id: string) {
-    const state = this.state(),
-      goal = this.goal();
-    if (state.kind !== "needs_input" || !goal) return;
-    const kind = state.question.kind;
-    if (
-      state.question.options.length &&
-      !state.question.options.some((o) => o.id === id)
-    )
-      return;
-    const next = structuredClone(goal);
-    switch (kind) {
-      case "case":
-        next.caseId = id;
-        break;
-      case "technician":
-        next.objectives = next.objectives.map((o) =>
-          o.kind === "assign" ? { ...o, technicianId: id } : o,
-        );
-        break;
-      case "customer":
-        next.objectives = next.objectives.map((o) =>
-          o.kind === "filter" ? { ...o, customerId: id } : o,
-        );
-        break;
-      case "minutes": {
-        const minutes = Number(id);
-        if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 10000)
-          return;
-        if (next.objectives.some((o) => o.kind === "time"))
-          next.objectives = next.objectives.map((o) =>
-            o.kind === "time" ? { ...o, minutes } : o,
-          );
-        else next.objectives.push({ kind: "time", minutes });
-        break;
-      }
-      case "order":
-        next.order = "flexible";
-        break;
-      case "filter_scope":
-        if (id !== "remove-filter") return;
-        next.objectives = next.objectives.filter((o) => o.kind !== "filter");
-        break;
-      case "persistence":
-        if (id === "save" || id === "draft") next.persistence = id;
-        break;
-      default:
-        return;
-    }
-    this.goal.set(next);
-    this.log(
-      `Antwort erhalten: ${state.question.options.find((o) => o.id === id)?.label ?? id}`,
-    );
-    this.state.set({
-      kind: "paused",
-      reason: "manual",
-      message: "Antwort übernommen · Palette schließen und fortsetzen",
-    });
-  }
-  answerSchedule(start: string, minutes: number) {
-    const state = this.state(),
-      goal = this.goal();
-    if (
-      state.kind !== "needs_input" ||
-      state.question.kind !== "schedule" ||
-      !goal
-    )
-      return false;
-    const parsed = appointmentSchema.safeParse({
-      start: start.length === 16 ? start + ":00" : start,
-      minutes,
-    });
-    if (!parsed.success) return false;
-    const objectives = goal.objectives.some((o) => o.kind === "schedule")
-      ? goal.objectives.map((o) =>
-          o.kind === "schedule" ? { ...o, appointment: parsed.data } : o,
-        )
-      : [
-          ...goal.objectives,
-          { kind: "schedule" as const, appointment: parsed.data },
-        ];
-    this.goal.set({ ...goal, objectives });
-    this.approved.set(null);
-    this.log(`Termin bestätigt: ${parsed.data.start} · ${minutes} Minuten`);
-    this.state.set({
-      kind: "paused",
-      reason: "manual",
-      message: "Termin übernommen · ausdrücklich fortsetzen",
-    });
-    return true;
-  }
-  async confirmPlan() {
-    const state = this.state(),
-      goal = this.goal();
-    if (state.kind !== "needs_review" || goal?.readiness.kind !== "review")
-      return false;
-    try {
-      await this.ui.refresh();
-      await this.render();
-      if (this.state() !== state || this.goal() !== goal) return false;
-      const workspace = this.ui.data();
-      if (!workspace) return false;
-      const preparation = prepareGoal(goal, workspace, null);
-      if (
-        workspace.revision !== state.review.revision ||
-        preparation.kind !== "review"
-      ) {
-        this.state.set({
-          kind: "paused",
-          reason: "manual",
-          message: "Daten geändert · Auftrag erneut prüfen",
-        });
-        return false;
-      }
-      this.goal.set({
-        ...goal,
-        readiness: { kind: "ready", basis: "user_confirmed" },
-      });
-      this.log(
-        `Auftrag bestätigt: ${state.review.summary.join(" ")} Originalauftrag: ${state.review.request}`,
-      );
-      this.state.set({
-        kind: "paused",
-        reason: "manual",
-        message: "Auftrag bestätigt",
-      });
-      return true;
-    } catch (error) {
-      if (this.state() === state) this.fail(error);
-      return false;
-    }
-  }
-  async approve(technicianId: string) {
-    const state = this.state();
-    if (state.kind !== "needs_approval") return;
-    const proposal = state.proposal;
-    if (!proposal.alternatives.some((a) => a.id === technicianId)) return;
-    await this.ui.refresh();
-    await this.render();
-    if (this.state() !== state) return;
-    if (this.ui.data()?.revision !== proposal.revision) {
-      this.approved.set(null);
-      this.state.set({
-        kind: "paused",
-        reason: "manual",
-        message: "Daten geändert · Vorschlag erneut prüfen",
-      });
-      return;
-    }
-    this.approved.set({
-      ...proposal,
-      after: { ...proposal.after, technicianId },
-    });
-    this.log(
-      `Zusätzliche Zuweisung an ${this.ui.technicianName(technicianId)} für ${proposal.caseId} ausdrücklich freigegeben`,
-    );
-    this.state.set({
-      kind: "paused",
-      reason: "manual",
-      message: "Freigabe erhalten · Palette schließen und fortsetzen",
-    });
-  }
-  private async loop(epoch: number) {
-    const initialGoal = this.goal(),
-      workspace = this.ui.data();
-    const selected = workspace?.cases.find((c) => c.id === initialGoal?.caseId);
-    const filter = initialGoal?.objectives.find((o) => o.kind === "filter");
-    if (
-      initialGoal?.readiness.kind !== "refused" &&
-      selected &&
-      filter?.customerId &&
-      initialGoal?.objectives.some((o) => o.kind !== "filter")
-    ) {
-      const conflicts: string[] = [];
-      if (selected.customerId !== filter.customerId) {
-        const customer = workspace?.customers.find(
-          (c) => c.id === selected.customerId,
-        )?.name;
-        const requested = workspace?.customers.find(
-          (c) => c.id === filter.customerId,
-        )?.name;
-        conflicts.push(
-          `${selected.id} gehört zu ${customer ?? selected.customerId}, der angeforderte Filter zeigt ${requested ?? filter.customerId}`,
-        );
-      }
-      if (filter.openOnly && selected.status === "done")
-        conflicts.push(
-          `${selected.id} ist bereits erledigt, der angeforderte Filter zeigt nur offene Vorgänge`,
-        );
-      if (conflicts.length) {
-        this.requestAttention({
-          kind: "needs_input",
-          question: {
-            kind: "filter_scope",
-            message: `${conflicts.join(". ")}. Soll ich den angeforderten Filter entfernen und die Änderung an ${selected.id} ausführen? Für einen anderen Vorgang bitte einen neuen Auftrag formulieren.`,
-            options: [
-              {
-                id: "remove-filter",
-                label: "Angeforderten Filter entfernen, Vorgang beibehalten",
-              },
-            ],
-          },
-        });
-        return;
-      }
-    }
-    this.abort = new AbortController();
-    for (let steps = 0; steps < 35 && epoch === this.epoch; steps++) {
-      const goal = this.goal(),
-        workspace = this.ui.data();
-      if (!goal || !workspace) return;
-      if (this.registry.modal) {
-        this.state.set({
-          kind: "paused",
-          reason: "modal",
-          message: "Palette schließen zum Fortsetzen",
-        });
-        return;
-      }
-      this.state.set({ kind: "deciding" });
-      await this.render();
-      if (epoch !== this.epoch) return;
-      const preparation = prepareGoal(goal, workspace, this.approved());
-      if (preparation.kind === "review") {
-        this.requestAttention({
-          kind: "needs_review",
-          review: preparation.review,
-        });
-        return;
-      }
-      const contextAction =
-        goal.readiness.kind === "ready" &&
-        goal.objectives.length > 0 &&
-        !goal.objectives.some((o) => o.kind === "filter" && !o.customerId) &&
-        workspace.cases.some((c) => c.id === goal.caseId)
-          ? this.nextContextAction(
-              goal,
-              goal.objectives.some((o) => o.kind !== "filter"),
-            )
-          : null;
-      if (!contextAction && preparation.kind === "question") {
-        this.requestAttention({
-          kind: "needs_input",
-          question: preparation.question,
-        });
-        return;
-      }
-      if (!contextAction && preparation.kind === "proposal") {
-        const proposal = preparation.proposal;
-        const selected = await this.ui.api.remedy.call(
-          {
-            caseId: proposal.caseId,
-            revision: proposal.revision,
-            request: goal.request,
-            draft: proposal.requested,
-          },
-          { signal: this.abort.signal },
-        );
-        if (epoch !== this.epoch) return;
-        this.requestAttention({
-          kind: "needs_approval",
-          proposal: {
-            ...proposal,
-            after: { ...proposal.after, technicianId: selected.technicianId },
-          },
-        });
-        return;
-      }
-      const desired = preparation.kind === "ready" ? preparation.desired : null;
-      this.desired.set(desired);
-      this.state.set({ kind: "deciding" });
-      await this.render();
-      if (epoch !== this.epoch) return;
-      const target = contextAction ?? this.nextAction(goal, desired);
-      if (!target) {
-        this.evidenceCaseId.set(null);
-        this.state.set({ kind: "done" });
-        this.finish(this.label());
-        return;
-      }
-      const actions = this.registry.snapshot();
-      const snapshotId = `${epoch}:${steps}:${workspace.revision}`;
-      const decision = await this.ui.api.decide.call(
-        {
-          request: goal.request,
-          snapshotId,
-          actions,
-          expectedDemoAction: target,
-          context: JSON.stringify({
-            goal,
-            approved: this.approved(),
-            desired,
-            currentPage: this.ui.page(),
-            filters: {
-              customer: this.ui.customer(),
-              openOnly: this.ui.openOnly(),
-            },
-            currentDraft: this.ui.draft(),
-            saved: workspace,
-            blockers: this.ui.blocked(),
-            completed: this.history().find((h) => h.id === this.activeId)
-              ?.entries,
-            nextRequiredAction: target,
-          }),
-        },
-        { signal: this.abort.signal },
-      );
-      if (epoch !== this.epoch || decision.snapshotId !== snapshotId) return;
-      if (!decision.actionId || decision.actionId !== target) {
-        this.state.set({
-          kind: "paused",
-          reason: "error",
-          message: "Keine sichere zielkonforme Entscheidung · bitte prüfen",
-        });
-        return;
-      }
-      const action = actions.find((a) => a.id === decision.actionId);
-      if (!action)
-        throw new Error("Entscheidung gehört nicht zu diesem Zustand.");
-      this.state.set({ kind: "executing" });
-      this.registry.execute(action.id);
       await this.ui.pending;
       if (epoch !== this.epoch) return;
-      if (action.id !== "save") this.log(action.label);
-      if (this.ui.unknownSave()) {
-        this.state.set({ kind: "reconciling" });
-        return;
+      if (this.ui.unknownSave()) { this.state.set({ kind: "reconciling" }); return; }
+      await this.ui.refresh();
+      if (epoch !== this.epoch) return;
+      if (this.ui.dirty() && this.ui.draftOwner() === "manual") { this.block("Manuellen Entwurf zuerst speichern oder verwerfen. Jev übernimmt ihn nicht automatisch."); return; }
+      await this.loop(epoch);
+    } catch (error) { if (epoch === this.epoch) this.fail(error); }
+  }
+  answer(value: string) {
+    const state = this.state();
+    if (state.kind !== "needs_input" || !validFieldValue(state.field, value)) return false;
+    this.update(r => ({ ...r, answers: [...r.answers, { fieldId: state.field.id, value }], entries: [...r.entries, `${state.field.label}: ${value} ausdrücklich angegeben`] }));
+    this.state.set({ kind: "paused", reason: "manual", message: "Antwort übernommen" }); return true;
+  }
+  approve() {
+    const state = this.state(); if (state.kind !== "needs_approval") return;
+    this.approved = { action: state.action, fingerprint: state.fingerprint };
+    this.state.set({ kind: "paused", reason: "manual", message: "Schritt bestätigt" });
+  }
+  private facts() {
+    const selected = this.ui.selected(), draft = this.ui.draft(), data = this.ui.data();
+    return JSON.stringify({ currentPage: this.ui.page(), revision: data?.revision, filters: { customer: this.ui.customer(), openOnly: this.ui.openOnly(), search: this.ui.search() }, menu: this.ui.menu(), visibleCases: this.ui.page() === "cases" ? this.ui.filtered() : [], selected, draft, dirty: this.ui.dirty(), blockers: this.ui.blocked(), completionBlockers: data && selected && draft ? blockers(data, { ...selected, ...draft, status: "done" }) : [], receipts: this.run()?.receipts, message: this.ui.message() });
+  }
+  private snapshot(): DecisionInput {
+    const run = this.run(); if (!run) throw new Error("Kein Auftrag");
+    const data = this.ui.data();
+    const existing = [...(data?.cases.flatMap(c => [c.id, c.title]) ?? []), ...(data?.customers.map(c => c.name) ?? [])];
+    return { request: run.request, snapshotId: crypto.randomUUID(), context: this.facts(), actions: this.registry.snapshot(run.request, run.answers, existing), fields: this.registry.fieldSnapshot(), answers: run.answers, steps: run.steps };
+  }
+  private async loop(epoch: number) {
+    for (let count = 0; count < 40 && epoch === this.epoch; count++) {
+      this.state.set({ kind: "deciding" }); await this.render();
+      if (epoch !== this.epoch || this.registry.modal) return;
+      const input = this.snapshot(), fingerprint = input.context;
+      if (input.steps.length >= 40) { this.block("Schrittgrenze erreicht. Ausgeführte Änderungen bleiben erhalten."); return; }
+      let action: ActionDescription | undefined;
+      if (this.approved && this.approved.fingerprint === fingerprint) {
+        const approved = this.approved;
+        action = input.actions.find(a => JSON.stringify(a) === JSON.stringify(approved.action));
+        this.approved = null;
+        if (!action) { this.block("Bestätigter Schritt ist nicht mehr verfügbar. Bitte erneut prüfen."); return; }
+      } else {
+        this.approved = null;
+        const decision = await this.ui.api.decide.call(input, { signal: this.abort?.signal });
+        if (epoch !== this.epoch) return;
+        if (decision.snapshotId !== input.snapshotId || fingerprint !== this.facts()) { this.block("Daten haben sich während der Entscheidung geändert. Bitte fortsetzen."); return; }
+        if (decision.choice === "blocked") { this.block(this.ui.blocked().map(b => b.message).join(" ") || "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt. Prüfbelege müssen von dir stammen."); return; }
+        if (decision.choice === "done") {
+          const assessment = await this.ui.api.assess.call({ ...input, selected: "done" }, { signal: this.abort?.signal });
+          if (epoch !== this.epoch) return;
+          if (assessment.snapshotId !== input.snapshotId || fingerprint !== this.facts()) { this.block("Daten geändert. Abschluss erneut prüfen."); return; }
+          if (assessment.verdict !== "complete" || assessment.confidence < .75 || decision.confidence < .75 || this.ui.busy() || this.ui.unknownSave() || this.run()?.operations.length !== this.run()?.savedOperations.length) { this.block("Auftrag nicht vollständig bestätigt. Bereits ausgeführte Schritte stehen im Verlauf."); return; }
+          this.state.set({ kind: "done" }); this.finish(this.label()); return;
+        }
+        if (decision.choice.startsWith("ask:")) {
+          const field = input.fields.find(f => `ask:${f.id}` === decision.choice);
+          if (!field) throw new Error("Unbekannte Rückfrage.");
+          this.state.set({ kind: "needs_input", field }); this.attention.update(n => n + 1); return;
+        }
+        action = input.actions.find(a => a.id === decision.choice);
+        if (!action) throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
+        let needsApproval = decision.confidence < .75;
+        if (action.kind !== "view") {
+          const assessment = await this.ui.api.assess.call({ ...input, selected: action }, { signal: this.abort?.signal });
+          if (epoch !== this.epoch) return;
+          if (assessment.snapshotId !== input.snapshotId || fingerprint !== this.facts()) { this.block("Daten geändert. Schritt erneut prüfen."); return; }
+          if (assessment.verdict === "forbidden") { this.block(`Schritt widerspricht dem Auftrag: ${action.effect}`); return; }
+          needsApproval ||= assessment.verdict !== "authorized" || assessment.confidence < .75;
+        }
+        if (needsApproval) {
+          this.state.set({ kind: "needs_approval", action, fingerprint, message: `Diesen konkreten Schritt bestätigen: ${action.effect}` });
+          this.attention.update(n => n + 1); return;
+        }
       }
-      if (action.id === "save" && this.ui.dirty()) {
-        this.fail(new Error(this.ui.message()));
-        return;
-      }
+      if (!action) throw new Error("Kein ausführbarer Schritt.");
+      if (input.steps.filter(s => s.before === fingerprint && s.action.id === action.id).length >= 2) { this.block("Wiederholter Schritt ohne Fortschritt. Bitte aktuellen Stand prüfen."); return; }
+      this.state.set({ kind: "executing" }); this.registry.execute(action);
+      await this.ui.pending; await this.render();
+      const after = this.facts();
+      this.update(r => ({ ...r, steps: [...r.steps, { snapshotId: input.snapshotId, action, before: fingerprint, after }], entries: [...r.entries, action.effect] }));
+      if (epoch !== this.epoch) return;
+      if (this.ui.unknownSave()) { this.state.set({ kind: "reconciling" }); return; }
+      if (action.kind === "commit" && this.ui.dirty()) { this.block(this.ui.message() || "Speichern nicht bestätigt."); return; }
     }
-    if (epoch === this.epoch)
-      this.fail(
-        new Error("Zu viele Schritte. Bitte den aktuellen Stand prüfen."),
-      );
+    if (epoch === this.epoch) this.block("Zu viele Schritte. Bitte aktuellen Stand prüfen.");
   }
-  private nextContextAction(goal: Goal, needsCase: boolean): string | null {
-    const filter = goal.objectives.find((o) => o.kind === "filter");
-    if (this.ui.page() !== "cases") {
-      const available = this.registry.snapshot();
-      const directCase = `case:${goal.caseId}`;
-      if (goal.caseId && available.some((action) => action.id === directCase))
-        return directCase;
-      const directCustomer =
-        filter?.kind === "filter"
-          ? `customer-cases:${filter.customerId}`
-          : null;
-      if (
-        directCustomer &&
-        available.some((action) => action.id === directCustomer)
-      )
-        return directCustomer;
-      return "nav:cases";
-    }
-    if (filter?.kind === "filter") {
-      if (this.ui.customer() !== filter.customerId)
-        return this.ui.menu() === "customer"
-          ? `customer:${filter.customerId}`
-          : "menu:customer";
-      if (this.ui.openOnly() !== filter.openOnly) return "filter:open";
-    }
-    if (!needsCase || !goal.caseId) return null;
-    if (this.ui.selectedId() !== goal.caseId) {
-      if (!this.ui.filtered().some((c) => c.id === goal.caseId))
-        return "filter:reset";
-      return `case:${goal.caseId}`;
-    }
-    return null;
-  }
-  private nextAction(goal: Goal, desired: CaseDraft | null): string | null {
-    const context = this.nextContextAction(goal, !!desired);
-    if (context) return context;
-    if (!desired || !goal.caseId) return null;
-    const draft = this.ui.draft();
-    if (!draft) return `case:${goal.caseId}`;
-    if (draft.technicianId !== desired.technicianId)
-      return this.ui.menu() === "technician"
-        ? `technician:${desired.technicianId}`
-        : "menu:technician";
-    const completeIndex = goal.objectives.findIndex(
-      (objective) => objective.kind === "complete",
-    );
-    const completeBeforeTime =
-      goal.order === "listed" &&
-      completeIndex >= 0 &&
-      completeIndex <
-        goal.objectives.findIndex((objective) => objective.kind === "time");
-    if (completeBeforeTime && this.ui.selected()?.status !== "done") {
-      if (draft.status !== "done") return "complete";
-      if (goal.persistence === "save") return "save";
-    }
-    if (draft.minutes !== desired.minutes) return "time:requested";
-    if (
-      JSON.stringify(draft.appointment) !== JSON.stringify(desired.appointment)
-    )
-      return "appointment:requested";
-    if (draft.status !== desired.status) return "complete";
-    if (this.ui.dirty() && goal.persistence === "save") return "save";
-    return null;
-  }
-  private render() {
-    return new Promise<void>((resolve) =>
-      afterNextRender(() => resolve(), { injector: this.injector }),
-    );
-  }
-  private fail(error: unknown) {
-    this.state.set({
-      kind: "paused",
-      reason: "error",
-      message:
-        error instanceof Error ? error.message : "Anfrage fehlgeschlagen",
-    });
-    this.finish("Pausiert nach Fehler");
-  }
-  private log(entry: string) {
-    this.history.update((h) =>
-      h.map((r) =>
-        r.id === this.activeId ? { ...r, entries: [...r.entries, entry] } : r,
-      ),
-    );
-  }
-  private finish(outcome: string) {
-    this.history.update((h) =>
-      h.map((r) => (r.id === this.activeId ? { ...r, outcome } : r)),
-    );
-  }
+  private render() { return new Promise<void>(resolve => afterNextRender(() => resolve(), { injector: this.injector })); }
+  private block(message: string) { this.state.set({ kind: "blocked", message }); this.finish(message); }
+  private fail(error: unknown) { this.state.set({ kind: "paused", reason: "error", message: error instanceof Error ? error.message : "Anfrage fehlgeschlagen" }); this.finish(this.label()); }
+  private finish(outcome: string) { this.update(r => ({ ...r, outcome })); }
   private restore() {
-    const parsed = persistedSchema.safeParse(
-      readBrowserState("kontor-command-v1"),
-    );
-    if (!parsed.success) {
-      const legacy = persistedSchema
-        .extend({ version: z.literal(1), goal: z.unknown() })
-        .safeParse(readBrowserState("kontor-command-v1"));
-      if (legacy.success) {
-        this.command.set(legacy.data.command);
-        this.history.set(legacy.data.history);
-      }
-      return;
-    }
-    const stored = parsed.data;
-    if (
-      stored.unfinished &&
-      stored.goal?.readiness.kind === "ready" &&
-      stored.goal.readiness.basis === "user_confirmed"
-    )
-      stored.goal.readiness = { kind: "review" };
-    this.command.set(stored.command);
-    this.history.set(stored.history);
-    this.goal.set(stored.goal);
-    this.activeId = stored.history[0]?.id ?? null;
-    if (stored.unfinished)
-      this.state.set({
-        kind: "paused",
-        reason: "reload",
-        message: "Nach Neuladen pausiert · Daten vor Fortsetzen erneut prüfen",
-      });
+    const parsed = persistedSchema.safeParse(readBrowserState("kontor-command-v1")); if (!parsed.success) return;
+    this.command.set(parsed.data.command); this.history.set(parsed.data.history); this.activeId = parsed.data.history[0]?.id ?? null;
+    if (parsed.data.unfinished) this.state.set({ kind: "paused", reason: "reload", message: "Nach Neuladen pausiert · ausdrücklich fortsetzen" });
   }
 }

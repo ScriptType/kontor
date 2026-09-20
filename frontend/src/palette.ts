@@ -29,8 +29,7 @@ export class Palette {
   readonly focusTarget = computed(() => {
     const state = this.runner.state();
     return state.kind === "needs_input" ||
-      state.kind === "needs_approval" ||
-      state.kind === "needs_review"
+      state.kind === "needs_approval"
       ? ".answer-panel input, .answer-panel button"
       : "textarea";
   });
@@ -97,28 +96,12 @@ export class Palette {
     if (s.kind !== "paused" || s.reason !== "modal") void this.runner.resume();
   }
   async answer(id: string) {
-    await this.runner.answer(id);
+    if (!this.runner.answer(id)) return;
     this.setOpen(false);
     await this.runner.resume();
   }
-  async schedule(start: string, minutes: number) {
-    if (!this.runner.answerSchedule(start, minutes)) {
-      this.scheduleError.set(
-        "Bitte Datum, Uhrzeit und eine Dauer von 15 bis 480 Minuten angeben.",
-      );
-      return;
-    }
-    this.scheduleError.set("");
-    this.setOpen(false);
-    await this.runner.resume();
-  }
-  async confirmPlan() {
-    if (!(await this.runner.confirmPlan())) return;
-    this.setOpen(false);
-    await this.runner.resume();
-  }
-  async approve(id: string) {
-    await this.runner.approve(id);
+  async approve() {
+    this.runner.approve();
     this.setOpen(false);
     await this.runner.resume();
   }

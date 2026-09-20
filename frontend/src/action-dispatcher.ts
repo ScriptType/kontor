@@ -49,18 +49,14 @@ export class ActionDispatcher {
         this.ui.edit({ technicianId: value ?? "" }, actor);
         this.ui.menu.set(null);
         break;
-      case "time": {
-        const desired = this.runner.desired();
-        if (desired) this.ui.edit({ minutes: desired.minutes }, actor);
-        break;
-      }
-      case "appointment": {
-        const desired = this.runner.desired();
-        if (desired) this.ui.edit({ appointment: desired.appointment }, actor);
-        break;
-      }
       case "complete":
         this.ui.edit({ status: "done" }, actor);
+        break;
+      case "close":
+        this.ui.closeCase(actor);
+        break;
+      case "discard":
+        this.ui.discard(actor);
         break;
       case "save":
         this.ui.save(actor);
@@ -68,6 +64,6 @@ export class ActionDispatcher {
     }
   }
 }
-export function action(id: string, label: string, effect = label) {
-  return { id, label, effect };
+export function action(id: string, label: string, effect = label, kind: "view" | "draft" | "commit" | "discard" = "view") {
+  return { id, label, effect, kind };
 }

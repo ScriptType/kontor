@@ -5,9 +5,8 @@ import {
   workspaceSchema,
   saveSchema,
   receiptSchema,
-  editableSchema,
 } from "./domain.js";
-import { goalSchema, decisionInputSchema, decisionSchema } from "./command.js";
+import { decisionInputSchema, decisionSchema, assessmentInputSchema, assessmentSchema } from "./command.js";
 
 const probability = z.number().min(0).max(1);
 export const evaluationInputSchema = z.object({
@@ -45,16 +44,6 @@ export const evaluationSchema = z.discriminatedUnion("mode", [
   sourceSchema.options[1].extend({ answers: answersSchema }),
 ]);
 export const contract = {
-  remedy: oc
-    .input(
-      z.object({
-        caseId: z.string(),
-        draft: editableSchema,
-        revision: z.number(),
-        request: z.string(),
-      }),
-    )
-    .output(z.object({ technicianId: z.string().nullable() })),
   workspace: oc.output(workspaceSchema),
   resetWorkspace: oc
     .input(z.object({ expectedRevision: z.number().int().nonnegative() }))
@@ -63,7 +52,7 @@ export const contract = {
   receipt: oc
     .input(z.object({ operationId: z.string() }))
     .output(receiptSchema.nullable()),
-  interpret: oc.input(evaluationInputSchema).output(goalSchema),
+  assess: oc.input(assessmentInputSchema).output(assessmentSchema),
   decide: oc.input(decisionInputSchema).output(decisionSchema),
   status: oc.output(sourceSchema),
   evaluate: oc

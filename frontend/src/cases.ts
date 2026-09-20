@@ -8,7 +8,7 @@ import {
 } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { injectTable, tableFeatures } from "@tanstack/angular-table";
-import { ActionControl } from "./action-registry";
+import { ActionControl, FieldControl } from "./action-registry";
 import { ActionDispatcher, action } from "./action-dispatcher";
 import { blockers } from "../../shared/domain";
 const features = tableFeatures({});
@@ -19,7 +19,7 @@ const columns = [
 ];
 @Component({
   selector: "kontor-cases",
-  imports: [FormsModule, ActionControl],
+  imports: [FormsModule, ActionControl, FieldControl],
   templateUrl: "./cases.html",
 })
 export class Cases {
@@ -59,11 +59,17 @@ export class Cases {
       ? blockers(workspace, { ...c, ...d, status: "done" })
       : [];
   });
+  readonly String = String;
+  field(id: string, label: string, type: "text" | "number" | "datetime-local", current: string, min?: number, max?: number) {
+    return { id, label: id === "search" ? label : `${this.ui.selectedId()} · ${label}`, type, current, ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }) };
+  }
+  search(value: string) { if (this.runner.registry.actor === "manual") this.ui.manual(); this.ui.search.set(value); }
+  saveEffect() { return `${this.ui.selectedId()} verbindlich speichern. Vorher ${JSON.stringify(this.ui.selected())}. Entwurf ${JSON.stringify(this.ui.draft())}`; }
   number(event: Event) {
     if (event.target instanceof HTMLInputElement) {
       const value = Number(event.target.value);
       if (Number.isInteger(value) && value >= 0 && value <= 10000)
-        this.ui.edit({ minutes: value }, "manual");
+        this.ui.edit({ minutes: value }, this.runner.registry.actor);
     }
   }
   appointment(start: string, minutes: number) {
@@ -75,7 +81,7 @@ export class Cases {
             minutes,
           },
         },
-        "manual",
+        this.runner.registry.actor,
       );
   }
   evidence(note: string) {
