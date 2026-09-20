@@ -1,6 +1,6 @@
-# Architektur der Grundinstallation
+# Architektur von Kontor Service
 
-Das Projekt erprobt TypeSafe mit Angular und typisierten RPC-Aufrufen. Ein gemeinsamer Vertrag beschreibt Eingaben, Ergebnisse und Fehler. Das Backend hält den API-Key und übersetzt die TypeSafe-Antworten in diesen Vertrag.
+Kontor Service erprobt TypeSafe als sichtbare Bedienassistenz einer Angular-Anwendung. Angular besitzt den Bildschirmzustand, lokale Formularentwürfe und den laufenden Auftrag. Das Backend besitzt gespeicherte Fachdaten und prüft jede Änderung. Ein gemeinsamer oRPC-Vertrag beschreibt Eingaben, Ergebnisse und Fehler. Nur das Backend erhält den TypeSafe-Schlüssel.
 
 ## Ein Repository, ein Paket
 
@@ -52,7 +52,7 @@ Der Server prüft bei Browser-Verbindungen den Origin-Host gegen den angefragten
 
 TanStack reicht Abbruchsignale von Queries über oRPC an den Server weiter. Das Abbrechen einer Anfrage beweist nicht, dass eine bereits gestartete Anbieteroperation rückgängig gemacht wurde. Ein Verbindungsverlust kann daher ein unbekanntes Ergebnis hinterlassen. Neue Auswertungen erfolgen durch eine ausdrückliche Benutzeraktion.
 
-Die Infrastruktur trägt später auch oRPC-Iteratoren. `liveOptions` hält den letzten Wert, `streamedOptions` sammelt Werte. Ein konkretes Fachfeature muss dafür Wiederanlauf, Event-Lücken und Zeitlimits festlegen. Die Grundinstallation enthält noch keinen fachlichen Stream.
+Die Infrastruktur trägt später auch oRPC-Iteratoren. `liveOptions` hält den letzten Wert, `streamedOptions` sammelt Werte. Ein konkretes Fachfeature muss dafür Wiederanlauf, Event-Lücken und Zeitlimits festlegen. Die Anwendung enthält noch keinen fachlichen Stream.
 
 ## Backend und Laufzeit
 
@@ -62,14 +62,36 @@ HTTP bleibt für HTML, Assets und den WebSocket-Handshake erforderlich. Das Type
 
 Angular 22 benötigt TypeScript 6.0. Das Projekt verwendet deshalb nicht ungeprüft die neueste TypeScript-Hauptversion. Die [Angular-Kompatibilitätstabelle](https://angular.dev/reference/versions) beschreibt diese Bindung.
 
-## Daten und Grenzen
+## Fachmodell und Speichern
 
-`evaluate({ text })` liefert eine Auswertung mit Choice, Score und Noul. Das Ergebnis kennzeichnet den Demo- oder Live-Modus. Eingaben und externe Antworten werden an den Schnittstellen mit Zod geprüft. Der Browser erhält weder den API-Key noch rohe Fehlerantworten des Anbieters.
+Ein Vorgang verbindet einen Kunden, einen Standort, eine zuständige Person, einen Termin und die geleistete Arbeitszeit. Ein Prüfbeleg kann eine weitere Abschlussvoraussetzung sein. Kundenansicht, Teamauslastung und Berichte leiten ihre Werte aus den gespeicherten Vorgängen ab.
 
-Der Demo-Modus zeigt feste Beispieldaten. Er bewertet den eingegebenen Text nicht. Der Live-Modus erfordert eine ausdrückliche Konfiguration und einen API-Key. Ein fehlgeschlagener Live-Aufruf liefert einen Fehler und wechselt nicht zum Demo-Ergebnis.
+Der Server speichert die lokalen Daten in SQLite. Eine Änderung enthält eine Operations-ID und die erwartete Datenrevision. Eine Transaktion speichert die Fachdaten und den zugehörigen Beleg gemeinsam. Derselbe Aufruf mit derselben Operations-ID liefert den ursprünglichen Beleg. Eine andere Nutzlast mit derselben ID wird abgelehnt. Die Prüfung auf einen vorhandenen Beleg erfolgt vor dem Revisionsvergleich.
 
-Choice liefert eine Auswahl, Wahrscheinlichkeiten und Confidence. Score liefert einen Erwartungswert auf einer geordneten Skala, der zwischen zwei Stufen liegen kann. Noul liefert die Wahrscheinlichkeit für Ja und keine zusätzliche Confidence. Die Oberfläche hält diese Größen auseinander. [TypeSafe-Primitiven](https://docs.typesafe.ai/primitives).
+Die Fachregeln prüfen Qualifikation, Terminüberschneidungen, Arbeitszeit und erforderliche Belege. Sie liefern konkrete Blockaden und mögliche Alternativen. Dieselben Regeln können einen Formularentwurf prüfen. Die Prüfung im Browser ersetzt nie die Prüfung beim Speichern.
 
-Die Fragen eines Aufrufs bewerten denselben Zustand unabhängig. Eine Frage kann in diesem Aufruf keine vorherige Antwort verwenden. Regeln, die Ergebnisse kombinieren, gehören in den Anwendungscode. [TypeSafe-Einführung](https://docs.typesafe.ai/introduction).
+Ein Formularentwurf ist kein gespeicherter Vorgang. Jev und menschliche Bedienung verwenden dieselben sichtbaren Handler. Erst Speichern erzeugt eine fachliche Mutation. Jev darf einen Prüfbeleg weder erzeugen noch verändern.
 
-Persistenz, Hintergrundaufträge, Anmeldung und Live-Updates folgen aus dem späteren Fachthema. [Mögliche Anwendungen](use-cases.md) beschreiben die nächsten Optionen.
+## Auftrag und sichtbare Aktionen
+
+Ein Auftrag besteht aus dem ursprünglichen Text und unterstützten Teilzielen. Fehlende Werte, Mehrdeutigkeit und widersprüchliche Reihenfolgen erzeugen eine Rückfrage. Eine zusätzlich erforderliche Änderung erhält einen konkreten Vorschlag mit bisherigen und neuen Werten.
+
+Die erste Umsetzung unterstützt Filter, Zuweisung, Termin, Arbeitsminuten und Abschluss für jeweils einen Zielvorgang. Der Ablauf berechnet daraus den nächsten zulässigen Schritt und prüft Jevs Auswahl dagegen. Neue Zielarten benötigen entsprechende Fachregeln und Ablaufunterstützung; ihre Registrierung als sichtbarer Button allein reicht nicht aus.
+
+Angular meldet nur aktuell zugängliche Bedienelemente als ausführbare Aktionen. Menüeinträge werden erst nach dem Öffnen angeboten. Nach jeder Änderung der Oberfläche wartet der Ablauf auf das Rendering und erstellt einen neuen Zustand. Fachliche Blockaden bleiben als Information getrennt von ausführbaren Aktionen.
+
+Jede Entscheidung gehört zu einem bestimmten Lauf und Bildschirmzustand. Öffnen des Auftragsfensters, manuelle Änderungen und Stoppen machen ausstehende Entscheidungen unbrauchbar. Eine alte Antwort kann deshalb keinen inzwischen anderen Bildschirm bedienen. Ein bereits gestarteter Speichervorgang kann trotzdem abgeschlossen werden. Der Beleg bestimmt dann das tatsächliche Ergebnis.
+
+Eine offene Rückfrage bleibt beim Schließen des Auftragsfensters offen. Nach einem Neuladen wird ein unterbrochener Auftrag nicht automatisch fortgesetzt. Vor weiteren Aktionen müssen die gespeicherten Daten und zugänglichen Bedienelemente erneut gelesen werden.
+
+## Jev und seine Grenzen
+
+Jev wählt aus vorgegebenen Bedeutungen, Datensätzen, Wertkandidaten und sichtbaren Aktionen. Anwendungscode erkennt wörtliche Zahlen und Datumswerte als Kandidaten. Jev bewertet ihre Zuordnung zum Auftrag. Es erzeugt keine freien Texte oder beliebige Funktionsargumente. Der Browser erhält weder den API-Key noch rohe Fehlerantworten des Anbieters. Eingaben, gespeicherte Daten und Anbieterantworten werden an ihren Schnittstellen mit Zod geprüft.
+
+Die Fragen eines Aufrufs bewerten denselben Zustand unabhängig. Eine Frage kann in diesem Aufruf keine vorherige Antwort verwenden. Regeln, die Ergebnisse kombinieren, gehören in den Anwendungscode. Neue Informationen nach einer Navigation erfordern einen neuen Aufruf. [TypeSafe-Einführung](https://docs.typesafe.ai/introduction).
+
+Der Demo-Modus unterstützt ausdrücklich angezeigte Beispielaufträge. Er prüft die Anwendung mit vorgegebenen Entscheidungen und ruft TypeSafe nicht auf. Unbekannte Texte werden nicht durch einen ähnlichen Beispielauftrag ersetzt. Der Live-Modus erfordert eine ausdrückliche Konfiguration und einen API-Key. Ein fehlgeschlagener Live-Aufruf liefert einen Fehler und wechselt nicht zum Demo-Ergebnis.
+
+Confidence ist eine Modellbewertung und keine gemessene Genauigkeit oder Erlaubnis zum Speichern. Die Tests mit simulierten Anbieterantworten prüfen den SDK-Vertrag. Die Qualität echter deutscher Aufträge muss separat mit Jev gemessen werden. [TypeSafe-Primitiven](https://docs.typesafe.ai/primitives).
+
+Anmeldung, Mehrmandantenbetrieb und automatische Fortsetzung auf einem anderen Gerät gehören nicht zur lokalen Anwendung. [Anwendungsfälle](use-cases.md) beschreiben den ersten Umfang. Der [Aktionskatalog](action-catalog.md) beschreibt den geplanten Ausbau.
