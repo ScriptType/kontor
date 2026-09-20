@@ -1,8 +1,9 @@
 import { Component, computed, inject } from "@angular/core";
-import { WorkspaceUi } from "./workspace";
-import type { ServiceCase } from "../../shared/domain";
+import { ActionControl } from "./action-registry";
+import { ActionDispatcher, action } from "./action-dispatcher";
 @Component({
   selector: "kontor-overview",
+  imports: [ActionControl],
   template: `
     @if (ui.page() === "customers") {
       <div class="titleline">
@@ -24,7 +25,10 @@ import type { ServiceCase } from "../../shared/domain";
             </p>
             <div class="linked-list">
               @for (c of casesFor(customer.id); track c.id) {
-                <button (click)="open(c)">
+                <button
+                  [kontorAction]="action('case:' + c.id, c.id + ' öffnen')"
+                  (invoked)="actions.execute('case:' + c.id, $event)"
+                >
                   <span
                     >{{ c.id }} · {{ c.title }}<small>{{ c.site }}</small></span
                   ><span
@@ -57,7 +61,10 @@ import type { ServiceCase } from "../../shared/domain";
             <p>{{ assigned(t.id).length }} offene Vorgänge</p>
             <div class="linked-list">
               @for (c of assigned(t.id); track c.id) {
-                <button (click)="open(c)">
+                <button
+                  [kontorAction]="action('case:' + c.id, c.id + ' öffnen')"
+                  (invoked)="actions.execute('case:' + c.id, $event)"
+                >
                   <span
                     >{{ c.id }} · {{ c.title
                     }}<small>{{
@@ -106,7 +113,16 @@ import type { ServiceCase } from "../../shared/domain";
       <section class="card">
         <h2>Arbeitszeit nach Kunde</h2>
         @for (c of ui.data()?.customers; track c.id) {
-          <button class="report-row" (click)="filterCustomer(c.id)">
+          <button
+            class="report-row"
+            [kontorAction]="
+              action(
+                'customer-cases:' + c.id,
+                'Vorgänge von ' + c.name + ' anzeigen'
+              )
+            "
+            (invoked)="actions.execute('customer-cases:' + c.id, $event)"
+          >
             <span>{{ c.name }}</span
             ><span class="bar-track"
               ><span
@@ -122,7 +138,9 @@ import type { ServiceCase } from "../../shared/domain";
   `,
 })
 export class Overview {
-  readonly ui = inject(WorkspaceUi);
+  readonly actions = inject(ActionDispatcher);
+  readonly ui = this.actions.ui;
+  readonly action = action;
   readonly openCount = computed(
     () => this.ui.data()?.cases.filter((c) => c.status === "open").length ?? 0,
   );
@@ -145,14 +163,5 @@ export class Overview {
         ?.cases.filter((c) => c.technicianId === id && c.status === "open") ??
       []
     );
-  }
-  open(c: ServiceCase) {
-    this.ui.navigate("cases", "manual");
-    this.ui.openCase(c.id, "manual");
-  }
-  filterCustomer(id: string) {
-    this.ui.navigate("cases", "manual");
-    this.ui.customer.set(id);
-    this.ui.openOnly.set(false);
   }
 }

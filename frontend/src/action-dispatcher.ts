@@ -24,6 +24,12 @@ export class ActionDispatcher {
             : z.enum(["customer", "technician"]).parse(value),
         );
         break;
+      case "customer-cases":
+        this.ui.navigate("cases", actor);
+        this.ui.customer.set(value ?? "all");
+        this.ui.openOnly.set(false);
+        this.ui.search.set("");
+        break;
       case "customer":
         this.ui.customer.set(value ?? "all");
         this.ui.menu.set(null);
@@ -36,6 +42,7 @@ export class ActionDispatcher {
         } else this.ui.openOnly.update((v) => !v);
         break;
       case "case":
+        this.ui.navigate("cases", actor);
         this.ui.openCase(value ?? "", actor);
         break;
       case "technician":

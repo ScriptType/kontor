@@ -520,8 +520,23 @@ export class CommandRunner {
       );
   }
   private nextAction(goal: Goal, desired: CaseDraft | null): string | null {
-    if (this.ui.page() !== "cases") return "nav:cases";
     const filter = goal.objectives.find((o) => o.kind === "filter");
+    if (this.ui.page() !== "cases") {
+      const available = this.registry.snapshot();
+      const directCase = `case:${goal.caseId}`;
+      if (goal.caseId && available.some((action) => action.id === directCase))
+        return directCase;
+      const directCustomer =
+        filter?.kind === "filter"
+          ? `customer-cases:${filter.customerId}`
+          : null;
+      if (
+        directCustomer &&
+        available.some((action) => action.id === directCustomer)
+      )
+        return directCustomer;
+      return "nav:cases";
+    }
     if (filter?.kind === "filter") {
       if (this.ui.customer() !== filter.customerId)
         return this.ui.menu() === "customer"
@@ -541,6 +556,18 @@ export class CommandRunner {
       return this.ui.menu() === "technician"
         ? `technician:${desired.technicianId}`
         : "menu:technician";
+    const completeIndex = goal.objectives.findIndex(
+      (objective) => objective.kind === "complete",
+    );
+    const completeBeforeTime =
+      goal.order === "listed" &&
+      completeIndex >= 0 &&
+      completeIndex <
+        goal.objectives.findIndex((objective) => objective.kind === "time");
+    if (completeBeforeTime && this.ui.selected()?.status !== "done") {
+      if (draft.status !== "done") return "complete";
+      if (goal.persistence === "save") return "save";
+    }
     if (draft.minutes !== desired.minutes) return "time:requested";
     if (
       JSON.stringify(draft.appointment) !== JSON.stringify(desired.appointment)
