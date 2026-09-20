@@ -12,7 +12,7 @@ import type { CaseDraft } from "../shared/domain.js";
 
 type Outcome =
   | { kind: "filter"; customer: string; rows: string[]; open: boolean }
-  | { kind: "question"; text: string; label?: string }
+  | { kind: "question"; text: string; label?: string; caseId?: string }
   | { kind: "change"; persistence: "save" | "draft"; patch: Partial<CaseDraft> };
 type Scenario = { id: string; request: string; page?: string; outcome: Outcome };
 const scenarios: Scenario[] = [
@@ -21,27 +21,25 @@ const scenarios: Scenario[] = [
   { id: "filter-hafen", page: "Team", request: "Bitte nach Hafen & Partner filtern.", outcome: { kind: "filter", customer: "Hafen & Partner", rows: ["V-1041", "V-1035"], open: false } },
   { id: "time-draft", request: "Trage für V-1042 25 Minuten Arbeitszeit als Entwurf ein, nicht speichern.", outcome: { kind: "change", persistence: "draft", patch: { minutes: 25 } } },
   { id: "assign", page: "Kunden", request: "Weise V-1042 Lea Sommer zu.", outcome: { kind: "change", persistence: "save", patch: { technicianId: "lea" } } },
-  { id: "evidence", request: "Schließe V-1039 ab.", outcome: { kind: "question", text: "Die Prüfung vor Ort ist nicht belegt." } },
+  { id: "evidence", request: "Schließe V-1039 ab.", outcome: { kind: "question", text: "Die Prüfung vor Ort ist nicht belegt.", caseId: "V-1039" } },
   { id: "ambiguous-case", request: "Weise die Wartung Lea Sommer zu und speichere.", outcome: { kind: "question", text: "Welcher Vorgang ist gemeint?" } },
-  { id: "order", request: "Zuerst V-1042 abschließen, dann 60 Minuten Arbeitszeit erfassen.", outcome: { kind: "question", text: "Deine feste Reihenfolge ist so nicht möglich." } },
-  { id: "schedule-conflict", request: "Setze für V-1042 einen Termin am 2026-09-24 um 09:00 für 60 Minuten.", outcome: { kind: "question", text: "V-1041", label: "Freigabe ausstehend" } },
+  { id: "order", request: "Zuerst V-1042 abschließen, dann 60 Minuten Arbeitszeit erfassen.", outcome: { kind: "question", text: "Deine feste Reihenfolge ist so nicht möglich.", caseId: "V-1042" } },
+  { id: "schedule-conflict", request: "Setze für V-1042 einen Termin am 2026-09-24 um 09:00 für 60 Minuten.", outcome: { kind: "question", text: "V-1041", caseId: "V-1042", label: "Freigabe ausstehend" } },
   { id: "unsupported-delete", request: "Weise V-1042 Lea Sommer zu und lösche alle Kunden.", outcome: { kind: "question", text: "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig." } },
   { id: "multi-case", request: "Weise V-1042 Lea Sommer und V-1039 Jonas Weber zu.", outcome: { kind: "question", text: "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig." } },
   { id: "filter-scope", request: "Zeige offene Hafen-Vorgänge und weise V-1042 Lea Sommer zu.", outcome: { kind: "question", text: "Soll ich den angeforderten Filter entfernen" } },
   { id: "durations", request: "V-1042 45 Minuten Arbeit erfassen, Termin 2026-09-25 09:00 für 60 Minuten, NICHT speichern", outcome: { kind: "change", persistence: "draft", patch: { minutes: 45, appointment: { start: "2026-09-25T09:00:00", minutes: 60 } } } },
   { id: "assign-no-save", page: "Team", request: "V-1042 Lea Sommer zuweisen, aber nicht speichern.", outcome: { kind: "change", persistence: "draft", patch: { technicianId: "lea" } } },
-  { id: "missing-minutes", request: "Erfasse Arbeitszeit für V-1042.", outcome: { kind: "question", text: "Wie viele tatsächlich geleistete Minuten" } },
-  { id: "missing-person", request: "Weise V-1042 einer Person zu.", outcome: { kind: "question", text: "Wer soll den Vorgang übernehmen?" } },
+  { id: "missing-minutes", request: "Erfasse Arbeitszeit für V-1042.", outcome: { kind: "question", text: "Wie viele tatsächlich geleistete Minuten", caseId: "V-1042" } },
+  { id: "missing-person", request: "Weise V-1042 einer Person zu.", outcome: { kind: "question", text: "Wer soll den Vorgang übernehmen?", caseId: "V-1042" } },
   { id: "missing-customer", request: "Filter nach Kunde", outcome: { kind: "question", text: "Für welchen Kunden soll ich filtern?" } },
   { id: "repeated-assignment", request: "Weise V-1042 zuerst Lea Sommer und danach Jonas Weber zu.", outcome: { kind: "question", text: "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig." } },
 ];
 const { values } = parseArgs({ options: {
-  live: { type: "boolean", default: false },
   scenario: { type: "string" }, repeat: { type: "string", default: "1" },
   "max-calls": { type: "string", default: "150" },
   "timeout-ms": { type: "string", default: "300000" },
 } });
-if (!values.live) throw new Error("Opt in with --live. This suite makes paid real-provider calls using synthetic data.");
 const positive = z.coerce.number().int().positive();
 const repeat = positive.max(20).parse(values.repeat);
 const maxCalls = positive.max(1000).parse(values["max-calls"]);
@@ -64,7 +62,7 @@ const liveFetch: Fetch = async (url, init) => {
   callCount++;
   const payload = envelope.parse(JSON.parse(String(init?.body)));
   const start = performance.now();
-  const entry = { scenario: active, questions: Object.keys(payload.questions), state: JSON.parse(payload.state) };
+  const entry = { scenario: active, questions: payload.questions, state: JSON.parse(payload.state) };
   try {
     const response = await fetch(url, { ...init, signal: AbortSignal.any([deadline, ...(init?.signal ? [init.signal] : [])]) });
     const body: unknown = await response.clone().json();
@@ -113,13 +111,15 @@ try {
       if (scenario.page) await page.getByRole("button", { name: scenario.page, exact: true }).click();
       await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
       await page.getByRole("textbox", { name: "Auftrag an Jev" }).fill(scenario.request);
-      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Ausführen" }).click();
       const outcome = scenario.outcome;
       const label = outcome.kind === "question" ? outcome.label ?? "Antwort ausstehend" : outcome.kind === "change" && outcome.persistence === "draft" ? "Entwurf vorbereitet · nicht gespeichert" : "Auftrag abgeschlossen";
-      await expect(page.locator(".activity-label")).toHaveText(label, { timeout: 45000 });
+      await expect(page.locator(".activity-label")).toHaveText(/Auftrag abgeschlossen|Entwurf vorbereitet|Antwort ausstehend|Freigabe ausstehend|Pausiert|fehlgeschlagen|nicht erreichbar/i, { timeout: 45000 });
+      await expect(page.locator(".activity-label")).toHaveText(label, { timeout: 1000 });
       if (outcome.kind === "question") {
         await expect(page.locator(".answer-panel, .approval-panel")).toContainText(outcome.text);
-        await expect(page.locator(".editor")).toHaveCount(0);
+        if (outcome.caseId) await expect(page.locator(".editor")).toContainText(outcome.caseId);
+        else await expect(page.locator(".editor")).toHaveCount(0);
       } else if (outcome.kind === "filter") {
         await expect(page.locator('[data-action="menu:customer"]')).toContainText(outcome.customer);
         assert.deepEqual((await page.locator("tbody tr td:first-child").allTextContents()).map(s => s.trim()), outcome.rows);
@@ -142,14 +142,19 @@ try {
       failed = true;
       error = caught instanceof Error ? caught.message : "Scenario failed";
     } finally {
-      const ui = page.isClosed() ? null : await snapshot(page);
-      results.push({ scenario: active, request: scenario.request, expected: scenario.outcome, status: error ? "failed" : "passed", error, elapsedMs: Math.round(performance.now() - started), calls: callCount - firstCall, ui, database: store.snapshot() });
-      if (!page.isClosed()) await page.screenshot({ path: `${output}/${scenario.id}-${iteration}.png`, fullPage: true });
-      console.log(`${active}: ${error ? "FAILED" : "passed"} (${callCount - firstCall} calls)`);
-      deadline.removeEventListener("abort", closeOnDeadline);
-      await context.close();
-      await app.close();
-      await writeFile(`${output}/report.json`, JSON.stringify({ maxCalls, callCount, timeout, results, calls }, null, 2));
+      try {
+        const ui = page.isClosed() ? null : await snapshot(page);
+        results.push({ scenario: active, request: scenario.request, expected: scenario.outcome, status: error ? "failed" : "passed", error, elapsedMs: Math.round(performance.now() - started), calls: callCount - firstCall, ui, database: store.snapshot() });
+        if (!page.isClosed()) await page.screenshot({ path: `${output}/${scenario.id}-${iteration}.png`, fullPage: true });
+      } catch {
+        failed = true;
+        results.push({ scenario: active, status: "failed", error: "Artifact capture failed", database: store.snapshot() });
+      } finally {
+        console.log(`${active}: ${error ? "FAILED" : "finished"} (${callCount - firstCall} calls)`);
+        deadline.removeEventListener("abort", closeOnDeadline);
+        try { await context.close(); } finally { await app.close(); }
+        await writeFile(`${output}/report.json`, JSON.stringify({ maxCalls, callCount, timeout, results, calls }, null, 2));
+      }
     }
   }
 } finally {
