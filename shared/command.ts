@@ -53,6 +53,7 @@ export const demos = [
   "Plane V-1042 am 2026-09-24 um 09:00 für 60 Minuten.",
   "Schließe V-1039 ab.",
   "Plane V-1042 und speichere.",
+  "Zeige offene Hafen-Vorgänge, weise V-1042 Lea Sommer zu und speichere.",
 ] as const;
 export function demoGoal(request: string): Goal {
   const base: Goal = {
@@ -69,6 +70,14 @@ export function demoGoal(request: string): Goal {
         ...base,
         objectives: [
           { kind: "filter", customerId: "nord", openOnly: true },
+          { kind: "assign", technicianId: "lea" },
+        ],
+      };
+    case demos[8]:
+      return {
+        ...base,
+        objectives: [
+          { kind: "filter", customerId: "hafen", openOnly: true },
           { kind: "assign", technicianId: "lea" },
         ],
       };

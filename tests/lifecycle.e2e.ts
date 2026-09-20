@@ -357,3 +357,53 @@ test("report drilldown is a registered action chosen directly for a matching fil
     },
   );
 });
+
+for (const target of [
+  { caseId: "V-1042", customer: "hafen", reason: "Nordwerk" },
+  { caseId: "V-1035", customer: "hafen", reason: "erledigt" },
+]) {
+  test(`requested filter excluding ${target.caseId} asks before writes and resumes only after scope answer`, async ({ page }) => {
+    await withLive(
+      page,
+      "never",
+      async (store, _held, _arrived, snapshots) => {
+        const before = store.snapshot();
+        await start(
+          page,
+          `Zeige offene Hafen-Vorgänge und weise ${target.caseId} Lea Sommer zu`,
+        );
+        await expect(page.locator(".activity-label")).toHaveText("Antwort ausstehend");
+        expect(snapshots).toHaveLength(0);
+        expect(store.snapshot()).toEqual(before);
+        await page.getByRole("button", { name: "Antworten", exact: true }).click();
+        await expect(page.locator(".answer-panel")).toContainText(target.caseId);
+        await expect(page.locator(".answer-panel")).toContainText(target.reason);
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".activity-label")).toHaveText("Antwort ausstehend");
+        expect(snapshots).toHaveLength(0);
+        expect(store.snapshot()).toEqual(before);
+        await page.getByRole("button", { name: "Antworten", exact: true }).click();
+        await page.getByRole("button", {
+          name: "Angeforderten Filter entfernen, Vorgang beibehalten",
+          exact: true,
+        }).click();
+        await expect(page.locator(".activity-label")).toHaveText("Auftrag abgeschlossen");
+        expect(store.snapshot()).toEqual({
+          ...before,
+          revision: before.revision + 1,
+          cases: before.cases.map((c) =>
+            c.id === target.caseId ? { ...c, technicianId: "lea" } : c,
+          ),
+        });
+        expect(snapshots.length).toBeLessThan(10);
+      },
+      "save",
+      {
+        case: target.caseId,
+        filter: "yes",
+        openOnly: "yes",
+        customer: target.customer,
+      },
+    );
+  });
+}

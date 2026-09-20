@@ -16,7 +16,8 @@ export type Question = {
     | "draft"
     | "schedule"
     | "customer"
-    | "persistence";
+    | "persistence"
+    | "filter_scope";
   message: string;
   options: { id: string; label: string }[];
 };

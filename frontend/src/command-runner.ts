@@ -323,6 +323,10 @@ export class CommandRunner {
       case "order":
         next.order = "flexible";
         break;
+      case "filter_scope":
+        if (id !== "remove-filter") return;
+        next.objectives = next.objectives.filter((o) => o.kind !== "filter");
+        break;
       case "persistence":
         if (id === "save" || id === "draft") next.persistence = id;
         break;
@@ -401,6 +405,48 @@ export class CommandRunner {
     });
   }
   private async loop(epoch: number) {
+    const initialGoal = this.goal(),
+      workspace = this.ui.data();
+    const selected = workspace?.cases.find((c) => c.id === initialGoal?.caseId);
+    const filter = initialGoal?.objectives.find((o) => o.kind === "filter");
+    if (
+      selected &&
+      filter?.customerId &&
+      initialGoal?.objectives.some((o) => o.kind !== "filter")
+    ) {
+      const conflicts: string[] = [];
+      if (selected.customerId !== filter.customerId) {
+        const customer = workspace?.customers.find(
+          (c) => c.id === selected.customerId,
+        )?.name;
+        const requested = workspace?.customers.find(
+          (c) => c.id === filter.customerId,
+        )?.name;
+        conflicts.push(
+          `${selected.id} gehört zu ${customer ?? selected.customerId}, der angeforderte Filter zeigt ${requested ?? filter.customerId}`,
+        );
+      }
+      if (filter.openOnly && selected.status === "done")
+        conflicts.push(
+          `${selected.id} ist bereits erledigt, der angeforderte Filter zeigt nur offene Vorgänge`,
+        );
+      if (conflicts.length) {
+        this.state.set({
+          kind: "needs_input",
+          question: {
+            kind: "filter_scope",
+            message: `${conflicts.join(". ")}. Soll ich den angeforderten Filter entfernen und die Änderung an ${selected.id} ausführen? Für einen anderen Vorgang bitte einen neuen Auftrag formulieren.`,
+            options: [
+              {
+                id: "remove-filter",
+                label: "Angeforderten Filter entfernen, Vorgang beibehalten",
+              },
+            ],
+          },
+        });
+        return;
+      }
+    }
     this.abort = new AbortController();
     for (let steps = 0; steps < 35 && epoch === this.epoch; steps++) {
       const goal = this.goal(),
