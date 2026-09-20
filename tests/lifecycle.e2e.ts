@@ -312,6 +312,17 @@ test("unsupported trailing work remains partial after an authorized earlier save
       "Schaltfläche „Als erledigt markieren“",
     );
     await expect(page.locator(".blocked-control")).toContainText("Arbeitszeit");
+    await expect(page.locator(".blocked-control")).toHaveJSProperty(
+      "open",
+      false,
+    );
+    await expect(
+      page.locator(".blocked-control li").filter({ hasText: "Arbeitszeit" }),
+    ).toBeHidden();
+    await expect(page.locator(".confirmed-receipts li")).toHaveText(
+      "V-1042 · Revision 1",
+    );
+    await expect(page.locator(".confirmed-receipts li")).toBeVisible();
     await expect(page.locator(".editor-footer [role=status]")).toHaveText(
       "V-1042 gespeichert",
     );
@@ -490,6 +501,15 @@ test("missing evidence stays a concrete handoff tied to the disabled completion 
     await expect(page.locator(".blocked-control")).toContainText(
       "Prüfung vor Ort",
     );
+    await expect(page.locator(".blocked-control")).toHaveJSProperty(
+      "open",
+      true,
+    );
+    await expect(
+      page
+        .locator(".blocked-control li")
+        .filter({ hasText: "Prüfung vor Ort" }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Prüfbeleg erfassen", exact: true })
       .click();

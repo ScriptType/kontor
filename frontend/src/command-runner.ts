@@ -87,6 +87,7 @@ export class CommandRunner {
   readonly command = signal("");
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
+  readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
   private activeId: string | null = null;
   private epoch = 0;
   private abort: AbortController | null = null;

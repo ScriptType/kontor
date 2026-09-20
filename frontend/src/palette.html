@@ -76,9 +76,23 @@
       } @if (state.kind === 'paused' || state.kind === 'blocked') {
       <section class="answer-panel">
         <p>{{ state.message }}</p>
-        @if (state.kind === 'blocked' &&
+        @if (runner.confirmedReceipts().length) {
+        <section
+          class="confirmed-receipts"
+          aria-label="Bestätigte Speicherungen dieses Auftrags"
+        >
+          <p>In diesem Auftrag bestätigt gespeichert:</p>
+          <ul>
+            @for (receipt of runner.confirmedReceipts(); track
+            receipt.operationId) {
+            <li>{{ receipt.caseId }} · Revision {{ receipt.revision }}</li>
+            }
+          </ul>
+        </section>
+        } @if (state.kind === 'blocked' &&
         runner.disabledCompletionReasons().length) {
-        <div class="blocked-control">
+        <details class="blocked-control" [open]="runner.evidenceGuidance()">
+          <summary>Hinweise zum offenen Vorgang</summary>
           <p>
             Die Schaltfläche „Als erledigt markieren“ ist im offenen Vorgang
             deaktiviert.
@@ -89,7 +103,7 @@
             <li>{{ reason.message }}</li>
             }
           </ul>
-        </div>
+        </details>
         } @if (runner.evidenceGuidance()) {
         <button (click)="editEvidence()">Prüfbeleg erfassen</button> }
         <button (click)="continueRun()">Fortsetzen</button
