@@ -54,7 +54,9 @@ async function withLive(
       values = { next: context.nextRequiredAction };
     } else
       values = {
-        supported: "yes",
+        capability: "yes",
+        coverage: "complete",
+        cardinality: "yes",
         persistence,
         openOnly: "no",
         filter: "no",

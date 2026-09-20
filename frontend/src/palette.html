@@ -63,8 +63,8 @@
         <p>
           {{ state.question.kind === 'unsupported' &&
           runner.ui.source.data()?.mode === 'live' ? 'Der vollständige Auftrag
-          ist nicht unterstützt oder nicht eindeutig. Bitte nenne den Vorgang
-          und die gewünschte Änderung genauer.' : state.question.message }}
+          ist nicht unterstützt oder nicht eindeutig. Bitte beschreibe die gewünschte Filterung
+          oder Änderung genauer.' : state.question.message }}
         </p>
         @if (state.question.kind === 'evidence') {
         <p>

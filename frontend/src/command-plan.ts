@@ -50,7 +50,8 @@ export function prepareGoal(
         "Der vollständige Auftrag ist nicht unterstützt oder nicht eindeutig. Im Demo-Modus werden ausschließlich die angezeigten Beispiele ausgeführt. Bitte einen neuen Auftrag formulieren.",
       options: [],
     });
-  if (goal.persistence === "unclear")
+  const needsCase = goal.objectives.some((o) => o.kind !== "filter");
+  if (needsCase && goal.persistence === "unclear")
     return question({
       kind: "persistence",
       message:
@@ -60,8 +61,9 @@ export function prepareGoal(
         { id: "draft", label: "Nur Entwurf" },
       ],
     });
-  const needsCase = goal.objectives.some((o) => o.kind !== "filter");
-  const selected = workspace.cases.find((c) => c.id === goal.caseId);
+  const selected = needsCase
+    ? workspace.cases.find((c) => c.id === goal.caseId)
+    : undefined;
   if (needsCase && !selected)
     return question({
       kind: "case",

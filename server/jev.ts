@@ -19,6 +19,12 @@ const answerSchema = z.object({
     }),
   ),
 });
+type Answer = z.infer<typeof answerSchema>["answers"][string];
+function selected(answer: Answer | undefined): string | null {
+  return answer && answer.confidence >= 0.75 && answer.choice !== "unclear"
+    ? answer.choice
+    : null;
+}
 export function createJev(config: Config, fetch?: Fetch) {
   const client =
     config.mode === "live"
@@ -63,12 +69,12 @@ export function createJev(config: Config, fetch?: Fetch) {
     }
     const parsed = answerSchema.safeParse(raw);
     if (!parsed.success) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
-    const answers: Record<string, string> = {};
+    const answers: Record<string, Answer> = {};
     for (const [key, question] of Object.entries(questions)) {
       const answer = parsed.data.answers[key];
       if (!answer || !Object.hasOwn(question.options, answer.choice))
         throw new ORPCError("PROVIDER_INVALID_RESPONSE");
-      answers[key] = answer.confidence >= 0.75 ? answer.choice : "unclear";
+      answers[key] = answer;
     }
     return answers;
   }
@@ -89,20 +95,22 @@ export function createJev(config: Config, fetch?: Fetch) {
         }),
         {
           remedy: {
-            text: "Welche freie qualifizierte Person ist als konkrete zusätzliche Zuweisung vorzuschlagen?",
+            text: "Welche der von der Anwendung als frei und qualifiziert geprüften Personen soll für den Auftrag in originalRequest als zusätzliche Zuweisung vorgeschlagen werden? Dies ist nur ein Vorschlag zur separaten Freigabe, keine Ausführung.",
             options: {
               unclear: "Kein sicherer Vorschlag",
-              ...Object.fromEntries(alternatives.map((a) => [a.id, a.label])),
+              ...Object.fromEntries(
+                alternatives.map((a) => [
+                  a.id,
+                  `${a.label}: von der Anwendung als frei und qualifiziert geprüft; zur Freigabe vorschlagen`,
+                ]),
+              ),
             },
           },
         },
         signal,
       );
       return {
-        technicianId:
-          answers["remedy"] && answers["remedy"] !== "unclear"
-            ? answers["remedy"]
-            : null,
+        technicianId: selected(answers["remedy"]),
       };
     },
     async interpret(
@@ -125,145 +133,249 @@ export function createJev(config: Config, fetch?: Fetch) {
       const slots = dates.flatMap((date) =>
         times.map((time) => `${date}T${time}:00`),
       );
-      const yesNo = {
-        yes: "Ausdrücklich angefordert",
-        no: "Nicht angefordert",
-        unclear: "Unklar",
+      const state = {
+        originalRequest: request,
+        references: {
+          cases: workspace.cases.map(({ id, title, site, customerId }) => ({
+            id,
+            title,
+            site,
+            customerId,
+          })),
+          technicians: workspace.technicians.map(({ id, name }) => ({
+            id,
+            name,
+          })),
+          customers: workspace.customers.map(({ id, name }) => ({
+            id,
+            name,
+          })),
+        },
+        instructions:
+          "Erkenne ausschließlich die Bedeutung des Originalauftrags. Die Referenzen dienen nur zur Identifikation. Ob eine Änderung aktuell ausgeführt werden darf, prüft die Anwendung danach anhand von Arbeitszeit, Prüfbelegen, Qualifikation und Terminkonflikten. Solche Voraussetzungen ändern die angeforderte Absicht nicht. Beurteile jede Frage unabhängig. Keine Teilaufträge übergehen. Keine Werte erfinden. Bei Mehrdeutigkeit unclear wählen. Die Reihenfolge der Zielarten ist filter, assign, schedule, time, complete; beurteile explizite Reihenfolge getrennt.",
       };
-      const answers = await ask(
-        JSON.stringify({
-          originalRequest: request,
-          references: {
-            cases: workspace.cases.map(({ id, title, site, customerId }) => ({
-              id,
-              title,
-              site,
-              customerId,
-            })),
-            technicians: workspace.technicians.map(({ id, name }) => ({
-              id,
-              name,
-            })),
-            customers: workspace.customers.map(({ id, name }) => ({
-              id,
-              name,
-            })),
+      const questions = {
+        capability: {
+          text: "Enthält originalRequest ausschließlich Aufträge zum Filtern/Anzeigen von Vorgängen, Zuweisen von Personen, Setzen von Terminen, Erfassen von Arbeitszeit oder Abschließen von Vorgängen? Speichern und Entwurf sind dabei zulässige Ausführungsweisen. Fehlende Angaben werden später erfragt.",
+          options: {
+            yes: "Alle gewünschten Aufgaben sind Filtern, Zuweisen, Termin, Arbeitszeit oder Abschluss. Auch ein reiner Filter oder ein Auftrag mit fehlenden Angaben gehört dazu.",
+            no: "Mindestens eine andere Aufgabe wird verlangt, zum Beispiel Daten löschen, exportieren, Nachrichten senden oder Kunden ändern.",
+            unclear: "Die angeforderten Aufgaben sind nicht erkennbar.",
           },
-          instructions:
-            "Erkenne ausschließlich die Bedeutung des Originalauftrags. Die Referenzen dienen nur zur Identifikation. Ob eine Änderung aktuell ausgeführt werden darf, prüft die Anwendung danach anhand von Arbeitszeit, Prüfbelegen, Qualifikation und Terminkonflikten. Solche Voraussetzungen ändern die angeforderte Absicht nicht. Beurteile jede Frage unabhängig. Keine Teilaufträge übergehen. Keine Werte erfinden. Bei Mehrdeutigkeit unclear wählen. Die Reihenfolge der Zielarten ist filter, assign, schedule, time, complete; beurteile explizite Reihenfolge getrennt.",
-        }),
+        },
+        cardinality: {
+          text: "Ist originalRequest ein Einzelauftrag? Mehrere verschiedene Änderungen am selben Vorgang sind ein Einzelauftrag. Erst Änderungen an mehreren Vorgängen oder wiederholte unterschiedliche Werte für dieselbe Eigenschaft sind ein Mehrfachauftrag. Ein unbenannter Vorgang und ein Listenfilter sind ebenfalls Einzelaufträge.",
+          options: {
+            yes: "Höchstens ein Änderungsvorgang und ein Zielwert je Eigenschaft; reine Filter oder fehlende Zielangaben sind ebenfalls zulässig.",
+            no: "Änderungen an mehreren Vorgängen oder wiederholte unterschiedliche Zuweisungen, Termine oder Arbeitszeiten werden verlangt.",
+            unclear: "Unklar, ob ein ausdrücklicher Mehrfachauftrag vorliegt.",
+          },
+        },
+        persistence: {
+          text: "Soll die in originalRequest gewünschte Änderung gespeichert oder nur als Entwurf eingetragen werden? Ein direkter Änderungsauftrag wie weise zu, erfasse oder schließe ab bedeutet save, auch ohne das Wort speichern. Ein ausdrückliches Nicht-speichern oder nur als Entwurf bedeutet draft und hat Vorrang. Bei widersprüchlicher oder unklarer Änderungsabsicht unclear wählen. Fehlende Ausführungsvoraussetzungen ändern diese Speicherabsicht nicht.",
+          options: {
+            save: "Änderung verbindlich speichern",
+            draft: "Nur Entwurf, nicht speichern",
+            unclear: "Unklar",
+          },
+        },
+        openOnly: {
+          text: "Soll die Anzeige laut originalRequest auf offene Vorgänge beschränkt werden?",
+          options: {
+            yes: "Nur offene Vorgänge anzeigen.",
+            no: "Keine Beschränkung der Anzeige auf offene Vorgänge verlangt.",
+            unclear: "Statusfilter widersprüchlich.",
+          },
+        },
+        filter: {
+          text: "Wird in originalRequest verlangt, die Vorgangsliste zu filtern oder Vorgänge eines Kunden anzuzeigen? Die bloße Nennung eines Kunden als Teil einer Vorgangsidentifikation ist kein Filterauftrag.",
+          options: {
+            yes: "Vorgänge nach Kunde oder offenem Status filtern/anzeigen.",
+            no: "Keine Filterung oder kundenbezogene Anzeige verlangt.",
+            unclear: "Unklar, ob eine Filterung gewünscht ist.",
+          },
+        },
+        assign: {
+          text: "Wird in originalRequest eine Zuweisung oder Änderung der zuständigen Person für einen Vorgang verlangt? Auch ohne konkrete Person zählt dies als Zuweisungsauftrag.",
+          options: {
+            yes: "Eine Person soll einem Vorgang zugewiesen werden.",
+            no: "Keine Zuweisung einer Person verlangt.",
+            unclear: "Unklar, ob eine Zuweisung gewünscht ist.",
+          },
+        },
+        schedule: {
+          text: "Wird in originalRequest ein Termin für einen Vorgang gesetzt oder geändert? Auch ein Terminauftrag ohne Datum zählt; geleistete Arbeitszeit ist kein Termin.",
+          options: {
+            yes: "Einen Termin planen, setzen oder ändern.",
+            no: "Keine Terminplanung verlangt.",
+            unclear: "Unklar, ob ein Termin gewünscht ist.",
+          },
+        },
+        time: {
+          text: "Soll laut originalRequest Arbeitszeit eingetragen werden? Das gilt auch für einen Entwurf ohne Speichern und für einen Auftrag ohne Minutenzahl. Termindauer zählt nicht als Arbeitszeit.",
+          options: {
+            yes: "Arbeitszeit oder Arbeitsminuten eintragen, auch als Entwurf.",
+            no: "Keine geleistete Arbeitszeit erfassen.",
+            unclear: "Unklar, ob Arbeitszeit erfasst werden soll.",
+          },
+        },
+        complete: {
+          text: "Wird in originalRequest verlangt, einen Vorgang abzuschließen oder als erledigt zu markieren? Fehlende Voraussetzungen ändern diese Absicht nicht.",
+          options: {
+            yes: "Vorgang abschließen oder erledigen.",
+            no: "Kein Abschluss eines Vorgangs verlangt.",
+            unclear: "Unklar, ob ein Abschluss gewünscht ist.",
+          },
+        },
+        case: {
+          text: "Welcher einzelne Vorgang aus references.cases ist durch originalRequest eindeutig identifiziert? Stimmen mehrere Referenzen mit der Bezeichnung überein oder fehlt die Bezeichnung, wähle unclear.",
+          options: {
+            unclear: "Fehlend oder mehrdeutig",
+            ...Object.fromEntries(
+              workspace.cases.map((c) => [
+                c.id,
+                `${c.id} ${c.title} · ${c.site}`,
+              ]),
+            ),
+          },
+        },
+        technician: {
+          text: "Welche Person aus references.technicians ist in originalRequest ausdrücklich als Ziel der Zuweisung genannt?",
+          options: {
+            unclear: "Fehlend oder mehrdeutig",
+            ...Object.fromEntries(
+              workspace.technicians.map((t) => [t.id, t.name]),
+            ),
+          },
+        },
+        customer: {
+          text: "Welcher Kunde aus references.customers ist in originalRequest zum Filtern genannt?",
+          options: {
+            unclear: "Fehlend oder mehrdeutig",
+            ...Object.fromEntries(
+              workspace.customers.map((c) => [c.id, c.name]),
+            ),
+          },
+        },
+        workMinutes: {
+          text: "Welche in originalRequest wörtlich genannte Minutenzahl ist ausschließlich als geleistete Arbeitszeit bestimmt?",
+          options: {
+            unclear: "Fehlend oder mehrdeutig",
+            ...Object.fromEntries(
+              minuteValues.map((n) => [
+                String(n),
+                `${n} Minuten aus Originalauftrag`,
+              ]),
+            ),
+          },
+        },
+        appointmentMinutes: {
+          text: "Welche in originalRequest wörtlich genannte Minutenzahl ist ausschließlich als geplante Termindauer bestimmt?",
+          options: {
+            unclear: "Fehlend oder mehrdeutig",
+            ...Object.fromEntries(
+              minuteValues.map((n) => [
+                String(n),
+                `${n} Minuten aus Originalauftrag`,
+              ]),
+            ),
+          },
+        },
+        slot: {
+          text: "Welcher in originalRequest wörtlich genannte Zeitpunkt ist der gewünschte Termin?",
+          options: {
+            unclear: "Fehlend oder mehrdeutig",
+            ...Object.fromEntries(slots.map((s) => [s, s])),
+          },
+        },
+        order: {
+          text: "Fordert originalRequest ausdrücklich eine andere Reihenfolge als Filtern, Zuweisen, Termin, Arbeitszeit, Abschluss?",
+          options: {
+            yes: "Ja, zuerst abschließen dann Zeit erfassen",
+            no: "Keine feste Reihenfolge oder dieselbe Reihenfolge wie Filtern, Zuweisen, Termin, Arbeitszeit, Abschluss",
+            unclear: "Andere ausdrückliche Reihenfolge oder unklar",
+          },
+        },
+      };
+      const kinds = ["filter", "assign", "schedule", "time", "complete"];
+      const classificationKeys = ["capability", "cardinality", ...kinds];
+      const classification = await ask(
+        JSON.stringify({ originalRequest: request }),
+        Object.fromEntries(
+          Object.entries(questions).filter(([key]) =>
+            classificationKeys.includes(key),
+          ),
+        ),
+        signal,
+      );
+      const requested = kinds.filter(
+        (key) => selected(classification[key]) === "yes",
+      );
+      if (
+        selected(classification["capability"]) !== "yes" ||
+        selected(classification["cardinality"]) !== "yes" ||
+        requested.length === 0
+      )
+        return {
+          request,
+          caseId: null,
+          objectives: [],
+          persistence: "unclear",
+          order: "flexible",
+          supported: false,
+        };
+      const slotKeys = new Set<string>();
+      if (requested.some((kind) => kind !== "filter")) {
+        slotKeys.add("case");
+        slotKeys.add("persistence");
+      }
+      if (requested.includes("filter")) {
+        slotKeys.add("customer");
+        slotKeys.add("openOnly");
+      }
+      if (requested.includes("assign")) slotKeys.add("technician");
+      if (requested.includes("schedule")) {
+        slotKeys.add("slot");
+        slotKeys.add("appointmentMinutes");
+      }
+      if (requested.includes("time")) slotKeys.add("workMinutes");
+      if (requested.length > 1) slotKeys.add("order");
+      const slotsAnswers = await ask(
+        JSON.stringify({ ...state, requestedKinds: requested }),
         {
-          supported: {
-            text: "Besteht der vollständige Auftrag ausschließlich aus den unterstützten Zielarten Filtern, Zuweisen, Termin setzen, vorgegebene Minuten erfassen und Abschließen? Beurteile die Zielarten, nicht die aktuelle Ausführbarkeit. Ein angeforderter Abschluss bleibt unterstützt, auch wenn die Anwendung vorher fehlende Arbeitszeit oder Prüfbelege klären muss. Unterstützt ist genau ein Zielvorgang und höchstens ein Ziel je Art. Mehrere Vorgänge, wiederholte unterschiedliche Zuweisungen oder zusätzliche/verbotene Änderungen machen den GESAMTEN Auftrag nicht unterstützt. Dann no wählen; bei fehlender Klarheit unclear.",
+          ...Object.fromEntries(
+            Object.entries(questions).filter(([key]) => slotKeys.has(key)),
+          ),
+          coverage: {
+            text: "Decken requestedKinds alle in originalRequest gewünschten Zielarten vollständig ab? filter bedeutet Vorgänge filtern/anzeigen, assign eine Person zuweisen, schedule einen Termin setzen, time Arbeitszeit erfassen, complete einen Vorgang abschließen. Speichern/Entwurf sind Ausführungsweisen, keine eigene Zielart. Fehlende Zielwerte sind erlaubt. Jede im Auftrag gewünschte Zielart muss enthalten sein; keine zusätzliche Zielart darf enthalten sein.",
             options: {
-              yes: "Alle Teilaufträge gehören zu den unterstützten Zielarten",
-              no: "Mindestens ein Teilauftrag überschreitet den unterstützten Umfang",
-              unclear: "Umfang des vollständigen Auftrags unklar",
-            },
-          },
-          persistence: {
-            text: "Soll die gewünschte Änderung gespeichert oder nur als Entwurf eingetragen werden? Ein direkter Änderungsauftrag wie weise zu, erfasse oder schließe ab bedeutet save, auch ohne das Wort speichern. Ein ausdrückliches Nicht-speichern oder nur als Entwurf bedeutet draft und hat Vorrang. Bei widersprüchlicher oder unklarer Änderungsabsicht unclear wählen. Fehlende Ausführungsvoraussetzungen ändern diese Speicherabsicht nicht.",
-            options: {
-              save: "Änderung verbindlich speichern",
-              draft: "Nur Entwurf, nicht speichern",
-              unclear: "Unklar",
-            },
-          },
-          openOnly: {
-            text: "Fordert der Auftrag ausdrücklich nur offene Vorgänge?",
-            options: yesNo,
-          },
-          filter: { text: "Vorgänge nach Kunde anzeigen?", options: yesNo },
-          assign: { text: "Eine Person zuweisen?", options: yesNo },
-          schedule: { text: "Einen Termin setzen?", options: yesNo },
-          time: { text: "Arbeitsminuten erfassen?", options: yesNo },
-          complete: { text: "Vorgang abschließen?", options: yesNo },
-          case: {
-            text: "Welcher einzelne Vorgang ist eindeutig gemeint?",
-            options: {
-              unclear: "Fehlend oder mehrdeutig",
-              ...Object.fromEntries(
-                workspace.cases.map((c) => [c.id, `${c.id} ${c.title}`]),
-              ),
-            },
-          },
-          technician: {
-            text: "Welche Person ist ausdrücklich als Ziel genannt?",
-            options: {
-              unclear: "Fehlend oder mehrdeutig",
-              ...Object.fromEntries(
-                workspace.technicians.map((t) => [t.id, t.name]),
-              ),
-            },
-          },
-          customer: {
-            text: "Welcher Kunde ist zum Filtern genannt?",
-            options: {
-              unclear: "Fehlend oder mehrdeutig",
-              ...Object.fromEntries(
-                workspace.customers.map((c) => [c.id, c.name]),
-              ),
-            },
-          },
-          workMinutes: {
-            text: "Welche wörtlich genannte Minutenzahl ist ausschließlich als geleistete Arbeitszeit bestimmt?",
-            options: {
-              unclear: "Fehlend oder mehrdeutig",
-              ...Object.fromEntries(
-                minuteValues.map((n) => [
-                  String(n),
-                  `${n} Minuten aus Originalauftrag`,
-                ]),
-              ),
-            },
-          },
-          appointmentMinutes: {
-            text: "Welche wörtlich genannte Minutenzahl ist ausschließlich als geplante Termindauer bestimmt?",
-            options: {
-              unclear: "Fehlend oder mehrdeutig",
-              ...Object.fromEntries(
-                minuteValues.map((n) => [
-                  String(n),
-                  `${n} Minuten aus Originalauftrag`,
-                ]),
-              ),
-            },
-          },
-          slot: {
-            text: "Welcher wörtlich genannte Zeitpunkt ist der gewünschte Termin?",
-            options: {
-              unclear: "Fehlend oder mehrdeutig",
-              ...Object.fromEntries(slots.map((s) => [s, s])),
-            },
-          },
-          order: {
-            text: "Fordert der Auftrag ausdrücklich den Abschluss VOR dem Erfassen der Arbeitszeit?",
-            options: {
-              yes: "Ja, zuerst abschließen dann Zeit erfassen",
-              no: "Nein, keine solche feste Reihenfolge",
-              unclear: "Andere ausdrückliche Reihenfolge oder unklar",
+              complete:
+                "Die ausgewählten Zielarten stimmen vollständig mit dem gesamten Auftrag überein.",
+              mismatch:
+                "Mindestens eine gewünschte Zielart fehlt oder eine nicht gewünschte Zielart ist enthalten.",
+              unclear: "Die vollständige Übereinstimmung ist unklar.",
             },
           },
         },
         signal,
       );
+      const answers = { ...classification, ...slotsAnswers };
       const objectives: Objective[] = [];
-      const selected = (key: string) =>
-        answers[key] && answers[key] !== "unclear" ? answers[key] : null;
-      if (answers["filter"] === "yes")
+      const value = (key: string) => selected(answers[key]);
+      if (value("filter") === "yes")
         objectives.push({
           kind: "filter",
-          customerId: selected("customer"),
-          openOnly: answers["openOnly"] === "yes",
+          customerId: value("customer"),
+          openOnly: value("openOnly") === "yes",
         });
-      if (answers["assign"] === "yes")
+      if (value("assign") === "yes")
         objectives.push({
           kind: "assign",
-          technicianId: selected("technician"),
+          technicianId: value("technician"),
         });
-      const slot = selected("slot"),
-        appointmentMinutes = selected("appointmentMinutes");
-      if (answers["schedule"] === "yes")
+      const slot = value("slot"),
+        appointmentMinutes = value("appointmentMinutes");
+      if (value("schedule") === "yes")
         objectives.push({
           kind: "schedule",
           appointment:
@@ -271,35 +383,32 @@ export function createJev(config: Config, fetch?: Fetch) {
               ? { start: slot, minutes: Number(appointmentMinutes) }
               : null,
         });
-      if (answers["order"] === "yes" && answers["complete"] === "yes")
+      if (value("order") === "yes" && value("complete") === "yes")
         objectives.push({ kind: "complete" });
-      if (answers["time"] === "yes")
+      if (value("time") === "yes")
         objectives.push({
           kind: "time",
-          minutes: selected("workMinutes")
-            ? Number(selected("workMinutes"))
-            : null,
+          minutes: value("workMinutes") ? Number(value("workMinutes")) : null,
         });
-      if (answers["complete"] === "yes" && answers["order"] !== "yes")
+      if (value("complete") === "yes" && value("order") !== "yes")
         objectives.push({ kind: "complete" });
       return {
         request,
-        caseId: selected("case"),
+        caseId: objectives.some((objective) => objective.kind !== "filter")
+          ? value("case")
+          : null,
         objectives,
         persistence:
-          answers["persistence"] === "save"
+          value("persistence") === "save"
             ? "save"
-            : answers["persistence"] === "draft"
+            : value("persistence") === "draft"
               ? "draft"
               : "unclear",
-        order: answers["order"] === "yes" ? "listed" : "flexible",
+        order: value("order") === "yes" ? "listed" : "flexible",
         supported:
-          answers["supported"] === "yes" &&
-          !(answers["filter"] === "yes" && answers["openOnly"] === "unclear") &&
-          answers["order"] !== "unclear" &&
-          !["filter", "assign", "schedule", "time", "complete"].some(
-            (key) => answers[key] === "unclear",
-          ) &&
+          !(value("filter") === "yes" && value("openOnly") === null) &&
+          (objectives.length < 2 || value("order") !== null) &&
+          value("coverage") === "complete" &&
           objectives.length > 0,
       };
     },
@@ -336,10 +445,7 @@ export function createJev(config: Config, fetch?: Fetch) {
       );
       return {
         snapshotId: input.snapshotId,
-        actionId:
-          answer["next"] && answer["next"] !== "unclear"
-            ? answer["next"]
-            : null,
+        actionId: selected(answer["next"]),
       };
     },
   };
