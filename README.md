@@ -32,3 +32,5 @@ npm start
 `npm test` prüft den echten HTTP-Transport sowie das SDK mit lokal simulierten Provider-Antworten. Es sendet keine Anfrage an TypeSafe. Ein erfolgreicher echter Live-Aufruf wurde nicht geprüft.
 
 Der öffentliche Vertrag liegt in `shared/contract.ts`, das SDK ausschließlich in `server/evaluator.ts`. Die Angular-Komponente nutzt `api.evaluate({ text })` über einen injizierten Client. Der angezeigte Score darf Nachkommastellen haben. Noul besitzt keinen Confidence-Wert; Confidence ist keine gemessene Genauigkeit.
+
+[Architektur und Bibliotheksvergleich](docs/architecture.md) erläutern die Auswahl. [Mögliche Anwendungen](docs/use-cases.md) beschreiben Incident-Triage, Quellenprüfung und Katalogabgleich als nächsten Ausbau.
