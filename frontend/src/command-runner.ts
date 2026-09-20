@@ -63,15 +63,10 @@ export class CommandRunner {
   readonly targetCase = computed(() =>
     this.ui.data()?.cases.find((c) => c.id === this.goal()?.caseId),
   );
+  private readonly evidenceCaseId = signal<string | null>(null);
   readonly evidenceGuidance = computed(() => {
-    const goal = this.goal();
-    const selected = this.ui.selected();
-    return (
-      selected?.id === goal?.caseId &&
-      selected?.requiresInspection &&
-      goal?.objectives.some((o) => o.kind === "complete") &&
-      !["idle", "done", "stopped"].includes(this.state().kind)
-    );
+    const caseId = this.evidenceCaseId();
+    return caseId !== null && this.ui.selectedId() === caseId;
   });
   readonly goal = signal<Goal | null>(null);
   readonly command = signal("");
@@ -123,6 +118,11 @@ export class CommandRunner {
   private requestAttention(
     state: Extract<RunState, { kind: "needs_input" | "needs_approval" }>,
   ) {
+    this.evidenceCaseId.set(
+      state.kind === "needs_input" && state.question.kind === "evidence"
+        ? (this.goal()?.caseId ?? null)
+        : null,
+    );
     this.state.set(state);
     this.attention.update((value) => value + 1);
   }
@@ -190,12 +190,14 @@ export class CommandRunner {
     }
   }
   stop() {
+    this.evidenceCaseId.set(null);
     this.invalidate();
     this.approved.set(null);
     this.state.set({ kind: "stopped" });
     this.finish("Gestoppt");
   }
   async start(reuse = false) {
+    this.evidenceCaseId.set(null);
     this.invalidate();
     if (this.ui.dirty() || this.ui.unknownSave()) {
       this.requestAttention({
@@ -540,6 +542,7 @@ export class CommandRunner {
       if (epoch !== this.epoch) return;
       const target = contextAction ?? this.nextAction(goal, desired);
       if (!target) {
+        this.evidenceCaseId.set(null);
         this.state.set({ kind: "done" });
         this.finish(this.label());
         return;

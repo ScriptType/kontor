@@ -508,3 +508,94 @@ test("foreign draft stays intact and can be reached from reports", async ({
   ).toHaveValue("19");
   expect(workspace.snapshot().revision).toBe(0);
 });
+
+test("existing proof with missing work time does not offer an evidence handoff", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const selected = workspace.snapshot().cases.find((c) => c.id === "V-1039");
+  if (!selected) throw new Error("Missing seed case");
+  workspace.save({
+    operationId: crypto.randomUUID(),
+    revision: 0,
+    caseId: selected.id,
+    actor: "manual",
+    draft: {
+      technicianId: selected.technicianId,
+      minutes: 0,
+      appointment: selected.appointment,
+      inspection: {
+        note: "Prüfbeobachtung für den isolierten Test dokumentiert.",
+        by: "user",
+      },
+      status: "open",
+    },
+  });
+  await page.goto(address);
+  await command(page, demos[6]);
+  await expect(
+    page.getByRole("spinbutton", { name: "Tatsächlich geleistete Minuten" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.locator(".editor")).toContainText("V-1039");
+  await expect(
+    page.locator(".editor button").filter({ hasText: "Auftrag fortsetzen" }),
+  ).toHaveCount(0);
+  await expect(page.locator(".editor .notice")).toHaveCount(0);
+  expect(workspace.snapshot().revision).toBe(1);
+});
+
+test("evidence handoff survives manual saving and ends at the next question", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const selected = workspace.snapshot().cases.find((c) => c.id === "V-1039");
+  if (!selected) throw new Error("Missing seed case");
+  workspace.save({
+    operationId: crypto.randomUUID(),
+    revision: 0,
+    caseId: selected.id,
+    actor: "manual",
+    draft: {
+      technicianId: selected.technicianId,
+      minutes: 0,
+      appointment: selected.appointment,
+      inspection: null,
+      status: "open",
+    },
+  });
+  await page.goto(address);
+  await command(page, demos[6]);
+  await page
+    .getByRole("button", { name: "Prüfbeleg erfassen", exact: true })
+    .click();
+  await page
+    .getByLabel("Tatsächlicher Prüfbeleg")
+    .fill("Prüfbeobachtung für den isolierten Test dokumentiert.");
+  await page
+    .getByRole("button", { name: "Eigenen Prüfbeleg in Entwurf übernehmen" })
+    .click();
+  await expect(page.locator(".editor .notice")).toHaveCount(1);
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Auftrag fortsetzen", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Auftrag fortsetzen", exact: true })
+    .click();
+  await expect(
+    page.getByRole("spinbutton", { name: "Tatsächlich geleistete Minuten" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.locator(".editor .notice")).toHaveCount(0);
+  await expect(
+    page.locator(".editor button").filter({ hasText: "Auftrag fortsetzen" }),
+  ).toHaveCount(0);
+  expect(
+    workspace.snapshot().cases.find((c) => c.id === "V-1039"),
+  ).toMatchObject({ status: "open", minutes: 0, inspection: { by: "user" } });
+});
