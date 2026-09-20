@@ -2,34 +2,38 @@
 
 ## KI-001: Sporadischer Fehler beim Fortsetzen nach einer Dialogpause
 
-Status: nicht reproduziert, Ursache offen.
+Status: historische Beobachtung, Ursache nicht nachgewiesen.
 
-Der Browser-Test `opening palette while own draft awaits Save pauses, closes, decides fresh and saves once` meldete einmal `PROVIDER_INVALID_RESPONSE` nach Escape. Der Test verwendet einen lokal simulierten TypeSafe-Transport. Die Anwendung pausierte. Es gab keinen Nachweis einer unzulässigen Speicherung.
+Ein Browser-Test des früheren festen Auftragsplaners meldete einmal `PROVIDER_INVALID_RESPONSE` nach Escape. Er verwendete einen lokal simulierten TypeSafe-Transport. Die Anwendung pausierte. Es gab keinen Nachweis einer unzulässigen Speicherung. Der vollständige Folgelauf und 13 gezielte Wiederholungen bestanden.
 
-Anschließend bestanden der vollständige Browserlauf und 13 gezielte Wiederholungen dieses Falls. Eine vorübergehende Diagnose prüfte, ob die gewählte Aktion in den angebotenen Optionen fehlte. Sie lieferte keinen entsprechenden Befund. Daraus folgt weder ein bestätigter Anwendungsfehler noch ein bestätigter Fehler der Testsimulation.
+Der dynamische Entscheidungszyklus ersetzt inzwischen diesen Planer. Das erklärt die frühere Beobachtung nicht. Bei erneutem Auftreten müssen die erhaltene Provider-Antwort, die Optionen derselben Anfrage und der Playwright-Trace erhalten bleiben. Weitere erfolgreiche Wiederholungen allein klären die Ursache nicht.
 
-Bei erneutem Auftreten müssen die erhaltene Provider-Antwort, die Optionen derselben Anfrage und der Playwright-Trace erhalten bleiben. Ein weiterer erfolgreicher Wiederholungslauf klärt die Ursache nicht.
+## KI-002: Modellunsicherheit und mehrteilige Aufträge
 
-## KI-002: Unterschiedliche Bewertungen klarer Aufträge durch Live-Jev
+Status: im Live-Lauf vom 20. September 2026 mit `jev-1.13.0` beobachtet.
 
-Status: Integrationsfehler korrigiert, Sprachvariabilität weiterhin beobachtet.
+Jev kann einen passenden nächsten Schritt auswählen und zugleich eine niedrige Confidence liefern. Die Anwendung zeigt eine konkrete Auswahl zur Bestätigung. Eine bestätigte Bedienhandlung ist im Live-Bericht von einer automatisch ausgeführten Handlung zu unterscheiden.
 
-Der ursprüngliche Auftrag "Filter nach nordwerk" wird jetzt korrekt ausgeführt. Die Erkennung trennt Aufgabenarten, Werte und vollständige Abdeckung. Unsichere Bewertungen irrelevanter Aufgabenarten blockieren nicht mehr pauschal den Auftrag. Reine Filter benötigen weder einen Vorgang noch eine Speicherabsicht. Auch "35 geleistete Minuten" liefert jetzt die Zahl als Kandidaten an Jev.
+Der Ablauf wiederholt den vollständigen ursprünglichen Auftrag und die beobachteten Ergebnisse nach jedem Schritt. Trotzdem kann Jev einen Teilauftrag übersehen, zu früh einen Abschluss vorschlagen oder keinen sinnvollen nächsten Schritt erkennen. Die gesonderte Abschlussbewertung und Speicherbelege reduzieren verschiedene Fehlerarten. Sie beweisen kein allgemeines Verständnis beliebiger Anweisungen.
 
-Wenn Jev den vollständigen Auftrag inhaltlich bejaht, aber zu unsicher bewertet, zeigt die Palette den konkreten Plan zur Bestätigung. Fehlende Angaben werden vorher erfragt. Vor dieser Bestätigung sind keine UI-Aktionen oder Datenänderungen erlaubt. Negative oder unklare Umfangsentscheidungen bleiben abgelehnt. Die Confidence-Schwelle für die Auswahl konkreter Bedienelemente bleibt bei 0,75.
+Im vollständigen Lauf bestanden sieben von 18 Szenarien ihre Erwartungen nicht. Neben Bestätigungspausen gab es zwei semantische Fehler. Bei einer wiederholten Zuweisung öffnete Jev nach der ersten korrekten Speicherung einen anderen Vorgang. Die folgende Änderung blieb zur Bestätigung stehen. Bei „Zuerst V-1042 abschließen, dann 45 Minuten Arbeitszeit erfassen“ änderte es die Minuten bereits im Entwurf. Auch die gesonderte Bewertung erkannte diese Verletzung der Reihenfolge nicht. Der Lauf pausierte erst vor dem Abschluss; die Datenbank blieb unverändert.
 
-Am 20. September 2026 bestand der abschließende integrierte Lauf auf `4f67dd0` alle 18 Szenarien mit `jev-1.13.0` und 62 Anbieteraufrufen. Acht Szenarien erreichten das erwartete Filter-, Entwurfs- oder Speicherergebnis. Zwei davon erforderten die Auftragsbestätigung. Ein Terminkonflikt benötigte zusätzlich die ausdrückliche Wahl der vorgeschlagenen Person. Sieben Szenarien stellten die erwartete Rückfrage, drei lehnten nicht unterstützte Aufträge ab. Der lokale Bericht liegt unter `live-results/2026-09-20T18-45-52.185Z/report.json`.
+Diese Fehler werden nicht durch feste Sonderfälle für die beiden Texte umgangen. Die Testfälle bleiben im Live-Lauf. Die dynamische Architektur erlaubt freie Kombinationen, garantiert aber weder die richtige Zielauswahl noch die Einhaltung beliebiger sprachlicher Reihenfolgen.
 
-Ein früherer vollständiger Lauf bestand 14 von 18 Szenarien. Er enthielt einen Fehler im Browser-Test beim Ablesen der Ausgangsseite und echte Fehlbewertungen des Modells. Die Kombination aus 45 Minuten Arbeitszeit und 60 Minuten Termindauer wurde einmal korrekt zur Bestätigung vorgelegt und später als nicht unterstützt bewertet. Der abschließende Erfolg hebt diese Beobachtung nicht auf. Der Live-Test bleibt deshalb eine wiederholbare Messung mit festen Ergebniserwartungen.
+Die [Live-Szenarien](jev-live.md) prüfen daher Oberfläche, genaue Datenänderungen und ausbleibende Nebenwirkungen unabhängig von der Modellantwort. Ein grüner Lauf gilt nur für die enthaltenen Formulierungen und das gemeldete Modell. Bestätigungen, Blockaden und nicht ausgeführte Fälle zählen nicht als autonome Erledigung.
 
-Eine zusätzliche Prüfung verwendete den ursprünglichen Filter und drei neue Formulierungen. Sie prüfte den Hafen-Filter aus den Berichten, eine ungespeicherte Zuweisung bei 390 Pixeln Bildschirmbreite und die Speicherung von 35 geleisteten Minuten. Der Minutenfall bestand nach der Korrektur seiner Kandidatenerkennung. Die Prüfung verglich jeweils den gesamten gespeicherten Datenstand mit dem erwarteten Ergebnis.
+## KI-003: Frühere Begrenzung auf einen Vorgang und eine Zuweisung
 
-## KI-003: Konservative Grenze bei mehreren Personennamen
+Status: die feste Einschränkung ist entfernt.
 
-Status: bekannte Einschränkung der Auftragserkennung.
+Der frühere Planer erlaubte einen Zielvorgang und einen Zielwert je Eigenschaft. Eine zusätzliche Namensprüfung lehnte Texte mit mehreren bekannten vollständigen Personennamen ab. Dadurch waren auch sinnvolle Vergleiche und wiederholte Zuweisungen ausgeschlossen.
 
-Jev bewertete eine wiederholte Zuweisung an zwei Personen fälschlich als Einzelauftrag. Deshalb lehnt die Anwendung einen Auftrag mit mehr als einem bekannten vollständigen Personennamen bereits vor der Planung ab. Sie bietet keine Bestätigung eines verkürzten Teilauftrags an.
+Der dynamische Ablauf verwendet keine solche Prüfung. Jev kann mehrere sichtbare Vorgänge und aufeinanderfolgende Änderungen wählen. Die Prüfung einer wiederholten Zuweisung muss beide Speicherbelege untersuchen. Der letzte Datenstand allein erkennt nicht, ob der erste beauftragte Zwischenstand jemals gespeichert wurde.
 
-Diese Grenze betrifft auch Vergleichsformulierungen wie "Lea Sommer statt Jonas Weber". Verwende zunächst einen Auftrag mit genau einer Zielperson, etwa "Weise V-1042 Lea Sommer zu." Die Grenze erkennt vollständige Namen aus dem Arbeitsbereich. Sie ist kein allgemeiner Nachweis, dass jede sprachliche Mehrdeutigkeit erkannt wird.
+## KI-004: Grenzen der Werte und der verfügbaren Bedienhandlungen
 
-[Live-Szenarien ausführen und auswerten](jev-live.md) beschreibt die Befehle, die isolierten Testdaten und die Auswertung fehlgeschlagener oder unvollständiger Läufe.
+Status: beabsichtigte Grenzen mit offenem Ausbau.
+
+Jev erzeugt keine freien Werte. Passende Literale müssen im Auftrag, in vorhandenen Daten oder in einer ausdrücklichen Antwort enthalten sein. Relative Daten, komplexe Umschreibungen und nicht registrierte Komponenten können deshalb eine Rückfrage oder einen Abbruch benötigen.
+
+Der [Aktionskatalog](action-catalog.md) enthält Ausbauziele. Er ist keine Liste bereits ausführbarer Funktionen. Ein nicht vorhandener E-Mail-Versand bleibt beispielsweise unerfüllbar. Schon gespeicherte, ausdrücklich beauftragte Änderungen bleiben bei einer späteren Blockade erhalten.

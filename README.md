@@ -39,7 +39,7 @@ npm start
 
 `npm run test:live` prüft deutsche Aufträge im Browser mit echten Jev-Antworten. Der Lauf benötigt den API-Key aus `.env` und verwendet für jedes Szenario frische Beispieldaten in einer eigenen Datenbank im Arbeitsspeicher. Er prüft sichtbare Filter, Rückfragen und Formulare sowie die tatsächlich gespeicherten Änderungen. Die lokale `kontor.sqlite` wird dabei nicht verwendet. Die Aufrufe können Kosten verursachen. [Live-Szenarien und Auswertung](docs/jev-live.md) beschreibt Aufruf, Ergebnisse und Grenzen.
 
-[Offene Prüfungen](docs/known-issues.md) dokumentiert einen einmalig beobachteten Fehler der simulierten Jev-Antwort beim Fortsetzen nach einer Pause sowie die gemessene Live-Variabilität und die konservative Grenze bei mehreren Personennamen.
+[Offene Prüfungen](docs/known-issues.md) dokumentiert beobachtete Modellfehler und die Grenzen der Live-Messungen.
 
 ## Aufträge ausführen
 
@@ -47,13 +47,15 @@ npm start
 
 Das Öffnen des Auftragsfensters pausiert die Bedienung. Escape schließt das Fenster und behält den Eingabeentwurf. Eine offene Rückfrage bleibt unbeantwortet. Stoppen verhindert weitere Schritte und macht gespeicherte Änderungen nicht rückgängig.
 
-Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Bei einem eindeutig bekannten Vorgang zeigt die Anwendung zuvor den passenden Kontext, soweit kein offener Entwurf oder widersprüchlicher Filter das verhindert. Escape schließt die aktuelle Rückfrage, ohne sie sofort erneut zu öffnen. Über **Antworten** erreichst du sie wieder.
+Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Jev kann zuvor über sichtbare Bedienelemente zum betroffenen Vorgang navigieren. Escape schließt die aktuelle Rückfrage, ohne sie sofort erneut zu öffnen. Über **Antworten** erreichst du sie wieder.
 
 Bei einem fehlenden Prüfbeleg führt **Prüfbeleg erfassen** direkt zum Feld im betroffenen Vorgang. Trage deine tatsächliche Beobachtung ein, übernimm sie in den Entwurf und speichere. Mit **Auftrag fortsetzen** prüft Jev anschließend den ursprünglichen Abschlussauftrag erneut.
 
 Mit **Demodaten zurücksetzen** unten im Arbeitsbereich stellst du die ursprünglichen Beispieldaten wieder her. Die Bestätigung verwirft gespeicherte Änderungen sowie Entwürfe, Filter und den Jev-Verlauf im aktuellen Tab. Ein laufender Auftrag wird beendet. API-Schlüssel und Betriebsmodus bleiben erhalten, sodass der Reset auch im Live-Modus funktioniert.
 
-Zusätzliche fachliche Änderungen, etwa ein Personenwechsel zum Beheben eines Terminkonflikts, erscheinen als konkreter Vorschlag. Eine fehlende Prüfung vor Ort lässt sich nicht durch Jev bestätigen. Werte stammen aus dem Auftrag oder vorhandenen Daten.
+Nach jeder Bedienhandlung wählt Jev erneut aus den aktuell zugänglichen Aktionen. Der ursprüngliche Auftrag und die beobachteten Schritte bleiben erhalten. Unsichere Schritte erscheinen konkret zur Bestätigung. Ausdrücklich beauftragte Änderungen werden schrittweise gespeichert. Eine spätere Blockade lässt diese Speicherungen bestehen und wird mit dem erreichten Stand angezeigt.
+
+Zusätzliche fachliche Änderungen, etwa ein Personenwechsel zum Beheben eines Terminkonflikts, benötigen eine konkrete Freigabe. Eine fehlende Prüfung vor Ort lässt sich nicht durch Jev bestätigen. Werte stammen aus dem Auftrag oder vorhandenen Daten.
 
 ## Entwicklung
 
@@ -61,4 +63,4 @@ Der öffentliche Vertrag liegt in `shared/contract.ts`. Die TypeSafe-Anbindung l
 
 Nach einem Verbindungsabbruch öffnet der nächste Aufruf einen neuen Socket. Laufende Auswertungen werden nicht automatisch wiederholt. Ein Abbruch nach dem Senden kann bedeuten, dass TypeSafe den Text bereits verarbeitet hat.
 
-[Architektur](docs/architecture.md) beschreibt die Zuständigkeiten und den Transport. [Anwendungsfälle](docs/use-cases.md) enthält ausführbare Beispiele. [Designsystem](docs/design-system.md) beschreibt die gemeinsame Gestaltung und Bedienung. Der [Aktionskatalog](docs/action-catalog.md) hält 120 geplante Fachaktionen und weitere Stresstestfälle fest.
+[Architektur](docs/architecture.md) beschreibt die Zuständigkeiten und den Transport. [Anwendungsfälle](docs/use-cases.md) enthält Auftragsbeispiele mit erwarteten Ergebnissen. [Designsystem](docs/design-system.md) beschreibt die gemeinsame Gestaltung und Bedienung. Der [Aktionskatalog](docs/action-catalog.md) hält 120 geplante Fachaktionen und weitere Stresstestfälle fest.

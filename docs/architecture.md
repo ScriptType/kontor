@@ -78,36 +78,48 @@ Ein Formularentwurf ist kein gespeicherter Vorgang. Jev und menschliche Bedienun
 
 ## Auftrag und sichtbare Aktionen
 
-Ein Auftrag besteht aus dem ursprünglichen Text und unterstützten Teilzielen. Fehlende Werte, Mehrdeutigkeit und widersprüchliche Reihenfolgen erzeugen eine Rückfrage. Eine zusätzlich erforderliche Änderung erhält einen konkreten Vorschlag mit bisherigen und neuen Werten.
+Ein laufender Auftrag enthält den unveränderten Nutzertext, ausdrückliche Antworten, beobachtete Bedienhandlungen und Speicherbelege. Es gibt keinen Katalog erlaubter Auftragskombinationen und keinen vom Anwendungscode vorgegebenen nächsten Schritt.
 
-Die erste Umsetzung unterstützt Filter, Zuweisung, Termin, Arbeitsminuten und Abschluss für jeweils einen Zielvorgang. Der Ablauf berechnet daraus den nächsten zulässigen Schritt und prüft Jevs Auswahl dagegen. Neue Zielarten benötigen entsprechende Fachregeln und Ablaufunterstützung; ihre Registrierung als sichtbarer Button allein reicht nicht aus.
+Der Ablauf wiederholt diese Schritte:
 
-Angular meldet nur aktuell zugängliche Bedienelemente als ausführbare Aktionen. Menüeinträge werden erst nach dem Öffnen angeboten. Nach jeder Änderung der Oberfläche wartet der Ablauf auf das Rendering und erstellt einen neuen Zustand. Fachliche Blockaden bleiben als Information getrennt von ausführbaren Aktionen.
+1. Angular liest den aktuellen Bildschirmzustand und die registrierten, zugänglichen Bedienelemente.
+2. Jev erhält den ursprünglichen Auftrag, die bisherigen Ergebnisse, offene Blockaden und diese Auswahl.
+3. Jev wählt eine Aktion, eine angebotene Rückfrage oder einen Abschluss.
+4. Die Anwendung prüft, ob die Entscheidung noch zum aktuellen Zustand gehört und die konkrete Änderung beauftragt oder bestätigt ist.
+5. Das sichtbare Bedienelement führt dieselbe Bedienhandlung wie bei manueller Eingabe aus. Nach Rendering und ausstehenden Speicherungen beginnt die nächste Entscheidung mit neuen Beobachtungen.
 
-Bei einem ausführbaren Auftrag kann die Navigation zum bekannten Zielvorgang vor einer fachlichen Rückfrage erfolgen. Die Navigation verwendet dieselben registrierten Aktionen und verändert keine Fachdaten. Ein noch zu bestätigender oder abgelehnter Auftrag bedient keine registrierte Aktion. Neue Rückfragen und Freigaben erhalten eine fortlaufende Kennung. Die Palette öffnet sie einmalig. Das Schließen entwertet den ausstehenden Inhalt nicht und löst keine erneute Öffnung aus.
+Menüeinträge sind erst nach dem Öffnen des Menüs ausführbar. Unsichtbare, deaktivierte oder durch einen Dialog gesperrte Elemente gehören nicht zur Auswahl. Fachliche Blockaden bleiben als Informationen verfügbar. Eine Beschreibung einer künftig erreichbaren Seite erteilt keine Ausführungsberechtigung für ihre versteckten Elemente.
 
-Jede Entscheidung gehört zu einem bestimmten Lauf und Bildschirmzustand. Öffnen des Auftragsfensters, manuelle Änderungen und Stoppen machen ausstehende Entscheidungen unbrauchbar. Eine alte Antwort kann deshalb keinen inzwischen anderen Bildschirm bedienen. Ein bereits gestarteter Speichervorgang kann trotzdem abgeschlossen werden. Der Beleg bestimmt dann das tatsächliche Ergebnis.
+Buttons beschreiben ihre konkrete Wirkung. Eingabefelder beschreiben ihren Datentyp, ihren aktuellen Wert und zulässige Wertkandidaten. Werte stammen aus wörtlichen Angaben im Auftrag, vorhandenen Daten oder ausdrücklichen Antworten. Jev wählt einen solchen Kandidaten. Die Registrierung verbindet ihn mit dem sichtbaren Feld und dessen normalem Handler. Es gibt keinen versteckten Zielentwurf, aus dem ein Handler nachträglich seinen Wert liest.
 
-Eine offene Rückfrage bleibt beim Schließen des Auftragsfensters offen. Nach einem Neuladen wird ein unterbrochener Auftrag nicht automatisch fortgesetzt. Vor weiteren Aktionen müssen die gespeicherten Daten und zugänglichen Bedienelemente erneut gelesen werden.
+Ein Lauf ist auf 40 ausgeführte Schritte begrenzt. Ein Zustand enthält höchstens 100 Aktionen und 30 Eingabefelder. Der Browser stoppt vor einer Anfrage über 180.000 Byte. Wiederholungen ohne Fortschritt werden ebenfalls beendet. Diese Grenzen schützen den lokalen Versuch; größere Tabellen benötigen eine passende sichtbare Auswahl oder Paginierung.
+
+Eine neue Komponente registriert ihre Bedienelemente und beschreibt die beobachtbaren Wirkungen. Der Entscheidungszyklus benötigt dafür keine neue Aufgabenart und keine festgelegte Klickfolge. Die Fachfunktion selbst benötigt weiterhin manuelle Bedienung, Validierung und einen prüfbaren Effekt.
+
+Jede Entscheidung gehört zu einem bestimmten Lauf und Bildschirmzustand. Öffnen des Auftragsfensters, manuelle Änderungen, Stoppen und Reset entwerten ausstehende Antworten. Nach einem Neuladen startet kein Auftrag automatisch. Vor der ausdrücklichen Fortsetzung werden Daten und Bedienelemente erneut gelesen.
+
+## Freigaben, Teilfortschritt und Abschluss
+
+Eine unsichere, aber konkrete Aktionsauswahl erscheint zur Bestätigung in der Palette. Sie nennt das Bedienelement und die geplante Wirkung. Die Bestätigung gilt für diesen Schritt im geprüften Zustand. Sie erlaubt keine späteren, andersartigen Änderungen.
+
+Zusätzliche fachliche Änderungen benötigen eine eigene Freigabe, sofern sie nicht schon im ursprünglichen Auftrag enthalten sind. Eine Speicherung beschreibt alle Änderungen des betroffenen Entwurfs. Eine hohe Confidence ersetzt diese Umfangsprüfung nicht. Fehlende menschliche Beobachtungen, etwa ein Prüfbeleg, bleiben eine manuelle Aufgabe.
+
+Ausdrücklich beauftragte Änderungen dürfen schrittweise gespeichert werden. Wird ein späterer Teil blockiert, bleiben bestätigte Speicherungen bestehen. Die Rückfrage zeigt diese Speicherungen direkt mit Vorgang und Revision. Der Verlauf enthält die einzelnen Wirkungen. Stoppen ist kein Zurückrollen. Ein unbekanntes Speicherergebnis wird über die Operations-ID abgeglichen und nicht durch eine neue Mutation wiederholt.
+
+Ein ausdrücklich gewünschter Entwurf kann fertig vorbereitet sein, ohne gespeichert zu werden. Dagegen dürfen ausstehende oder unbekannte Speicherungen nicht als erfolgreich gelten. Speicherbelege und gelesene Werte belegen tatsächliche Änderungen. Ob ein beliebiger mehrteiliger Text vollständig erfüllt ist, bleibt zusätzlich eine Bewertung des Modells. Ein Abschlussvorschlag wird deshalb nochmals gegen den ursprünglichen Auftrag und die beobachteten Ergebnisse geprüft. Diese Prüfung ist kein formaler Nachweis des Sprachverständnisses.
+
+Neue Rückfragen und Freigaben öffnen das Auftragsfenster. Escape schließt es, ohne die Frage zu beantworten. Dieselbe Frage öffnet sich dadurch nicht sofort erneut. Die Palette und der Verlauf zeigen, was ausgeführt wurde und wo eine Entscheidung des Nutzers fehlt.
 
 ## Jev und seine Grenzen
 
-Jev wählt aus vorgegebenen Bedeutungen, Datensätzen, Wertkandidaten und sichtbaren Aktionen. Anwendungscode erkennt wörtliche Zahlen und Datumswerte als Kandidaten. Jev bewertet ihre Zuordnung zum Auftrag. Es erzeugt keine freien Texte oder beliebige Funktionsargumente. Der Browser erhält weder den API-Key noch rohe Fehlerantworten des Anbieters. Eingaben, gespeicherte Daten und Anbieterantworten werden an ihren Schnittstellen mit Zod geprüft.
+Jev liefert geschlossene Entscheidungen über angebotene Optionen. Es erzeugt keine freien Texte, Funktionsargumente oder Belege. Anwendungscode gewinnt wörtliche Zahlen und Datumsangaben als Kandidaten; Jev beurteilt deren Bedeutung im Auftrag. Eingaben, gespeicherte Daten und Anbieterantworten werden an ihren Schnittstellen mit Zod geprüft. Nur das Backend besitzt den API-Key.
 
-Die Auftragserkennung erhält Namen, Kennungen und Standorte zur Zuordnung. Veränderliche Abschlussvoraussetzungen gehören nicht in diese Erkennung. Ein unterstützter Abschlusswunsch bleibt unterstützt, wenn noch ein Prüfbeleg fehlt. Die Anwendung prüft diese Voraussetzung danach. Für die Auswahl des nächsten Bedienelements erhält Jev weiterhin den aktuellen Ausführungszustand.
+Unabhängige Fragen können denselben Aufruf teilen. Eine Frage kann keine andere Antwort desselben Aufrufs lesen. Die Beurteilung einer erst gewählten Änderung benötigt deshalb einen Folgeaufruf mit dieser konkreten Änderung als Eingabe. Navigation und geöffnete Menüs benötigen ebenfalls eine neue Beobachtung. [TypeSafe-Primitiven](https://docs.typesafe.ai/primitives).
 
-Die Erkennung trennt Aufgabenarten von konkreten Werten. Zuerst bewertet Jev den ursprünglichen Auftrag. Danach ordnet es Namen und wörtlich vorhandene Zahlen oder Zeitpunkte den erkannten Aufgaben zu. Eine zusätzliche Prüfung bestätigt, dass die erkannten Aufgaben den vollständigen Auftrag abdecken. Ein unsicher bewerteter Teilauftrag darf dadurch nicht stillschweigend entfallen. Nicht unterstützte Zusatzaufträge und mehrere Zielvorgänge verhindern die Ausführung des gesamten Auftrags.
+[Jev Browser](https://github.com/tontoko/jev-browser/blob/0b516327152f3772bebe275f7cbe3d651d106ed6/src/runner.ts) verwendet ebenfalls eine wiederholte Auswahl aus beobachteten Bedienelementen mit ursprünglichem Auftrag, Verlauf und Speicherprüfungen. Kontor übernimmt dieses Ablaufprinzip mit ausdrücklich registrierten Angular-Elementen. Es übernimmt keinen allgemeinen DOM-Klickagenten und kein Versprechen unbegrenzter Auftragsplanung.
 
-Reine Filter benötigen keinen einzelnen Zielvorgang und keine Speicherabsicht. Fehlende Werte für eine erkannte Änderung bleiben als fehlende Werte im Ziel erhalten, damit die Oberfläche gezielt nach Vorgang, Person, Minuten oder Termin fragen kann.
+Der Demo-Modus verwendet gekennzeichnete, feste Beispiele ohne Anbieterzugriff. Er prüft die Bedienung und ihre Grenzen. Freie Texte werden nur im Live-Modus durch Jev bewertet. Ein fehlgeschlagener Live-Aufruf liefert keinen ersatzweisen Demo-Erfolg.
 
-Ein erkanntes Ziel hat einen ausdrücklichen Zustand für Ausführung, Bestätigung oder Ablehnung. Bestätigt Jev die Zulässigkeit, den Einzelauftrag und die vollständige Abdeckung inhaltlich, aber mit zu geringer Confidence, zeigt die Palette den konkreten Plan zur Bestätigung. Fehlende Werte werden vorher erfragt. Die Zusammenfassung nennt alle erkannten Änderungen und deren Speicherabsicht. Erst die Bestätigung erlaubt die normale Auswahl sichtbarer Aktionen. Ein negativer oder unklarer Umfang sowie eine unvollständige Abdeckung können nicht auf diesem Weg freigegeben werden. Ein Auftrag mit mehr als einem bekannten vollständigen Personennamen wird unabhängig von Jevs gewählten Aufgabenarten abgelehnt. Diese konservative Grenze verhindert verkürzte Zuweisungen, lehnt aber auch Vergleichsformulierungen wie "Lea Sommer statt Jonas Weber" ab.
+Die Tests mit simulierten Antworten prüfen Vertrag, Fachregeln und Lebensdauer des Ablaufs. Der [Live-Testlauf](jev-live.md) prüft echte Modellantworten anhand fester Erwartungen an Oberfläche und Datenbank. Er verrät dem Modell weder den nächsten Schritt noch den erwarteten Endzustand. Confidence ist eine Modellbewertung und keine gemessene Erfolgsquote.
 
-Die Auftragsbestätigung ersetzt keine Fachregel und keine Freigabe einer zusätzlichen Änderung. Nach einem Neuladen benötigt ein unterbrochener, zuvor bestätigter Auftrag erneut eine Bestätigung. Bei einem Terminkonflikt kann der Benutzer eine von der Anwendung geprüfte Alternative auswählen, auch wenn Jev keine Person sicher vorschlägt. Die Auswahl bleibt eine gesonderte Freigabe mit erneuter Revisionsprüfung.
-
-Die Fragen eines Aufrufs bewerten denselben Zustand unabhängig. Eine Frage kann in diesem Aufruf keine vorherige Antwort verwenden. Regeln, die Ergebnisse kombinieren, gehören in den Anwendungscode. Neue Informationen nach einer Navigation erfordern einen neuen Aufruf. [TypeSafe-Einführung](https://docs.typesafe.ai/introduction).
-
-Der Demo-Modus unterstützt ausdrücklich angezeigte Beispielaufträge. Er prüft die Anwendung mit vorgegebenen Entscheidungen und ruft TypeSafe nicht auf. Unbekannte Texte werden nicht durch einen ähnlichen Beispielauftrag ersetzt. Der Live-Modus erfordert eine ausdrückliche Konfiguration und einen API-Key. Ein fehlgeschlagener Live-Aufruf liefert einen Fehler und wechselt nicht zum Demo-Ergebnis.
-
-Confidence ist eine Modellbewertung und keine gemessene Genauigkeit oder Erlaubnis zum Speichern. Die Tests mit simulierten Anbieterantworten prüfen den SDK-Vertrag und den Ablauf. Der separat aufrufbare [Live-Testlauf](jev-live.md) prüft deutsche Formulierungen mit echten Modellantworten, sichtbaren Ergebnissen und gespeicherten Daten. [TypeSafe-Primitiven](https://docs.typesafe.ai/primitives).
-
-Anmeldung, Mehrmandantenbetrieb und automatische Fortsetzung auf einem anderen Gerät gehören nicht zur lokalen Anwendung. [Anwendungsfälle](use-cases.md) beschreiben den ersten Umfang. Der [Aktionskatalog](action-catalog.md) beschreibt den geplanten Ausbau.
+Anmeldung, Mehrmandantenbetrieb und automatische Fortsetzung auf einem anderen Gerät gehören nicht zur lokalen Anwendung. [Anwendungsfälle](use-cases.md) beschreiben den aktuellen Umfang. Der [Aktionskatalog](action-catalog.md) beschreibt den geplanten Ausbau.

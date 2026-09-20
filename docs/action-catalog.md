@@ -78,7 +78,7 @@ Das Schließen einer Rückfrage mit Escape beantwortet sie nicht. Der Lauf bleib
 
 ## Jev-Kontext
 
-Der Kontext enthält den ursprünglichen Auftrag, das strukturierte Ziel, offene Fragen, relevante gespeicherte Fakten, Formularentwürfe, abgeschlossene Schritte und den aktuellen Zustand der Oberfläche. Aktionen und Lösungen haben stabile IDs und verständliche Beschreibungen. IDs allein erklären dem Modell die Bedeutung nicht.
+Der Kontext enthält den unveränderten ursprünglichen Auftrag, ausdrückliche Antworten, offene Fragen, relevante gespeicherte Fakten, Formularentwürfe, abgeschlossene Schritte und den aktuellen Zustand der Oberfläche. Aktionen und Lösungen haben stabile IDs und verständliche Beschreibungen. IDs allein erklären dem Modell die Bedeutung nicht.
 
 Jev wählt aus begrenzten Optionen. Anwendungscode prüft Datumswerte, Verfügbarkeit, Berechtigungen und Voraussetzungen. Unabhängige Fragen können denselben Aufruf teilen. Neue Informationen durch Navigation oder geöffnete Menüs benötigen einen neuen Zustand. Diese Aufteilung folgt den TypeSafe-Mustern für [Function Calling](https://docs.typesafe.ai/cookbooks/function_calling) und [vorab erkannte Wertkandidaten](https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook).
 
