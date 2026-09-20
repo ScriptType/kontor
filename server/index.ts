@@ -1,5 +1,3 @@
-import { serve } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
 import { z } from "zod";
 import { createApp } from "./app.js";
 import { readConfig } from "./config.js";
@@ -12,5 +10,9 @@ const port = z.coerce
   .max(65_535)
   .parse(process.env["PORT"] ?? 3000);
 const app = createApp(config);
-app.use("/*", serveStatic({ root: "./dist/frontend/browser" }));
-serve({ fetch: app.fetch, hostname: "127.0.0.1", port });
+app.server.listen(port, "127.0.0.1");
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void app.close();
+  });
+}

@@ -1,37 +1,52 @@
+import { createServer } from "node:http";
+import { getRequestListener } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { COMMON_ERROR_STATUS_MAP, implement } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/fetch";
+import { RPCHandler } from "@orpc/server/websocket";
+import { WebSocketServer } from "ws";
 import type { Fetch } from "@typesafe-ai/sdk";
-import { contract } from "../shared/contract.js";
 import type { Config } from "./config.js";
-import { createEvaluator } from "./evaluator.js";
+import { createRouter } from "./router.js";
 
 export function createApp(config: Config, fetch?: Fetch) {
-  const evaluate = createEvaluator(config, fetch);
-  const os = implement(contract);
-  const handler = new RPCHandler(
-    os.router({
-      status: os.status.handler(() =>
-        config.mode === "demo"
-          ? { mode: "demo", model: null }
-          : { mode: "live", model: config.model },
-      ),
-      evaluate: os.evaluate.handler(({ input, signal }) =>
-        evaluate(input, signal),
-      ),
-    }),
-    {
-      errorStatusMap: {
-        ...COMMON_ERROR_STATUS_MAP,
-        PROVIDER_UNAVAILABLE: 502,
-        PROVIDER_INVALID_RESPONSE: 502,
-      },
-    },
-  );
-  return new Hono().use("/rpc/*", async (c, next) => {
-    const result = await handler.handle(c.req.raw, { prefix: "/rpc" });
-    if (result.matched)
-      return c.newResponse(result.response.body, result.response);
-    await next();
+  const app = new Hono();
+  app.use("/*", serveStatic({ root: "./dist/frontend/browser" }));
+  const server = createServer(getRequestListener(app.fetch));
+  const sockets = new WebSocketServer({
+    noServer: true,
+    maxPayload: 256 * 1024,
   });
+  const handler = new RPCHandler(createRouter(config, fetch));
+  server.on("upgrade", (request, socket, head) => {
+    const origin = request.headers.origin;
+    if (
+      request.url !== "/rpc" ||
+      (origin !== undefined &&
+        (!URL.canParse(origin) ||
+          new URL(origin).host !== request.headers.host))
+    ) {
+      socket.destroy();
+      return;
+    }
+    sockets.handleUpgrade(request, socket, head, (ws) => {
+      handler.upgrade(ws);
+      sockets.emit("connection", ws, request);
+    });
+  });
+  return {
+    server,
+    sockets,
+    async close() {
+      for (const socket of sockets.clients) {
+        await handler.close(socket);
+        socket.terminate();
+      }
+      await Promise.all([
+        new Promise<void>((resolve) => sockets.close(() => resolve())),
+        new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        ),
+      ]);
+    },
+  };
 }

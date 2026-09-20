@@ -2,11 +2,19 @@ import { LOCALE_ID } from "@angular/core";
 import { registerLocaleData } from "@angular/common";
 import localeDe from "@angular/common/locales/de";
 import { bootstrapApplication } from "@angular/platform-browser";
+import {
+  provideTanStackQuery,
+  QueryClient,
+} from "@tanstack/angular-query-experimental";
+import { withDevtools } from "@tanstack/angular-query-experimental/devtools";
 import { App } from "./app";
 
 registerLocaleData(localeDe);
 bootstrapApplication(App, {
-  providers: [{ provide: LOCALE_ID, useValue: "de" }],
+  providers: [
+    provideTanStackQuery(new QueryClient(), withDevtools()),
+    { provide: LOCALE_ID, useValue: "de" },
+  ],
 }).catch(() => {
   document.body.textContent =
     "Die Anwendung konnte nicht gestartet werden. Bitte neu laden.";

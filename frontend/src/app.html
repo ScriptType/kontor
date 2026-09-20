@@ -3,7 +3,8 @@
     <a href="/" class="brand">TypeSafe <span>Lab</span></a
     ><span class="mode"
       >{{ source()?.mode === 'demo' ? 'Demo · lokal' : source()?.mode === 'live'
-      ? 'Live · TypeSafe' : 'Verbindung wird geprüft' }}</span
+      ? 'Live · TypeSafe' : status.isError() ? 'Server nicht erreichbar' :
+      'Verbindung wird geprüft' }}</span
     >
   </header>
   <section class="intro">
@@ -40,25 +41,25 @@
       <small id="text-hint">{{ text().length | number }} / 20.000 Zeichen</small
       ><button
         type="submit"
-        [disabled]="state().kind === 'loading' || !text().trim()"
+        [disabled]="evaluation.isPending() || !text().trim()"
       >
-        {{ state().kind === 'loading' ? 'Wird angefragt …' : 'Antworten
-        anzeigen' }} <span aria-hidden="true">↗</span>
+        {{ evaluation.isPending() ? 'Wird angefragt …' : 'Antworten anzeigen' }}
+        <span aria-hidden="true">↗</span>
       </button>
     </div>
   </form>
   <section
     aria-live="polite"
     aria-atomic="true"
-    [attr.aria-busy]="state().kind === 'loading'"
+    [attr.aria-busy]="evaluation.isPending()"
   >
-    @let request = state(); @if (request.kind === 'error') {
-    <p class="error" role="alert">{{ request.message }}</p>
-    } @if (request.kind === 'idle') {
+    @if (errorMessage(); as message) {
+    <p class="error" role="alert">{{ message }}</p>
+    } @if (evaluation.isIdle() && !errorMessage()) {
     <p class="empty">Deine Antworten erscheinen hier.</p>
-    } @if (request.kind === 'loading') {
+    } @if (evaluation.isPending()) {
     <p class="empty">Antworten werden geladen …</p>
-    } @if (request.kind === 'success') { @let result = request.result;
+    } @if (evaluation.data(); as result) {
     <div class="result-heading">
       <h2>Antworten</h2>
       <small

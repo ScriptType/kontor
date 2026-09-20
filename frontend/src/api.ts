@@ -1,14 +1,14 @@
-import { InjectionToken } from "@angular/core";
-import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
-import type { RouterContractClient } from "@orpc/contract";
-import type { contract } from "../../shared/contract";
+import { DestroyRef, inject, InjectionToken } from "@angular/core";
+import { createTanstackQueryUtils } from "@orpc/tanstack-query";
+import { createRpcConnection } from "./rpc-connection";
 
-export const API = new InjectionToken<RouterContractClient<typeof contract>>(
-  "API",
-  {
-    providedIn: "root",
-    factory: () =>
-      createORPCClient(new RPCLink({ origin: location.origin, url: "/rpc" })),
+export const ORPC = new InjectionToken("ORPC", {
+  providedIn: "root",
+  factory: () => {
+    const url = new URL("/rpc", location.href);
+    url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const connection = createRpcConnection({ url: url.href });
+    inject(DestroyRef).onDestroy(() => connection.close());
+    return createTanstackQueryUtils(connection.client);
   },
-);
+});

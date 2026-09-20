@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { once } from "node:events";
-import { serve } from "@hono/node-server";
 import { createORPCClient, ORPCError } from "@orpc/client";
-import { RPCLink } from "@orpc/client/fetch";
+import { RPCLink } from "@orpc/client/websocket";
 import type { RouterContractClient } from "@orpc/contract";
+import { WebSocket } from "ws";
+import { createRpcConnection } from "../frontend/src/rpc-connection.js";
 import type { Fetch } from "@typesafe-ai/sdk";
 import { z } from "zod";
 import { contract } from "../shared/contract.js";
@@ -19,28 +20,29 @@ async function withApi(
     invalidInput: (input: unknown) => Promise<unknown>,
   ) => Promise<void>,
 ) {
-  const server = serve({
-    fetch: createApp(config, fetch).fetch,
-    hostname: "127.0.0.1",
-    port: 0,
-  });
-  await once(server, "listening");
-  const address = server.address();
+  const app = createApp(config, fetch);
+  app.server.listen(0, "127.0.0.1");
+  await once(app.server, "listening");
+  const address = app.server.address();
   assert(address && typeof address !== "string");
-  const api: RouterContractClient<typeof contract> = createORPCClient(
-    new RPCLink({ origin: `http://127.0.0.1:${address.port}`, url: "/rpc" }),
-  );
+  const url = `ws://127.0.0.1:${address.port}/rpc`;
+  const connection = createRpcConnection({
+    url,
+    createSocket: (url) => new WebSocket(url),
+  });
+  const invalidSocket = new WebSocket(url);
   const untyped = createORPCClient<{
     evaluate: (input: unknown) => Promise<unknown>;
-  }>(new RPCLink({ origin: `http://127.0.0.1:${address.port}`, url: "/rpc" }));
+  }>(new RPCLink({ connect: () => invalidSocket }));
   try {
-    await run(api, untyped.evaluate);
+    await run(connection.client, untyped.evaluate);
   } finally {
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
+    connection.close();
+    invalidSocket.close();
+    await app.close();
   }
 }
+
 const live: Config = {
   mode: "live",
   apiKey: "secret-test-key",
@@ -86,7 +88,7 @@ test("demo is the default even with a key and never calls upstream", async () =>
     },
   );
 });
-test("input rejects wrong types, blank and overlong text across HTTP", async () => {
+test("input rejects wrong types, blank and overlong text across WebSocket", async () => {
   await withApi(
     { mode: "demo" },
     async () => {
