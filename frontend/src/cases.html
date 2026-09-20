@@ -1,0 +1,285 @@
+<div class="titleline">
+  <div>
+    <p class="eyebrow">SERVICE & BETRIEB</p>
+    <h1>Vorgänge</h1>
+    <p class="muted">
+      Alle Aufträge im Blick. Änderungen werden erst mit Speichern verbindlich.
+    </p>
+  </div>
+  <span class="muted"
+    >{{ ui.filtered().length }} von {{ ui.data()?.cases?.length }}
+    Vorgängen</span
+  >
+</div>
+<div class="toolbar">
+  <input
+    class="search"
+    type="search"
+    aria-label="Vorgänge durchsuchen"
+    placeholder="Vorgänge durchsuchen …"
+    [ngModel]="ui.search()"
+    (ngModelChange)="ui.manual(); ui.search.set($event)"
+  />
+  <div class="menu-wrap">
+    <button
+      [kontorAction]="action('menu:customer', 'Kundenfilter öffnen')"
+      (invoked)="actions.execute('menu:customer', $event)"
+      [attr.aria-expanded]="ui.menu() === 'customer'"
+    >
+      Kunde · {{ ui.customer() === 'all' ? 'Alle' :
+      ui.customerName(ui.customer()) }} ⌄
+    </button>
+    @if (ui.menu() === 'customer') {
+    <div class="popover" aria-label="Kundenfilter">
+      <button
+        [kontorAction]="action('customer:all', 'Alle Kunden anzeigen')"
+        (invoked)="actions.execute('customer:all', $event)"
+      >
+        Alle Kunden
+      </button>
+      @for (c of ui.data()?.customers; track c.id) {
+      <button
+        [kontorAction]="action('customer:' + c.id, c.name + ' anzeigen')"
+        (invoked)="actions.execute('customer:' + c.id, $event)"
+      >
+        {{ c.name }}
+      </button>
+      }
+    </div>
+    }
+  </div>
+  <button
+    [class.active-filter]="ui.openOnly()"
+    [attr.aria-pressed]="ui.openOnly()"
+    [kontorAction]="action('filter:open', ui.openOnly() ? 'Alle Status anzeigen' : 'Nur offene Vorgänge anzeigen')"
+    (invoked)="actions.execute('filter:open', $event)"
+  >
+    Nur offen
+  </button>
+  <button
+    class="text-button"
+    [kontorAction]="action('filter:reset', 'Filter zurücksetzen')"
+    (invoked)="actions.execute('filter:reset', $event)"
+  >
+    Zurücksetzen
+  </button>
+</div>
+<div class="tablebox">
+  <table>
+    <thead>
+      <tr>
+        <th>Kennung</th>
+        <th>Vorgang</th>
+        <th>Kunde</th>
+        <th>Status</th>
+        <th>Priorität</th>
+        <th>Zuständig</th>
+        <th>Arbeitszeit</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of table.getRowModel().rows; track row.id) { @let c =
+      row.original;
+      <tr [class.selected]="ui.selectedId() === c.id">
+        <td class="muted">{{ c.id }}</td>
+        <td>
+          <button
+            class="row-link"
+            [kontorAction]="action('case:' + c.id, c.id + ' öffnen')"
+            (invoked)="actions.execute('case:' + c.id, $event)"
+          >
+            {{ c.title }}</button
+          ><small>{{ c.site }}</small>
+        </td>
+        <td>{{ ui.customerName(c.customerId) }}</td>
+        <td>
+          <span class="status" [class.done]="c.status === 'done'"
+            >{{ c.status === 'done' ? 'Erledigt' : 'In Bearbeitung' }}</span
+          >
+        </td>
+        <td [class.urgent]="c.priority === 'Hoch'">{{ c.priority }}</td>
+        <td>
+          <span class="avatar mini"
+            >{{ ui.technicianName(c.technicianId).slice(0, 1) }}</span
+          >{{ ui.technicianName(c.technicianId) }}
+        </td>
+        <td>{{ c.minutes }} min</td>
+      </tr>
+      } @empty {
+      <tr>
+        <td colspan="7" class="empty">
+          Keine passenden Vorgänge. Filter zurücksetzen, um alle Vorgänge zu
+          sehen.
+        </td>
+      </tr>
+      }
+    </tbody>
+  </table>
+</div>
+@if (ui.selected(); as selected) { @if (ui.draft(); as draft) {
+<section class="editor" aria-label="Vorgang bearbeiten">
+  <header class="editor-head">
+    <div>
+      <p class="eyebrow">
+        {{ selected.id }} · {{ ui.customerName(selected.customerId) }}
+      </p>
+      <h2>{{ selected.title }}</h2>
+      <p class="muted">
+        {{ selected.site }} · Qualifikation {{ selected.skill }}
+      </p>
+    </div>
+    <button aria-label="Vorgang schließen" (click)="ui.closeCase()">✕</button>
+  </header>
+  <div class="editor-grid">
+    <div>
+      <label class="field-label">Zuständig</label>
+      <div class="menu-wrap">
+        <button
+          class="field-control"
+          [kontorAction]="action('menu:technician', 'Zuständigkeit öffnen')"
+          (invoked)="actions.execute('menu:technician', $event)"
+          [attr.aria-expanded]="ui.menu() === 'technician'"
+        >
+          {{ ui.technicianName(draft.technicianId) }} <span>⌄</span>
+        </button>
+        @if (ui.menu() === 'technician') {
+        <div class="popover">
+          @for (t of ui.data()?.technicians; track t.id) {
+          <button
+            [disabled]="!t.skills.includes(selected.skill)"
+            [kontorAction]="action('technician:' + t.id, t.name + ' zuweisen', 'Ändert nur den offenen Entwurf')"
+            (invoked)="actions.execute('technician:' + t.id, $event)"
+          >
+            {{ t.name }} <small>{{ t.skills.join(', ') }}</small>
+          </button>
+          }
+        </div>
+        }
+      </div>
+      <label class="field-label" for="minutes"
+        >Geleistete Arbeitszeit in Minuten</label
+      ><input
+        id="minutes"
+        type="number"
+        min="0"
+        max="10000"
+        [value]="draft.minutes"
+        (input)="number($event)"
+      />
+      @if (runner.desired(); as desired) { @if (desired.minutes !==
+      draft.minutes) {
+      <button
+        class="suggestion"
+        [kontorAction]="action('time:requested', desired.minutes + ' angeforderte Minuten eintragen', 'Nur Entwurf, noch nicht gespeichert')"
+        (invoked)="actions.execute('time:requested', $event)"
+      >
+        {{ desired.minutes }} Minuten aus Auftrag übernehmen
+      </button>
+      } } <label class="field-label" for="appointment">Termin</label>
+      <div class="inline-fields">
+        <input
+          #appointmentDate
+          id="appointment"
+          type="datetime-local"
+          [value]="draft.appointment?.start?.slice(0,16) ?? ''"
+          (change)="appointment(appointmentDate.value, +appointmentDuration.value)"
+        /><input
+          #appointmentDuration
+          aria-label="Termindauer in Minuten"
+          type="number"
+          min="15"
+          max="480"
+          [value]="draft.appointment?.minutes ?? 60"
+          (change)="appointment(appointmentDate.value, +appointmentDuration.value)"
+        />
+      </div>
+      @if (runner.desired(); as desired) { @if (desired.appointment &&
+      (desired.appointment.start !== draft.appointment?.start ||
+      desired.appointment.minutes !== draft.appointment.minutes)) {
+      <button
+        class="suggestion"
+        [kontorAction]="action('appointment:requested', 'Angeforderten Termin eintragen', desired.appointment.start + ' · ' + desired.appointment.minutes + ' Minuten, nur Entwurf')"
+        (invoked)="actions.execute('appointment:requested', $event)"
+      >
+        {{ desired.appointment.start.replace('T', ' ').slice(0,16) }} · {{
+        desired.appointment.minutes }} min übernehmen
+      </button>
+      } }
+    </div>
+    <div>
+      <h3>Aufgaben für diesen Vorgang</h3>
+      <ul class="checklist">
+        <li [class.checked]="draft.minutes > 0">
+          <span>{{ draft.minutes > 0 ? '✓' : '○' }}</span>
+          <div>
+            Arbeitszeit erfassen<small
+              >Tatsächlich geleistete Minuten dokumentieren</small
+            >
+          </div>
+        </li>
+        @if (selected.requiresInspection) {
+        <li [class.checked]="!!draft.inspection">
+          <span>{{ draft.inspection ? '✓' : '○' }}</span>
+          <div>
+            Prüfung vor Ort dokumentieren<small
+              >Nur mit eigener tatsächlicher Beobachtung</small
+            >
+          </div>
+        </li>
+        }
+        <li [class.checked]="draft.status === 'done'">
+          <span>{{ draft.status === 'done' ? '✓' : '○' }}</span>
+          <div>
+            Vorgang abschließen<small
+              >Erst wenn alle Voraussetzungen erfüllt sind</small
+            >
+          </div>
+        </li>
+      </ul>
+      @if (selected.requiresInspection) {
+      <label for="evidence" class="field-label">Tatsächlicher Prüfbeleg</label
+      ><textarea
+        #evidenceNote
+        id="evidence"
+        placeholder="Was wurde vor Ort tatsächlich geprüft?"
+        [value]="draft.inspection?.note ?? ''"
+        (input)="ui.manual()"
+      ></textarea
+      ><button (click)="evidence(evidenceNote.value)">
+        Eigenen Prüfbeleg in Entwurf übernehmen
+      </button>
+      <p class="muted">Diese Bestätigung kann Jev nicht abgeben.</p>
+      }
+      <button
+        [disabled]="completionBlockers().length > 0 || draft.status === 'done'"
+        [kontorAction]="action('complete', 'Vorgang als erledigt markieren', 'Ändert den Entwurf, Speichern erforderlich')"
+        (invoked)="actions.execute('complete', $event)"
+      >
+        {{ draft.status === 'done' ? 'Als erledigt markiert' : 'Als erledigt
+        markieren' }}
+      </button>
+      @for (blocker of completionBlockers(); track blocker.kind) {
+      <p class="blocker">{{ blocker.message }}</p>
+      }
+    </div>
+  </div>
+  <footer class="editor-footer">
+    <span role="status" [class.unsaved]="ui.dirty()"
+      >{{ ui.busy() ? 'Wird gespeichert …' : ui.message() || (ui.dirty() ?
+      'Ungespeicherter Entwurf' : 'Gespeicherter Stand') }}</span
+    ><button [disabled]="ui.busy() || !ui.dirty()" (click)="ui.discard()">
+      Entwurf verwerfen</button
+    ><button
+      class="primary"
+      [disabled]="ui.busy() || !ui.dirty() || ui.blocked().length > 0 || !!ui.unknownSave()"
+      [kontorAction]="action('save', 'Änderungen speichern', 'Speichert den angezeigten Entwurf verbindlich')"
+      (invoked)="actions.execute('save', $event)"
+    >
+      Speichern
+    </button>
+  </footer>
+  @for (blocker of ui.blocked(); track blocker.kind) {
+  <p class="blocker">{{ blocker.message }}</p>
+  }
+</section>
+} }

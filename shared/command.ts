@@ -52,6 +52,7 @@ export const demos = [
   "Zuerst V-1042 abschließen, dann 45 Minuten erfassen.",
   "Plane V-1042 am 2026-09-24 um 09:00 für 60 Minuten.",
   "Schließe V-1039 ab.",
+  "Plane V-1042 und speichere.",
 ] as const;
 export function demoGoal(request: string): Goal {
   const base: Goal = {
@@ -100,6 +101,8 @@ export function demoGoal(request: string): Goal {
           },
         ],
       };
+    case demos[7]:
+      return { ...base, objectives: [{ kind: "schedule", appointment: null }] };
     case demos[6]:
       return { ...base, caseId: "V-1039", objectives: [{ kind: "complete" }] };
     default:

@@ -1,134 +1,76 @@
-<main>
-  <header>
-    <a href="/" class="brand">TypeSafe <span>Lab</span></a
-    ><span class="mode"
-      >{{ source()?.mode === 'demo' ? 'Demo · lokal' : source()?.mode === 'live'
-      ? 'Live · TypeSafe' : status.isError() ? 'Server nicht erreichbar' :
-      'Verbindung wird geprüft' }}</span
+<div class="app-shell">
+  <nav class="sidebar" aria-label="Hauptnavigation">
+    <a class="brand" href="#cases"
+      ><span class="brand-mark">K</span
+      ><span>kontor<span class="brand-sub">SERVICE</span></span></a
     >
-  </header>
-  <section class="intro">
-    <p class="eyebrow">TEXT EXPERIMENT</p>
-    <h1>Ein Text.<br />Drei Antwortformen.</h1>
-    <p>
-      Erkunde Choice, Score und Noul mit einer kleinen, typisierten Anfrage.
-    </p>
-  </section>
-  @if (source()?.mode === 'demo') {
-  <aside>
-    Demo-Modus. Du siehst feste Beispielwerte, unabhängig von deinem Text. Es
-    findet keine KI-Auswertung statt.
-  </aside>
-  } @if (source(); as current) { @if (current.mode === 'live') {
-  <aside>
-    Live-Modus. Dein Text wird an TypeSafe gesendet. Modell: {{ current.model }}
-  </aside>
-  } }
-  <form (submit)="evaluate($event)">
-    <label for="text">Dein Text</label
-    ><textarea
-      #editor
-      id="text"
-      name="text"
-      rows="5"
-      maxlength="20000"
-      required
-      [value]="text()"
-      (input)="text.set(editor.value)"
-      aria-describedby="text-hint"
-    ></textarea>
-    <div class="form-footer">
-      <small id="text-hint">{{ text().length | number }} / 20.000 Zeichen</small
-      ><button
-        type="submit"
-        [disabled]="evaluation.isPending() || !text().trim()"
-      >
-        {{ evaluation.isPending() ? 'Wird angefragt …' : 'Antworten anzeigen' }}
-        <span aria-hidden="true">↗</span>
-      </button>
-    </div>
-  </form>
-  <section
-    aria-live="polite"
-    aria-atomic="true"
-    [attr.aria-busy]="evaluation.isPending()"
-  >
-    @if (errorMessage(); as message) {
-    <p class="error" role="alert">{{ message }}</p>
-    } @if (evaluation.isIdle() && !errorMessage()) {
-    <p class="empty">Deine Antworten erscheinen hier.</p>
-    } @if (evaluation.isPending()) {
-    <p class="empty">Antworten werden geladen …</p>
-    } @if (evaluation.data(); as result) {
-    <div class="result-heading">
-      <h2>Antworten</h2>
-      <small
-        >{{ result.mode === 'demo' ? 'Feste Beispielwerte' : result.model
-        }}</small
-      >
-    </div>
-    <div class="cards">
-      <article>
-        <p class="eyebrow">01 / CHOICE</p>
-        <h3>Sprachliche Form</h3>
-        <strong class="value"
-          >{{ labels[result.answers.category.choice] }}</strong
-        >
-        <dl>
-          @for (item of result.answers.category.probabilities | keyvalue; track
-          item.key) {
-          <div>
-            <dt>{{ labels[item.key] }}</dt>
-            <dd>{{ item.value | percent:'1.0-1' }}</dd>
-          </div>
-          }
-        </dl>
-        <p class="note">
-          Confidence {{ result.answers.category.confidence | percent:'1.0-1' }}
-        </p>
-      </article>
-      <article>
-        <p class="eyebrow">02 / SCORE</p>
-        <h3>Verständlichkeit</h3>
-        <strong class="value"
-          >{{ result.answers.clarity.score | number:'1.1-2' }}
-          <small>/ 2</small></strong
-        >
-        <dl>
-          @for (item of result.answers.clarity.probabilities | keyvalue; track
-          item.key) {
-          <div>
-            <dt>Stufe {{ item.key }}</dt>
-            <dd>{{ item.value | percent:'1.0-1' }}</dd>
-          </div>
-          }
-        </dl>
-        <p class="note">
-          @for (criterion of scoreCriteria; track $index) {
-          <span>{{ $index }} · {{ criterion }}<br /></span> }
-        </p>
-        <p class="note">
-          Confidence {{ result.answers.clarity.confidence | percent:'1.0-1' }}
-        </p>
-      </article>
-      <article>
-        <p class="eyebrow">03 / NOUL</p>
-        <h3>Handlungsaufforderung</h3>
-        <strong class="value"
-          >{{ result.answers.containsAction.noul | percent:'1.0-1' }}</strong
-        >
-        <p class="explanation">
-          Wahrscheinlichkeit für die Antwort „Ja“ auf die Frage nach einer
-          konkreten Handlungsaufforderung.
-        </p>
-        <p class="note">Noul liefert keinen Confidence-Wert.</p>
-      </article>
-    </div>
-    <p class="footnote">
-      Score ist ein Erwartungswert von 0 bis 2. Confidence beschreibt die
-      Sicherheit des Modells, keine gemessene Genauigkeit.
-    </p>
+    <p class="nav-label">ARBEITSBEREICH</p>
+    @for (page of pages; track page.id) {
+    <button
+      [class.active]="ui.page() === page.id"
+      [attr.aria-label]="page.label"
+      [kontorAction]="action('nav:' + page.id, page.label + ' öffnen')"
+      (invoked)="actions.execute('nav:' + page.id, $event)"
+    >
+      <span class="nav-icon">{{ page.icon }}</span><span>{{ page.label }}</span>
+    </button>
     }
-  </section>
-  <footer>Angular · oRPC · TypeSafe <span>Ein lokales Experiment</span></footer>
-</main>
+    <div class="nav-foot">
+      <p>Kontor Service GmbH</p>
+      <span class="avatar mini">AS</span> Alex Schneider<small
+        >Disposition · Lokaler Arbeitsbereich</small
+      >
+    </div>
+  </nav>
+  <main>
+    <header class="topbar">
+      <span class="breadcrumb"
+        >Arbeitsbereich <span>/</span> {{ ui.page() === 'cases' ? 'Vorgänge' :
+        ui.page() === 'customers' ? 'Kunden' : ui.page() === 'team' ? 'Team' :
+        'Berichte' }}</span
+      ><kontor-palette #palette />
+    </header>
+    <div class="activity" aria-live="polite">
+      <span class="activity-dot" [class.running]="runner.running()"></span
+      ><strong>Jev</strong
+      ><span class="activity-label">{{ runner.label() }}</span
+      ><button class="text-button" (click)="palette.setOpen(true)">
+        {{ runner.state().kind === 'needs_input' || runner.state().kind ===
+        'needs_approval' ? 'Antworten' : 'Verlauf' }}</button
+      >@if (runner.state().kind === 'paused') {
+      <button (click)="runner.resume()">Fortsetzen</button> }@if
+      (!['idle','done','stopped'].includes(runner.state().kind)) {
+      <button class="danger" (click)="runner.stop()">Stop</button> }
+    </div>
+    <div class="content">
+      @if (ui.query.isPending()) {
+      <div class="empty">Arbeitsbereich wird geladen …</div>
+      } @else if (ui.query.isError()) {
+      <div class="notice" role="alert">
+        Der lokale Server ist nicht erreichbar.
+        <button (click)="ui.refresh()">Erneut laden</button>
+      </div>
+      } @else { @if (ui.unknownSave()) {
+      <div class="notice" role="alert">
+        Ein Speicherergebnis ist unbekannt.
+        <button (click)="ui.reconcile()">Ergebnis prüfen</button>
+      </div>
+      } @if (ui.page() === 'cases') { <kontor-cases /> } @else {
+      <kontor-overview /> } }
+      <footer class="workspace-foot">
+        <span
+          >{{ ui.source.data()?.mode === 'live' ? 'Live · Jev' :
+          ui.source.data()?.mode === 'demo' ? 'Demo · Feste Beispielszenarien' :
+          'Betriebsmodus nicht bestätigt' }}</span
+        >@if (ui.source.isError()) {
+        <button (click)="ui.source.refetch()">
+          Betriebsmodus erneut prüfen
+        </button>
+        }<span
+          >Gespeicherter Datenstand · Revision {{ ui.data()?.revision ?? 0
+          }}</span
+        >
+      </footer>
+    </div>
+  </main>
+</div>

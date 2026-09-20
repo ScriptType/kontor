@@ -276,6 +276,7 @@ export function createJev(config: Config, fetch?: Fetch) {
         order: answers["order"] === "yes" ? "listed" : "flexible",
         supported:
           answers["supported"] === "yes" &&
+          !(answers["filter"] === "yes" && answers["openOnly"] === "unclear") &&
           answers["order"] !== "unclear" &&
           !["filter", "assign", "schedule", "time", "complete"].some(
             (key) => answers[key] === "unclear",

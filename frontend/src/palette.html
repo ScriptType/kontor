@@ -1,0 +1,183 @@
+<button class="command-trigger" (click)="setOpen(true)">
+  <span class="command-icon">✦</span> Jev · Befehl eingeben
+  <kbd>{{ shortcut }}</kbd>
+</button>
+<brn-dialog
+  [state]="open() ? 'open' : 'closed'"
+  (stateChanged)="setOpen($event === 'open')"
+  [autoFocus]="'textarea'"
+>
+  <ng-template brnDialogContent
+    ><section class="palette">
+      <header class="palette-head">
+        <div>
+          <span class="command-icon">✦</span
+          ><strong brnDialogTitle>Was soll Jev erledigen?</strong>
+        </div>
+        <button aria-label="Befehlspalette schließen" (click)="setOpen(false)">
+          <kbd>Esc</kbd>
+        </button>
+      </header>
+      <p brnDialogDescription class="sr-only">
+        Auftrag eingeben, Rückfragen beantworten und bisherige Schritte prüfen.
+        Bei geöffneter Palette pausiert die Ausführung.
+      </p>
+      <form (submit)="submit($event)">
+        <textarea
+          aria-label="Auftrag an Jev"
+          placeholder="Beschreibe deinen Auftrag …"
+          [ngModel]="runner.command()"
+          (ngModelChange)="runner.command.set($event)"
+          name="command"
+          rows="3"
+          (keydown)="enter($event)"
+        ></textarea>
+        <div class="palette-submit">
+          <p class="muted">
+            {{ runner.ui.source.data()?.mode === 'live' ? 'Jev entscheidet
+            zwischen den aktuell sichtbaren Aktionen.' :
+            runner.ui.source.data()?.mode === 'demo' ? 'Demo mit festen
+            Beispielen. Freie Sprache wird hier nicht interpretiert.' :
+            'Betriebsmodus wird geprüft. Ausführen erst nach Bestätigung
+            möglich.' }}
+          </p>
+          <button
+            class="primary"
+            type="submit"
+            [disabled]="!runner.command().trim() || runner.ui.busy() || !runner.ui.source.data()"
+          >
+            Ausführen ↵
+          </button>
+        </div>
+      </form>
+      @if (runner.state(); as state) { @if (state.kind === 'needs_input') {
+      <section class="answer-panel">
+        <h3>Antwort ausstehend</h3>
+        <p>{{ state.question.message }}</p>
+        <div class="answer-options">
+          @for (option of state.question.options; track option.id) {
+          <button (click)="answer(option.id)">{{ option.label }}</button> }
+        </div>
+        @if (state.question.kind === 'minutes') {
+        <div class="inline-fields">
+          <input
+            type="number"
+            min="1"
+            max="10000"
+            aria-label="Tatsächlich geleistete Minuten"
+            [ngModel]="minutes()"
+            (ngModelChange)="minutes.set($event)"
+          /><button (click)="answer(minutes())">Minuten bestätigen</button>
+        </div>
+        } @if (state.question.kind === 'schedule') {
+        <label class="field-label" for="answer-date">Gewünschter Termin</label
+        ><input #answerDate id="answer-date" type="datetime-local" />
+        <label class="field-label" for="answer-duration"
+          >Termindauer in Minuten</label
+        ><input
+          #answerDuration
+          id="answer-duration"
+          type="number"
+          min="15"
+          max="480"
+          value="60"
+        />
+        <button (click)="schedule(answerDate.value, +answerDuration.value)">
+          Diesen Termin bestätigen
+        </button>
+        @if (scheduleError()) {
+        <p role="alert">{{ scheduleError() }}</p>
+        } }
+        <button class="danger text-button" (click)="runner.stop()">
+          Auftrag stoppen
+        </button>
+      </section>
+      } @if (state.kind === 'needs_approval') {
+      <section class="answer-panel">
+        <h3>Zusätzliche Änderung freigeben</h3>
+        <p>{{ state.proposal.message }}</p>
+        <dl class="proposal">
+          <dt>Vorgang</dt>
+          <dd>{{ state.proposal.caseId }}</dd>
+          <dt>Termin vorher</dt>
+          <dd>
+            {{ state.proposal.before.appointment?.start ?? 'Kein Termin' }}
+          </dd>
+          <dt>Termin nachher</dt>
+          <dd>
+            {{ state.proposal.after.appointment?.start?.replace('T',' ') }} · {{
+            state.proposal.after.appointment?.minutes }} min
+          </dd>
+          <dt>Zuständig vorher</dt>
+          <dd>
+            {{ runner.ui.technicianName(state.proposal.before.technicianId) }}
+          </dd>
+          <dt>Zusätzliche Änderung</dt>
+          <dd>
+            {{ runner.ui.technicianName(state.proposal.after.technicianId) }}
+            übernimmt
+          </dd>
+        </dl>
+        <div class="answer-options">
+          @for (option of state.proposal.alternatives; track option.id) {
+          <button class="primary" (click)="approve(option.id)">
+            Termin + Zuweisung an {{ option.label }} freigeben
+          </button>
+          }
+        </div>
+        <button class="danger text-button" (click)="runner.stop()">
+          Ablehnen und stoppen
+        </button>
+      </section>
+      } @if (state.kind === 'paused') {
+      <section class="answer-panel">
+        <p>{{ state.message }}</p>
+        <button (click)="continueRun()">Fortsetzen</button
+        ><button (click)="runner.stop()">Stoppen</button>
+      </section>
+      } } @if (runner.ui.source.data()?.mode === 'demo') {
+      <details class="demo-examples">
+        <summary>Exakte Demo-Beispiele</summary>
+        <p class="muted">
+          Beispiele arbeiten mit dem aktuellen Datenstand und setzen nichts
+          zurück.
+        </p>
+        @for (example of demos; track example) {
+        <button (click)="runner.command.set(example)">{{ example }}</button> }
+      </details>
+      }
+      <section class="history">
+        @if (!runner.historyStored()) {
+        <p role="status" class="blocker">
+          Der Verlauf kann in diesem Browser nicht gesichert werden.
+        </p>
+        }
+        <h3>Letzte Befehle</h3>
+        @for (run of runner.history(); track run.id) {
+        <details>
+          <summary>
+            <span>{{ run.request }}</span
+            ><small
+              >{{ run.createdAt | date:'dd.MM. HH:mm' }} · {{ run.outcome
+              }}</small
+            >
+          </summary>
+          <ol>
+            @for (entry of run.entries; track $index) {
+            <li>{{ entry }}</li>
+            } @empty {
+            <li>Noch keine Aktion ausgeführt.</li>
+            }
+          </ol>
+        </details>
+        } @empty {
+        <p class="muted">Deine ausgeführten Schritte erscheinen hier.</p>
+        }
+      </section>
+      <footer class="palette-foot">
+        <span><kbd>{{ shortcut }}</kbd> öffnen / schließen</span
+        ><span>Entwurf bleibt beim Schließen erhalten</span>
+      </footer>
+    </section></ng-template
+  ></brn-dialog
+>

@@ -24,6 +24,7 @@ export type Proposal = {
   caseId: string;
   revision: number;
   before: CaseDraft;
+  requested: CaseDraft;
   after: CaseDraft;
   message: string;
   alternatives: { id: string; label: string }[];
@@ -182,6 +183,7 @@ export function prepareGoal(
         caseId: selected.id,
         revision: workspace.revision,
         before: draftOf(selected),
+        requested: desired,
         after: { ...desired, technicianId: first.id },
         message:
           conflict.message +

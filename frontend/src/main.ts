@@ -6,13 +6,12 @@ import {
   provideTanStackQuery,
   QueryClient,
 } from "@tanstack/angular-query-experimental";
-import { withDevtools } from "@tanstack/angular-query-experimental/devtools";
 import { App } from "./app";
 
 registerLocaleData(localeDe);
 bootstrapApplication(App, {
   providers: [
-    provideTanStackQuery(new QueryClient(), withDevtools()),
+    provideTanStackQuery(new QueryClient()),
     { provide: LOCALE_ID, useValue: "de" },
   ],
 }).catch(() => {

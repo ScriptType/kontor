@@ -1,88 +1,396 @@
-import { test, expect } from "@playwright/test";
-test("demo form, responsive results and recovery from transport failure", async ({
+import { test as base, expect, type Page } from "@playwright/test";
+import { once } from "node:events";
+import { createApp } from "../server/app.js";
+import { demos } from "../shared/command.js";
+import { WorkspaceStore } from "../server/workspace-store.js";
+const test = base.extend<{ workspace: WorkspaceStore; address: string }>({
+  workspace: async ({}, use) => {
+    const store = new WorkspaceStore();
+    await use(store);
+  },
+  address: async ({ workspace }, use) => {
+    const app = createApp({ mode: "demo" }, undefined, workspace);
+    app.server.listen(0, "127.0.0.1");
+    await once(app.server, "listening");
+    const address = app.server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No server address");
+    await use(`http://127.0.0.1:${address.port}`);
+    await app.close();
+  },
+});
+async function command(page: Page, text: string) {
+  await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+  await page.getByRole("textbox", { name: "Auftrag an Jev" }).fill(text);
+  await page.getByRole("button", { name: "Ausführen" }).click();
+}
+async function answerPanel(page: Page) {
+  await page.getByRole("button", { name: "Antworten", exact: true }).click();
+}
+test("assignment follows visible menus, saves once, updates cross-page state, and persists on reload", async ({
   page,
+  address,
+  workspace,
 }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  const rpcHttp: string[] = [];
-  let frames = 0;
-  let connections = 0;
-  let failNextMessage = false;
-  page.on("request", (request) => {
-    if (
-      ["fetch", "xhr"].includes(request.resourceType()) &&
-      new URL(request.url()).pathname.startsWith("/rpc")
-    )
-      rpcHttp.push(request.url());
+  const httpBusiness: string[] = [];
+  page.on("request", (req) => {
+    if (["fetch", "xhr"].includes(req.resourceType()))
+      httpBusiness.push(req.url());
   });
-  await page.routeWebSocket("**/rpc", (socket) => {
-    connections++;
-    const server = socket.connectToServer();
-    socket.onMessage((message) => {
-      frames++;
-      if (failNextMessage) {
-        failNextMessage = false;
-        server.close();
-        socket.close({ code: 1011, reason: "Test disconnect" });
-      } else server.send(message);
-    });
+  await page.goto(address);
+  await expect(
+    page.getByRole("heading", { name: "Vorgänge", exact: true }),
+  ).toBeVisible();
+  await command(page, demos[0]);
+  await expect(
+    page
+      .locator(".activity-label")
+      .filter({ hasText: /^Auftrag abgeschlossen$/ }),
+  ).toBeVisible();
+  expect(workspace.snapshot().cases[0]?.technicianId).toBe("lea");
+  expect(workspace.snapshot().revision).toBe(1);
+  await page.getByRole("button", { name: "Team", exact: true }).click();
+  await expect(
+    page
+      .locator(".card")
+      .filter({ has: page.getByRole("heading", { name: "Lea Sommer" }) }),
+  ).toContainText("V-1042");
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Team & Kapazität" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+  await expect(page.locator(".history")).toContainText(demos[0]);
+  expect(httpBusiness).toEqual([]);
+  await page.keyboard.press("Escape");
+  await page.screenshot({
+    path: "/tmp/kontor-implementation/desktop.png",
+    fullPage: true,
   });
-  await page.goto("/");
-  await expect(page.getByText("Demo · lokal")).toBeVisible();
+});
+test("manual draft does not affect saved table or reports and blocks unrelated command", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.goto(address);
+  await page
+    .getByRole("button", { name: "Wartung Standort Nord", exact: true })
+    .click();
+  await page.locator('[data-action="menu:technician"]').click();
+  await page.getByRole("button", { name: /Lea Sommer Elektro/ }).click();
+  expect(workspace.snapshot().cases[0]?.technicianId).toBe("jonas");
+  await command(page, demos[3]);
+  await answerPanel(page);
+  await expect(page.getByText(/Es gibt einen offenen Entwurf/)).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(
-    page.getByText(/Es findet keine KI-Auswertung statt/),
+    page.locator(".activity-label").filter({ hasText: /^Antwort ausstehend$/ }),
   ).toBeVisible();
-  await page.getByLabel("Dein Text").fill("Bitte überprüfe diese Nachricht.");
-  await page.getByRole("button", { name: "Antworten anzeigen" }).click();
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByText(/V-1042 gespeichert/)).toBeVisible();
+  expect(workspace.snapshot().cases[0]?.technicianId).toBe("lea");
+});
+test("ambiguous case and missing time ask concrete questions, Escape retains input", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.goto(address);
+  await command(page, demos[1]);
+  await answerPanel(page);
   await expect(
-    page.getByRole("heading", { name: "Antworten", exact: true }),
+    page.getByRole("button", { name: /V-1042 · Wartung Standort Nord/ }),
   ).toBeVisible();
-  await expect(page.locator("article")).toHaveCount(3);
-  await expect(page.locator("article").nth(1).locator(".value")).toContainText(
-    "1,7",
-  );
-  await expect(page.locator("article").nth(2).locator(".value")).toContainText(
-    "91",
-  );
-  expect(connections).toBe(1);
-  failNextMessage = true;
-  await page.getByRole("button", { name: "Antworten anzeigen" }).click();
-  await expect(page.getByRole("alert")).toContainText("fehlgeschlagen");
-  await page.getByRole("button", { name: "Antworten anzeigen" }).click();
-  await expect(page.locator("article")).toHaveCount(3);
+  await expect(
+    page.getByRole("button", { name: /V-1039 · Wartung Standort Süd/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  expect(workspace.snapshot().revision).toBe(0);
+  await answerPanel(page);
+  await page
+    .getByRole("button", { name: /V-1042 · Wartung Standort Nord/ })
+    .click();
+  await expect(
+    page
+      .locator(".activity-label")
+      .filter({ hasText: /^Auftrag abgeschlossen$/ }),
+  ).toBeVisible();
+  await command(page, demos[2]);
+  await answerPanel(page);
+  await page
+    .getByRole("spinbutton", { name: "Tatsächlich geleistete Minuten" })
+    .fill("35");
+  await page.getByRole("button", { name: "Minuten bestätigen" }).click();
+  await expect(
+    page
+      .locator(".activity-label")
+      .filter({ hasText: /^Auftrag abgeschlossen$/ }),
+  ).toBeVisible();
+  expect(workspace.snapshot().cases[0]?.minutes).toBe(35);
+});
+test("completion reorders requested time; explicit wrong order requires consent", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.goto(address);
+  await command(page, demos[4]);
+  await answerPanel(page);
+  await expect(
+    page.getByText(/Deine feste Reihenfolge ist so nicht möglich/),
+  ).toBeVisible();
+  expect(workspace.snapshot().revision).toBe(0);
+  await page
+    .getByRole("button", { name: "Zeit zuerst erfassen, dann abschließen" })
+    .click();
+  await expect(
+    page
+      .locator(".activity-label")
+      .filter({ hasText: /^Auftrag abgeschlossen$/ }),
+  ).toBeVisible();
+  expect(workspace.snapshot().cases[0]).toMatchObject({
+    status: "done",
+    minutes: 45,
+  });
+  await page.getByRole("button", { name: "Berichte", exact: true }).click();
+  await expect(page.locator(".metrics")).toContainText("230");
+});
+test("conflict proposal can be rejected; approval changes only the displayed job", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.goto(address);
+  await command(page, demos[5]);
+  await answerPanel(page);
+  await expect(page.getByText(/durch V-1041 belegt/)).toBeVisible();
+  await page.getByRole("button", { name: "Ablehnen und stoppen" }).click();
+  expect(workspace.snapshot().revision).toBe(0);
+  await page.keyboard.press("Escape");
+  await command(page, demos[5]);
+  await answerPanel(page);
+  await page
+    .getByRole("button", { name: "Termin + Zuweisung an Lea Sommer freigeben" })
+    .click();
+  await expect(
+    page
+      .locator(".activity-label")
+      .filter({ hasText: /^Auftrag abgeschlossen$/ }),
+  ).toBeVisible();
+  expect(workspace.snapshot().cases[0]).toMatchObject({
+    technicianId: "lea",
+    appointment: { start: "2026-09-24T09:00:00", minutes: 60 },
+  });
+  expect(workspace.snapshot().cases[1]?.appointment).toEqual({
+    start: "2026-09-24T09:00:00",
+    minutes: 120,
+  });
+});
+test("unverified physical work and unknown demo input never mutate; mobile dialog keyboard works", async ({
+  page,
+  address,
+  workspace,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(address);
+  await command(page, demos[6]);
+  await answerPanel(page);
+  await expect(
+    page.getByText(/Die Prüfung vor Ort ist nicht belegt/),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "Stop", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.keyboard.press("Control+k");
+  await expect(
+    page.getByRole("textbox", { name: "Auftrag an Jev" }),
+  ).toBeFocused();
+  await page
+    .getByRole("textbox", { name: "Auftrag an Jev" })
+    .fill("Bestelle einen Hubschrauber");
+  await page.getByRole("button", { name: "Ausführen" }).click();
+  await answerPanel(page);
+  await expect(
+    page.getByText(/vollständige Auftrag ist nicht unterstützt/),
+  ).toBeVisible();
+  expect(workspace.snapshot().revision).toBe(0);
+  await page.screenshot({
+    path: "/tmp/kontor-implementation/mobile.png",
+    fullPage: true,
+  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByLabel("Dein Text").fill("   ");
-  await expect(
-    page.getByRole("button", { name: "Antworten anzeigen" }),
-  ).toBeDisabled();
-  expect(connections).toBe(2);
-  expect(frames).toBeGreaterThanOrEqual(4);
-  expect(rpcHttp).toEqual([]);
-  expect(errors).toEqual([]);
 });
 
-test("initial connection failure leaves a usable form and recovers on submit", async ({
+test("stale proposal asks again before any approved change", async ({
   page,
+  address,
+  workspace,
 }) => {
-  let rejectFirst = true;
-  await page.routeWebSocket("**/rpc", (socket) => {
-    if (rejectFirst) {
-      rejectFirst = false;
-      socket.close({ code: 1011, reason: "Unavailable" });
-    } else socket.connectToServer();
+  await page.goto(address);
+  await command(page, demos[5]);
+  await answerPanel(page);
+  const other = workspace.snapshot().cases[3];
+  if (!other) throw new Error("Missing seed");
+  workspace.save({
+    operationId: crypto.randomUUID(),
+    revision: 0,
+    caseId: other.id,
+    actor: "manual",
+    draft: {
+      technicianId: other.technicianId,
+      minutes: 25,
+      appointment: other.appointment,
+      inspection: other.inspection,
+      status: other.status,
+    },
   });
-  await page.goto("/");
-  await expect(page.getByRole("alert")).toContainText("nicht erreichbar");
+  await page
+    .getByRole("button", { name: "Termin + Zuweisung an Lea Sommer freigeben" })
+    .click();
+  await expect(page.locator(".activity-label")).toHaveText(
+    "Freigabe ausstehend",
+  );
+  expect(workspace.snapshot().revision).toBe(1);
+  expect(workspace.snapshot().cases[0]?.appointment).toBeNull();
+  await answerPanel(page);
+  await page
+    .getByRole("button", { name: "Termin + Zuweisung an Lea Sommer freigeben" })
+    .click();
+  await expect(page.locator(".activity-label")).toHaveText(
+    "Auftrag abgeschlossen",
+  );
+  expect(workspace.snapshot().revision).toBe(2);
+});
+test("Stop while Save reply is held records the committed result without resuming", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  let release = () => {};
+  let arrived = () => {};
+  const received = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  await page.routeWebSocket("**/rpc", (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage((message) => {
+      const text =
+        typeof message === "string" ? message : message.toString("utf8");
+      if (text.includes("operationId") && text.includes("saved")) {
+        release = () => socket.send(message);
+        arrived();
+      } else socket.send(message);
+    });
+  });
+  await page.goto(address);
+  await command(page, demos[0]);
+  await received;
+  expect(workspace.snapshot().revision).toBe(1);
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  release();
+  await expect(page.locator(".editor-footer")).toContainText(
+    "V-1042 gespeichert",
+  );
+  await expect(page.locator(".activity-label")).toContainText("Gestoppt");
+  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+  await expect(page.locator(".history ol")).toContainText("V-1042 gespeichert");
+  expect(workspace.snapshot().revision).toBe(1);
+});
+test("review screenshots show desktop and mobile workspace and palette", async ({
+  page,
+  address,
+}) => {
+  await page.goto(address);
   await expect(
-    page.getByRole("button", { name: "Antworten anzeigen" }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Antworten anzeigen" }).click();
-  await expect(page.locator("article")).toHaveCount(3);
-  await expect(page.getByText("Demo · lokal")).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+    page.getByRole("heading", { name: "Vorgänge", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "/tmp/kontor-implementation/screenshots/desktop-workspace.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Auftrag an Jev" }),
+  ).toBeFocused();
+  await page.screenshot({
+    path: "/tmp/kontor-implementation/screenshots/desktop-palette.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.screenshot({
+    path: "/tmp/kontor-implementation/screenshots/mobile-workspace.png",
+    fullPage: true,
+  });
+  await page.keyboard.press("Meta+k");
+  await expect(
+    page.getByRole("textbox", { name: "Auftrag an Jev" }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("dialog")).toContainText(
+    "Was soll Jev erledigen?",
+  );
+  expect(
+    await page.evaluate(
+      () => !!document.activeElement?.closest('[role="dialog"]'),
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/kontor-implementation/screenshots/mobile-palette.png",
+    fullPage: true,
+  });
+});
+
+test("missing schedule asks for concrete source values and then saves them", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.goto(address);
+  await command(page, demos[7]);
+  await answerPanel(page);
+  await page
+    .getByLabel("Gewünschter Termin", { exact: true })
+    .fill("2026-09-25T11:00");
+  await page.getByLabel("Termindauer in Minuten", { exact: true }).fill("75");
+  await page.getByRole("button", { name: "Diesen Termin bestätigen" }).click();
+  await expect(page.locator(".activity-label")).toHaveText(
+    "Auftrag abgeschlossen",
+  );
+  expect(workspace.snapshot().cases[0]?.appointment).toEqual({
+    start: "2026-09-25T11:00:00",
+    minutes: 75,
+  });
+});
+
+test("unavailable browser storage refuses sending a save instead of losing its receipt identity", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new Error("Storage unavailable");
+    };
+  });
+  await page.goto(address);
+  await page
+    .getByRole("button", { name: "Wartung Standort Nord", exact: true })
+    .click();
+  await page
+    .getByRole("spinbutton", { name: "Geleistete Arbeitszeit in Minuten" })
+    .fill("20");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator(".editor-footer")).toContainText(
+    "Speichern wurde nicht gesendet",
+  );
+  expect(workspace.snapshot().revision).toBe(0);
 });
