@@ -305,7 +305,16 @@ test("unsupported trailing work remains partial after an authorized earlier save
       page,
       "V-1042 Lea zuweisen und speichern, dann eine Mail senden.",
     );
-    await expect(page.locator(".activity-label")).toContainText("teilweise");
+    await expect(page.locator(".activity-label")).toHaveText(
+      "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.",
+    );
+    await expect(page.locator(".blocked-control")).toContainText(
+      "Schaltfläche „Als erledigt markieren“",
+    );
+    await expect(page.locator(".blocked-control")).toContainText("Arbeitszeit");
+    await expect(page.locator(".editor-footer [role=status]")).toHaveText(
+      "V-1042 gespeichert",
+    );
     expect(store.snapshot().revision).toBe(1);
     expect(store.snapshot().cases[0]?.technicianId).toBe("lea");
   });
@@ -468,4 +477,24 @@ test("invalid manual input also invalidates an outstanding choice", async ({
     },
     { hold: "menu:technician" },
   );
+});
+
+test("missing evidence stays a concrete handoff tied to the disabled completion control", async ({
+  page,
+}) => {
+  await withLive(page, ["case:V-1039", "blocked"], async (store) => {
+    await start(page, "Schließe V-1039 ab.");
+    await expect(page.locator(".blocked-control")).toContainText(
+      "Schaltfläche „Als erledigt markieren“",
+    );
+    await expect(page.locator(".blocked-control")).toContainText(
+      "Prüfung vor Ort",
+    );
+    await page
+      .getByRole("button", { name: "Prüfbeleg erfassen", exact: true })
+      .click();
+    await expect(page.getByLabel("Tatsächlicher Prüfbeleg")).toBeFocused();
+    await expect(page.locator(".editor")).toContainText("V-1039");
+    expect(store.snapshot().revision).toBe(0);
+  });
 });

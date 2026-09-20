@@ -34,6 +34,9 @@ test("finite demo fixture saves once and reports saved state across reload", asy
   await expect(page.locator(".activity-label")).toContainText("Jev meldet");
   expect(workspace.snapshot().revision).toBe(1);
   expect(workspace.snapshot().cases[0]?.technicianId).toBe("lea");
+  await expect(page.locator(".editor-footer [role=status]")).toHaveText(
+    "V-1042 gespeichert",
+  );
   await page.locator('[data-action="nav:team"]').click();
   await expect(
     page

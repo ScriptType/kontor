@@ -272,9 +272,18 @@ export class WorkspaceUi {
       this.unknownSave.set(null);
       writeBrowserState("kontor-save-v1", null);
     }
+    const savedBase =
+      current && current.revision > receipt.revision
+        ? (current.cases.find((c) => c.id === receipt.caseId) ?? receipt.saved)
+        : receipt.saved;
+    const draft = this.draft();
+    const newerDraft =
+      this.selectedId() === receipt.caseId &&
+      draft !== null &&
+      JSON.stringify(draft) !== JSON.stringify(draftOf(savedBase));
     this.message.set(
       recorded
-        ? `${receipt.caseId} gespeichert${this.dirty() ? " · neuerer Entwurf bleibt ungespeichert" : ""}`
+        ? `${receipt.caseId} gespeichert${newerDraft ? " · neuerer Entwurf bleibt ungespeichert" : ""}`
         : `${receipt.caseId} gespeichert · Zuordnung zum Auftrag noch nicht gesichert. Ergebnis erneut prüfen.`,
     );
     await this.refresh().catch(() => {

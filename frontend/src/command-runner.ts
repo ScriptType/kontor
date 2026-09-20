@@ -69,10 +69,20 @@ export class CommandRunner {
   readonly state = signal<RunState>({ kind: "idle" });
   readonly attention = signal(0);
   readonly targetCase = this.ui.selected;
+  readonly disabledCompletionReasons = computed(() => {
+    const data = this.ui.data(),
+      selected = this.ui.selected(),
+      draft = this.ui.draft();
+    return this.ui.page() === "cases" && data && selected && draft
+      ? blockers(data, { ...selected, ...draft, status: "done" })
+      : [];
+  });
   readonly evidenceGuidance = computed(
     () =>
       this.state().kind === "blocked" &&
-      !!this.ui.selected()?.requiresInspection,
+      this.disabledCompletionReasons().some(
+        (reason) => reason.kind === "evidence",
+      ),
   );
   readonly command = signal("");
   readonly historyStored = signal(true);
@@ -424,15 +434,8 @@ export class CommandRunner {
           return;
         }
         if (decision.choice === "blocked") {
-          const data = this.ui.data(),
-            selected = this.ui.selected(),
-            draft = this.ui.draft();
-          const hints =
-            data && selected && draft
-              ? blockers(data, { ...selected, ...draft, status: "done" })
-              : this.ui.blocked();
           this.block(
-            `Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.${hints.length ? " Aktuelle Formularhinweise: " + hints.map((h) => h.message).join(" ") : ""}`,
+            "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.",
           );
           return;
         }
