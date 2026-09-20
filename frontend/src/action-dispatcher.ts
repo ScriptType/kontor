@@ -72,3 +72,10 @@ export function action(
 ) {
   return { id, label, effect, kind };
 }
+export function caseAction(id: string) {
+  return action(
+    `case:${id}`,
+    `Details von ${id} öffnen`,
+    `Details von ${id} auf der Vorgangsseite unterhalb der Tabelle öffnen und in den sichtbaren Bereich bringen`,
+  );
+}

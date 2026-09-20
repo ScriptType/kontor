@@ -48,6 +48,7 @@ export class WorkspaceUi {
   readonly search = signal("");
   readonly menu = signal<"customer" | "technician" | null>(null);
   readonly evidenceFocus = signal<string | null>(null);
+  readonly detailFocus = signal<string | null>(null);
   readonly selectedId = signal<string | null>(null);
   readonly draft = signal<CaseDraft | null>(null);
   readonly draftOwner = signal<Actor | null>(null);
@@ -103,9 +104,15 @@ export class WorkspaceUi {
     return this.data()?.technicians.find((t) => t.id === id)?.name ?? id;
   }
   manual() {
+    this.cancelFocus();
     this.beforeManual();
   }
+  cancelFocus() {
+    this.detailFocus.set(null);
+    this.evidenceFocus.set(null);
+  }
   navigate(page: Page, actor: Actor) {
+    this.cancelFocus();
     if (actor === "manual") this.manual();
     this.page.set(page);
     history.replaceState(null, "", "#" + page);
@@ -113,21 +120,24 @@ export class WorkspaceUi {
   }
   openCase(id: string, actor: Actor) {
     if (actor === "manual") this.manual();
-    if (this.dirty()) {
-      if (this.selectedId() !== id)
-        this.message.set(
-          "Bitte den offenen Entwurf zuerst speichern oder verwerfen.",
-        );
+    if (this.dirty() && this.selectedId() !== id) {
+      this.message.set(
+        "Bitte den offenen Entwurf zuerst speichern oder verwerfen.",
+      );
       return;
     }
     const c = this.data()?.cases.find((c) => c.id === id);
     if (!c) return;
-    this.selectedId.set(id);
-    this.draft.set(draftOf(c));
-    this.draftOwner.set(null);
-    this.draftRevision.set(this.data()?.revision ?? 0);
+    if (!this.dirty()) {
+      this.selectedId.set(id);
+      this.draft.set(draftOf(c));
+      this.draftOwner.set(null);
+      this.draftRevision.set(this.data()?.revision ?? 0);
+      this.message.set("");
+    }
     this.menu.set(null);
-    this.message.set("");
+    this.evidenceFocus.set(null);
+    this.detailFocus.set(id);
   }
   edit(patch: Partial<CaseDraft>, actor: Actor) {
     this.draftOwner.set(actor);
@@ -146,6 +156,7 @@ export class WorkspaceUi {
     this.message.set("Entwurf verworfen");
   }
   closeCase(actor: Actor = "manual") {
+    this.cancelFocus();
     if (actor === "manual") this.manual();
     if (this.dirty()) {
       this.message.set(
@@ -308,6 +319,7 @@ export class WorkspaceUi {
   }
   async reset() {
     if (this.resetting()) return;
+    this.cancelFocus();
     this.generation++;
     this.resetting.set(true);
     this.busy.set(false);

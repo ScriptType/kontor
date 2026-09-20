@@ -19,10 +19,21 @@ interface Control {
   element: HTMLElement;
   available(): boolean;
 }
+type RegionDescription = {
+  id: string;
+  label: string;
+} & (
+  | { kind: "navigation" | "page" | "section" }
+  | {
+      kind: "detail";
+      detail: { kind: "case"; id: string; draft: "saved" | "draft" };
+    }
+);
 @Injectable({ providedIn: "root" })
 export class ActionRegistry {
   private readonly entries = new Set<ActionControl>();
   private readonly fields = new Set<FieldControl>();
+  private readonly regions = new Set<RegionControl>();
   private offers = new Map<
     string,
     { description: ActionDescription; execute: () => void }
@@ -40,6 +51,89 @@ export class ActionRegistry {
   }
   removeField(control: FieldControl) {
     this.fields.delete(control);
+  }
+  addRegion(control: RegionControl) {
+    this.regions.add(control);
+  }
+  removeRegion(control: RegionControl) {
+    this.regions.delete(control);
+  }
+  observeScreen() {
+    const mounted = this.modal
+      ? []
+      : [...this.regions]
+          .filter((region) => rendered(region.element))
+          .sort(domOrder);
+    const regions = mounted.slice(0, 24);
+    const owner = (element: HTMLElement) =>
+      regions.find(
+        (region) => region.element === element.closest("[data-region]"),
+      );
+    const actions = [...this.entries]
+      .filter((control) => control.available())
+      .sort(domOrder)
+      .slice(0, 100);
+    const fields = [...this.fields]
+      .filter((control) => control.available())
+      .sort(domOrder)
+      .slice(0, 30);
+    const detail = regions
+      .find((region) => region.kontorRegion().kind === "detail")
+      ?.kontorRegion();
+    return {
+      currentDetail: detail?.kind === "detail" ? detail.detail : null,
+      truncated: mounted.length > regions.length,
+      regions: regions.map((region, order) => {
+        const description = region.kontorRegion();
+        const element = region.element;
+        const rect = element.getBoundingClientRect();
+        const parent = element.parentElement
+          ? owner(element.parentElement)
+          : undefined;
+        const visibility =
+          rect.bottom <= 0
+            ? "above"
+            : rect.top >= innerHeight
+              ? "below"
+              : rect.right <= 0 || rect.left >= innerWidth
+                ? "outside"
+                : rect.top >= 0 && rect.bottom <= innerHeight &&
+                    rect.left >= 0 && rect.right <= innerWidth
+                  ? "fully-visible"
+                  : "partly-visible";
+        return {
+          id: description.id,
+          kind: description.kind,
+          role: element.getAttribute("role") ?? nativeRoles.get(element.tagName) ?? "group",
+          label: (element.getAttribute("aria-label") ?? "").slice(0, 160),
+          parentId: parent?.kontorRegion().id ?? null,
+          order,
+          viewport: {
+            visibility,
+            start: rect.top < 0
+              ? "above"
+              : rect.top >= innerHeight
+                ? "below"
+                : rect.top < innerHeight / 3
+                  ? "top"
+                  : rect.top < innerHeight * 2 / 3 ? "middle" : "bottom",
+            horizontal: rect.width > innerWidth * 2 / 3
+              ? "wide"
+              : (rect.left + rect.right) / 2 < innerWidth / 3
+                ? "left"
+                : (rect.left + rect.right) / 2 < innerWidth * 2 / 3
+                  ? "center"
+                  : "right",
+          },
+          actionIds: actions
+            .filter((control) => owner(control.element) === region)
+            .map((control) => control.kontorAction().id),
+          fieldIds: fields
+            .filter((control) => owner(control.element) === region)
+            .map((control) => control.kontorField().id),
+        };
+      }),
+    };
   }
   fieldSnapshot() {
     return this.modal
@@ -122,13 +216,47 @@ export class ActionRegistry {
     }
   }
 }
-function available(element: HTMLInputElement | HTMLButtonElement) {
+function domOrder(a: { element: HTMLElement }, b: { element: HTMLElement }) {
+  return a.element === b.element
+    ? 0
+    : a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING
+      ? -1
+      : 1;
+}
+const nativeRoles = new Map([
+  ["NAV", "navigation"],
+  ["MAIN", "main"],
+  ["SECTION", "region"],
+  ["ARTICLE", "article"],
+  ["TABLE", "table"],
+]);
+function rendered(element: HTMLElement) {
   return (
     element.isConnected &&
-    !element.disabled &&
     !element.closest('[inert], [aria-hidden="true"]') &&
     element.checkVisibility({ checkVisibilityCSS: true })
   );
+}
+function available(element: HTMLInputElement | HTMLButtonElement) {
+  return !element.disabled && rendered(element);
+}
+@Directive({
+  selector: "[kontorRegion]",
+  host: {
+    "[attr.data-region]": "kontorRegion().id",
+    "[attr.aria-label]": "kontorRegion().label",
+  },
+})
+export class RegionControl implements OnInit, OnDestroy {
+  readonly kontorRegion = input.required<RegionDescription>();
+  readonly element = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  private readonly registry = inject(ActionRegistry);
+  ngOnInit() {
+    this.registry.addRegion(this);
+  }
+  ngOnDestroy() {
+    this.registry.removeRegion(this);
+  }
 }
 @Directive({
   selector: "[kontorAction]",

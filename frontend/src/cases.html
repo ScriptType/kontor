@@ -1,3 +1,4 @@
+<section [kontorRegion]="{ id: 'cases', kind: 'page', label: 'Vorgänge' }">
 <div class="titleline">
   <div>
     <p class="eyebrow">SERVICE & BETRIEB</p>
@@ -11,7 +12,7 @@
     Vorgängen</span
   >
 </div>
-<div class="toolbar">
+<div class="toolbar" role="group" [kontorRegion]="{ id: 'case-filters', kind: 'section', label: 'Vorgänge filtern und durchsuchen' }">
   <input
     class="search"
     type="search"
@@ -66,7 +67,7 @@
   </button>
 </div>
 <div class="tablebox">
-  <table>
+  <table [kontorRegion]="{ id: 'case-list', kind: 'section', label: 'Vorgangsliste' }">
     <thead>
       <tr>
         <th>Kennung</th>
@@ -86,7 +87,7 @@
         <td>
           <button
             class="row-link"
-            [kontorAction]="action('case:' + c.id, c.id + ' öffnen')"
+            [kontorAction]="caseAction(c.id)"
             (invoked)="actions.execute('case:' + c.id, $event)"
           >
             {{ c.title }}</button
@@ -118,13 +119,13 @@
   </table>
 </div>
 @if (ui.selected(); as selected) { @if (ui.draft(); as draft) {
-<section class="editor" aria-label="Vorgang bearbeiten">
+<section class="editor" [kontorRegion]="{ id: 'case-detail:' + selected.id, kind: 'detail', label: 'Details von ' + selected.id + ' · ' + selected.title, detail: { kind: 'case', id: selected.id, draft: ui.dirty() ? 'draft' : 'saved' } }">
   <header class="editor-head">
     <div>
       <p class="eyebrow">
         {{ selected.id }} · {{ ui.customerName(selected.customerId) }}
       </p>
-      <h2>{{ selected.title }}</h2>
+      <h2 #detailHeading tabindex="-1">{{ selected.title }}</h2>
       <p class="muted">
         {{ selected.site }} · Qualifikation {{ selected.skill }}
       </p>
@@ -293,3 +294,4 @@
   }
 </section>
 } }
+</section>

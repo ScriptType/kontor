@@ -185,11 +185,13 @@ export class CommandRunner {
     );
   }
   private invalidate() {
+    this.ui.cancelFocus();
     this.epoch++;
     this.abort?.abort();
     this.abort = null;
   }
   modal(open: boolean) {
+    if (open) this.ui.cancelFocus();
     this.registry.modal = open;
     if (open && this.running()) {
       this.invalidate();
@@ -320,12 +322,15 @@ export class CommandRunner {
     });
   }
   private facts() {
+    const screen = this.registry.observeScreen();
     const selected = this.ui.selected(),
       draft = this.ui.draft(),
       data = this.ui.data();
+    const detailMounted = selected && screen.currentDetail?.id === selected.id;
     return JSON.stringify({
       currentPage: this.ui.page(),
       currentScreen: this.screenText(),
+      screen,
       revision: data?.revision,
       filters: {
         customer: this.ui.customer(),
@@ -334,16 +339,20 @@ export class CommandRunner {
       },
       menu: this.ui.menu(),
       visibleCases: this.ui.page() === "cases" ? this.ui.filtered() : [],
-      selected,
-      draft,
-      dirty: this.ui.dirty(),
-      blockers: this.ui.blocked(),
+      selected: detailMounted ? selected : undefined,
+      draft: detailMounted ? draft : undefined,
+      dirty: detailMounted ? this.ui.dirty() : undefined,
+      blockers: detailMounted ? this.ui.blocked() : undefined,
       completionBlockers:
-        data && selected && draft
+        detailMounted && data && selected && draft
           ? blockers(data, { ...selected, ...draft, status: "done" })
-          : [],
+          : undefined,
+      retainedDraft:
+        !detailMounted && this.ui.dirty()
+          ? { caseId: this.ui.selectedId(), draft, mounted: false }
+          : undefined,
       receipts: this.run()?.receipts,
-      message: this.ui.message(),
+      message: detailMounted ? this.ui.message() : undefined,
     });
   }
   private screenText() {

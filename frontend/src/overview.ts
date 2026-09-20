@@ -1,11 +1,12 @@
 import { Component, computed, inject } from "@angular/core";
-import { ActionControl } from "./action-registry";
-import { ActionDispatcher, action } from "./action-dispatcher";
+import { ActionControl, RegionControl } from "./action-registry";
+import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
 @Component({
   selector: "kontor-overview",
-  imports: [ActionControl],
+  imports: [ActionControl, RegionControl],
   template: `
     @if (ui.page() === "customers") {
+      <section [kontorRegion]="{ id: 'customers', kind: 'page', label: 'Kunden und Standorte' }">
       <div class="titleline">
         <div>
           <p class="eyebrow">BEZIEHUNGEN</p>
@@ -15,7 +16,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
       </div>
       <div class="cards">
         @for (customer of ui.data()?.customers; track customer.id) {
-          <article class="card">
+          <article class="card" [kontorRegion]="{ id: 'customer:' + customer.id, kind: 'section', label: customer.name }">
             <div class="card-icon">{{ customer.name.slice(0, 1) }}</div>
             <h2>{{ customer.name }}</h2>
             <p class="muted">{{ customer.contact }}</p>
@@ -39,7 +40,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
             <div class="linked-list">
               @for (c of casesFor(customer.id); track c.id) {
                 <button
-                  [kontorAction]="action('case:' + c.id, c.id + ' öffnen')"
+                  [kontorAction]="caseAction(c.id)"
                   (invoked)="actions.execute('case:' + c.id, $event)"
                 >
                   <span
@@ -53,8 +54,10 @@ import { ActionDispatcher, action } from "./action-dispatcher";
           </article>
         }
       </div>
+      </section>
     }
     @if (ui.page() === "team") {
+      <section [kontorRegion]="{ id: 'team', kind: 'page', label: 'Team und Kapazität' }">
       <div class="titleline">
         <div>
           <p class="eyebrow">EINSATZPLANUNG</p>
@@ -67,7 +70,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
       </div>
       <div class="cards">
         @for (t of ui.data()?.technicians; track t.id) {
-          <article class="card">
+          <article class="card" [kontorRegion]="{ id: 'technician:' + t.id, kind: 'section', label: t.name }">
             <span class="avatar">{{ t.name.slice(0, 1) }}</span>
             <h2>{{ t.name }}</h2>
             <p class="muted">{{ t.skills.join(" · ") }}</p>
@@ -75,7 +78,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
             <div class="linked-list">
               @for (c of assigned(t.id); track c.id) {
                 <button
-                  [kontorAction]="action('case:' + c.id, c.id + ' öffnen')"
+                  [kontorAction]="caseAction(c.id)"
                   (invoked)="actions.execute('case:' + c.id, $event)"
                 >
                   <span
@@ -97,8 +100,10 @@ import { ActionDispatcher, action } from "./action-dispatcher";
           </article>
         }
       </div>
+      </section>
     }
     @if (ui.page() === "reports") {
+      <section [kontorRegion]="{ id: 'reports', kind: 'page', label: 'Berichte' }">
       <div class="titleline">
         <div>
           <p class="eyebrow">GESPEICHERTE ERGEBNISSE</p>
@@ -123,7 +128,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
           ><strong>{{ totalMinutes() }}</strong>
         </article>
       </div>
-      <section class="card">
+      <section class="card" [kontorRegion]="{ id: 'customer-time', kind: 'section', label: 'Arbeitszeit nach Kunde' }">
         <h2>Arbeitszeit nach Kunde</h2>
         @for (c of ui.data()?.customers; track c.id) {
           <button
@@ -147,6 +152,7 @@ import { ActionDispatcher, action } from "./action-dispatcher";
           </button>
         }
       </section>
+      </section>
     }
   `,
 })
@@ -154,6 +160,7 @@ export class Overview {
   readonly actions = inject(ActionDispatcher);
   readonly ui = this.actions.ui;
   readonly action = action;
+  readonly caseAction = caseAction;
   readonly openCount = computed(
     () => this.ui.data()?.cases.filter((c) => c.status === "open").length ?? 0,
   );

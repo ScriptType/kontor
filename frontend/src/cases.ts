@@ -5,11 +5,12 @@ import {
   afterRenderEffect,
   viewChild,
   ElementRef,
+  DestroyRef,
 } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { injectTable, tableFeatures } from "@tanstack/angular-table";
-import { ActionControl, FieldControl } from "./action-registry";
-import { ActionDispatcher, action } from "./action-dispatcher";
+import { ActionControl, FieldControl, RegionControl } from "./action-registry";
+import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
 import { blockers, type CaseDraft } from "../../shared/domain";
 const features = tableFeatures({});
 const columns = [
@@ -19,7 +20,7 @@ const columns = [
 ];
 @Component({
   selector: "kontor-cases",
-  imports: [FormsModule, ActionControl, FieldControl],
+  imports: [FormsModule, ActionControl, FieldControl, RegionControl],
   templateUrl: "./cases.html",
 })
 export class Cases {
@@ -27,21 +28,30 @@ export class Cases {
   readonly ui = this.actions.ui;
   readonly runner = this.actions.runner;
   readonly action = action;
+  readonly caseAction = caseAction;
   readonly evidenceInput =
     viewChild<ElementRef<HTMLTextAreaElement>>("evidenceNote");
+  readonly detailHeading =
+    viewChild<ElementRef<HTMLHeadingElement>>("detailHeading");
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.ui.cancelFocus());
     afterRenderEffect(() => {
-      const request = this.ui.evidenceFocus();
-      const field = this.evidenceInput()?.nativeElement;
+      const evidence = this.ui.evidenceFocus();
+      const request = evidence ?? this.ui.detailFocus();
+      const target = evidence
+        ? this.evidenceInput()?.nativeElement
+        : this.detailHeading()?.nativeElement;
+      if (!request) return;
+      this.ui.cancelFocus();
       if (
-        request &&
         request === this.ui.selectedId() &&
-        field &&
-        !this.runner.registry.modal
+        this.ui.page() === "cases" &&
+        target?.isConnected &&
+        !this.runner.registry.modal &&
+        !target.closest('[inert], [aria-hidden="true"]')
       ) {
-        this.ui.evidenceFocus.set(null);
-        field.scrollIntoView({ block: "center" });
-        field.focus();
+        target.scrollIntoView({ block: "center", behavior: "instant" });
+        target.focus({ preventScroll: true });
       }
     });
   }
