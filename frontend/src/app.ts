@@ -1,4 +1,5 @@
 import { Component, inject } from "@angular/core";
+import { ResetWorkspace } from "./reset-workspace";
 import { Cases } from "./cases";
 import { Overview } from "./overview";
 import { Palette } from "./palette";
@@ -6,7 +7,7 @@ import { ActionControl } from "./action-registry";
 import { ActionDispatcher, action } from "./action-dispatcher";
 @Component({
   selector: "app-root",
-  imports: [Cases, Overview, Palette, ActionControl],
+  imports: [Cases, Overview, Palette, ActionControl, ResetWorkspace],
   templateUrl: "./app.html",
 })
 export class App {

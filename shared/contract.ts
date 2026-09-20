@@ -56,6 +56,9 @@ export const contract = {
     )
     .output(z.object({ technicianId: z.string().nullable() })),
   workspace: oc.output(workspaceSchema),
+  resetWorkspace: oc
+    .input(z.object({ expectedRevision: z.number().int().nonnegative() }))
+    .output(workspaceSchema),
   saveCase: oc.input(saveSchema).output(receiptSchema),
   receipt: oc
     .input(z.object({ operationId: z.string() }))

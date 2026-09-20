@@ -170,7 +170,7 @@ export class CommandRunner {
       this.state.set({
         kind: "paused",
         reason: "modal",
-        message: "Pausiert, solange die Befehlspalette offen ist",
+        message: "Pausiert, solange ein Dialog offen ist",
       });
     }
     if (!open && this.state().kind === "paused") {
@@ -195,6 +195,20 @@ export class CommandRunner {
     this.approved.set(null);
     this.state.set({ kind: "stopped" });
     this.finish("Gestoppt");
+  }
+  clearAfterReset() {
+    this.invalidate();
+    this.evidenceCaseId.set(null);
+    this.activeId = null;
+    this.goal.set(null);
+    this.desired.set(null);
+    this.approved.set(null);
+    this.command.set("");
+    this.history.set([]);
+    this.state.set({ kind: "idle" });
+    const stored = writeBrowserState("kontor-command-v1", null);
+    this.historyStored.set(stored);
+    return stored;
   }
   async start(reuse = false) {
     this.evidenceCaseId.set(null);
@@ -243,6 +257,7 @@ export class CommandRunner {
     this.abort = new AbortController();
     try {
       await this.ui.refresh();
+      if (epoch !== this.epoch) return;
       const goal = await this.ui.api.interpret.call(
         { text: request },
         { signal: this.abort.signal },
@@ -267,7 +282,11 @@ export class CommandRunner {
     if (this.ui.unknownSave()) {
       this.state.set({ kind: "reconciling" });
       await this.ui.reconcile();
-      if (this.ui.unknownSave()) return;
+      if (
+        waitingEpoch !== this.epoch ||
+        this.registry.modal ||
+        this.ui.unknownSave()
+      ) return;
     }
     if (!this.goal()) {
       await this.start(true);
@@ -589,8 +608,8 @@ export class CommandRunner {
       this.state.set({ kind: "executing" });
       this.registry.execute(action.id);
       await this.ui.pending;
-      if (action.id !== "save") this.log(action.label);
       if (epoch !== this.epoch) return;
+      if (action.id !== "save") this.log(action.label);
       if (this.ui.unknownSave()) {
         this.state.set({ kind: "reconciling" });
         return;

@@ -58,6 +58,7 @@
       } @if (ui.page() === 'cases') { <kontor-cases /> } @else {
       <kontor-overview /> } }
       <footer class="workspace-foot">
+        <kontor-reset-workspace />
         <span
           >{{ ui.source.data()?.mode === 'live' ? 'Live · Jev' :
           ui.source.data()?.mode === 'demo' ? 'Demo · Feste Beispielszenarien' :

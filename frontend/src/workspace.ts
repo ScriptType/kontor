@@ -74,6 +74,8 @@ export class WorkspaceUi {
       draft = this.draft();
     return data && c && draft ? blockers(data, { ...c, ...draft }) : [];
   });
+  private generation = 0;
+  readonly resetting = signal(false);
   pending: Promise<void> = Promise.resolve();
   beforeManual: () => void = () => {};
   onSave: (input: Save) => void = () => {};
@@ -168,23 +170,29 @@ export class WorkspaceUi {
     this.unknownSave.set(input);
     this.busy.set(true);
     this.onSave(input);
-    this.pending = this.commit(input).finally(() => this.busy.set(false));
+    const generation = this.generation;
+    this.pending = this.commit(input, generation).finally(() => {
+      if (generation === this.generation) this.busy.set(false);
+    });
   }
-  private async commit(input: Save) {
+  private async commit(input: Save, generation: number) {
     try {
-      await this.accept(await this.mutation.mutateAsync(input));
+      await this.accept(await this.mutation.mutateAsync(input), generation);
     } catch (error) {
+      if (generation !== this.generation) return;
       const result = await this.api.receipt
         .call({ operationId: input.operationId })
         .catch(() => undefined);
+      if (generation !== this.generation) return;
       if (result) {
-        await this.accept(result);
+        await this.accept(result, generation);
         return;
       }
       if (result === null) {
         this.unknownSave.set(null);
         writeBrowserState("kontor-save-v1", null);
         await this.refresh();
+        if (generation !== this.generation) return;
         this.message.set(
           error instanceof Error ? error.message : "Speichern abgelehnt.",
         );
@@ -195,6 +203,8 @@ export class WorkspaceUi {
     }
   }
   async reconcile() {
+    if (this.resetting()) return;
+    const generation = this.generation;
     const input = this.unknownSave();
     if (!input) return;
     this.busy.set(true);
@@ -202,22 +212,26 @@ export class WorkspaceUi {
       const receipt = await this.api.receipt.call({
         operationId: input.operationId,
       });
-      if (receipt) await this.accept(receipt);
+      if (generation !== this.generation) return;
+      if (receipt) await this.accept(receipt, generation);
       else {
         this.unknownSave.set(null);
         writeBrowserState("kontor-save-v1", null);
         await this.refresh();
+        if (generation !== this.generation) return;
         this.message.set(
           "Keine Speicherung gefunden. Der Auftrag wurde nicht erneut gesendet.",
         );
       }
     } catch {
+      if (generation !== this.generation) return;
       this.message.set("Ergebnis noch unbekannt. Verbindung prüfen.");
     } finally {
-      this.busy.set(false);
+      if (generation === this.generation) this.busy.set(false);
     }
   }
-  private async accept(receipt: Receipt) {
+  private async accept(receipt: Receipt, generation: number) {
+    if (generation !== this.generation) return;
     this.unknownSave.set(null);
     writeBrowserState("kontor-save-v1", null);
     const current = this.data();
@@ -229,26 +243,71 @@ export class WorkspaceUi {
           c.id === receipt.caseId ? receipt.saved : c,
         ),
       });
-    if (this.selectedId() === receipt.caseId) {
+    if (
+      this.selectedId() === receipt.caseId &&
+      (!current || current.revision <= receipt.revision)
+    ) {
       this.draft.set(draftOf(receipt.saved));
       this.draftRevision.set(receipt.revision);
     }
     this.message.set(`${receipt.caseId} gespeichert`);
     this.onReceipt(receipt);
-    await this.refresh().catch(() =>
+    await this.refresh().catch(() => {
+      if (generation !== this.generation) return;
       this.message.set(
         `${receipt.caseId} gespeichert · weitere Daten konnten nicht aktualisiert werden`,
-      ),
-    );
+      );
+    });
   }
   async refresh() {
+    if (this.resetting()) return;
+    const generation = this.generation;
     const draft = this.draft();
     const pristine = !this.dirty();
     await this.query.refetch({ throwOnError: true });
+    if (generation !== this.generation) return;
     const selected = this.selected();
     if (pristine && this.draft() === draft && selected) {
       this.draft.set(draftOf(selected));
       this.draftRevision.set(this.data()?.revision ?? 0);
+    }
+  }
+  async reset() {
+    if (this.resetting()) return;
+    this.generation++;
+    this.resetting.set(true);
+    this.busy.set(false);
+    this.pending = Promise.resolve();
+    try {
+      await this.queries.cancelQueries({
+        queryKey: this.api.workspace.queryKey(),
+      });
+      const current = await this.api.workspace.call();
+      const workspace = await this.api.resetWorkspace.call({
+        expectedRevision: current.revision,
+      });
+      this.queries.setQueryData(this.api.workspace.queryKey(), workspace);
+      this.unknownSave.set(null);
+      this.selectedId.set(null);
+      this.draft.set(null);
+      this.draftOwner.set(null);
+      this.draftRevision.set(workspace.revision);
+      this.customer.set("all");
+      this.openOnly.set(false);
+      this.search.set("");
+      this.menu.set(null);
+      this.evidenceFocus.set(null);
+      this.page.set("cases");
+      history.replaceState(null, "", "#cases");
+      this.message.set("");
+      return writeBrowserState("kontor-save-v1", null);
+    } catch (error) {
+      const current = await this.api.workspace.call().catch(() => null);
+      if (current)
+        this.queries.setQueryData(this.api.workspace.queryKey(), current);
+      throw error;
+    } finally {
+      this.resetting.set(false);
     }
   }
   private restoreUnknown() {

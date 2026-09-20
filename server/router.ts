@@ -42,6 +42,9 @@ export function createRouter(
       );
     }),
     workspace: os.workspace.handler(() => store.snapshot()),
+    resetWorkspace: os.resetWorkspace.handler(({ input }) =>
+      store.reset(input.expectedRevision),
+    ),
     saveCase: os.saveCase.handler(({ input }) => store.save(input)),
     receipt: os.receipt.handler(({ input }) =>
       store.receipt(input.operationId),

@@ -939,3 +939,8 @@ tr.selected {
     width: 100%;
   }
 }
+
+.reset-dialog { width: min(480px, calc(100vw - 28px)); }
+.reset-body { padding: 20px; font-size: 14px; line-height: 1.6; color: var(--ink); }
+.reset-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+kontor-reset-workspace { display: flex; flex-direction: column; gap: 8px; }

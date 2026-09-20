@@ -74,6 +74,8 @@ export class Palette {
     }
   }
   setOpen(open: boolean) {
+    if (open && this.runner.registry.modal && !this.open()) return;
+    if (!open && !this.open()) return;
     this.open.set(open);
     this.runner.modal(open);
   }

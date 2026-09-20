@@ -144,7 +144,7 @@ test("opening palette while own draft awaits Save pauses, closes, decides fresh 
     await page.getByRole("button", { name: "Verlauf", exact: true }).click();
     await expect(
       page
-        .getByText("Pausiert, solange die Befehlspalette offen ist", {
+        .getByText("Pausiert, solange ein Dialog offen ist", {
           exact: true,
         })
         .first(),

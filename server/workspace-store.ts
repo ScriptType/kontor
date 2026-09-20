@@ -95,6 +95,24 @@ export class WorkspaceStore {
       throw error;
     }
   }
+  reset(expectedRevision: number): Workspace {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.snapshot();
+      if (current.revision !== expectedRevision)
+        throw new ORPCError("CONFLICT", {
+          message: "Daten wurden zwischenzeitlich geändert. Bitte erneut prüfen.",
+        });
+      const workspace = { ...seedWorkspace(), revision: current.revision + 1 };
+      this.db.prepare("UPDATE workspace SET data=? WHERE id=1")
+        .run(JSON.stringify(workspace));
+      this.db.exec("COMMIT");
+      return workspace;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
   close() {
     this.db.close();
   }

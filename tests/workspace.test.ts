@@ -96,3 +96,35 @@ test("completion requires time and actual user evidence; conflict never moves un
     store.close();
   }
 });
+
+test("reset persists seed data with increasing revisions and keeps historical save receipts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "kontor-reset-"));
+  const path = join(dir, "test.sqlite");
+  let store = new WorkspaceStore(path);
+  try {
+    const seed = store.snapshot();
+    const first = seed.cases[0];
+    assert(first);
+    const input = {
+      operationId: randomUUID(), revision: seed.revision, caseId: first.id,
+      actor: "manual" as const, draft: { ...draftOf(first), minutes: 123 },
+    };
+    const receipt = store.save(input);
+    assert.throws(() => store.reset(seed.revision));
+    assert.equal(store.snapshot().revision, receipt.revision);
+    const reset = store.reset(receipt.revision);
+    assert.deepEqual(reset, { ...seed, revision: receipt.revision + 1 });
+    assert.deepEqual(store.save(input), receipt);
+    assert.deepEqual(store.receipt(input.operationId), receipt);
+    assert.deepEqual(store.snapshot(), reset);
+    assert.throws(() => store.save({ ...input, operationId: randomUUID() }));
+    assert.throws(() => store.save({ ...input, operationId: randomUUID(), revision: receipt.revision }));
+    store.close();
+    store = new WorkspaceStore(path);
+    assert.deepEqual(store.snapshot(), reset);
+    assert.deepEqual(store.reset(reset.revision), { ...seed, revision: reset.revision + 1 });
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true });
+  }
+});
