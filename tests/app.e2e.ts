@@ -24,6 +24,43 @@ async function command(page: Page, text: string) {
   await page.getByRole("textbox", { name: "Auftrag an Jev" }).fill(text);
   await page.getByRole("button", { name: "Ausführen" }).click();
 }
+test("opening a case reveals and focuses its detail heading without changing data", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const before = workspace.snapshot();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto(address);
+  await page.locator('[data-action="case:V-1042"]').click();
+  const heading = page.locator(".editor h2");
+  await expect(heading).toHaveText("Wartung Standort Nord");
+  await expect(async () => {
+    const bounds = await heading.evaluate((element) => {
+      const heading = element.getBoundingClientRect();
+      const activity = document
+        .querySelector(".activity")
+        ?.getBoundingClientRect();
+      const overlapsActivity =
+        activity && heading.left < activity.right && heading.right > activity.left;
+      return {
+        top: heading.top,
+        bottom: heading.bottom,
+        left: heading.left,
+        right: heading.right,
+        visibleTop: overlapsActivity ? activity.bottom : 0,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+      };
+    });
+    expect(bounds.top).toBeGreaterThanOrEqual(bounds.visibleTop);
+    expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight);
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(bounds.viewportWidth);
+  }).toPass({ timeout: 3000 });
+  await expect(heading).toBeFocused();
+  expect(workspace.snapshot()).toEqual(before);
+});
 test("finite demo fixture saves once and reports saved state across reload", async ({
   page,
   address,
