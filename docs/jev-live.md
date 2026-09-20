@@ -12,6 +12,7 @@ Verwende Node 24 und installiere die Projektabhängigkeiten mit `npm ci`. Google
 npm run test:live
 npm run test:live -- --scenario=customers,filter-original,no-save --max-calls=40
 npm run test:live -- --scenario=repeated-assignment --repeat=2 --max-calls=40
+npm run test:live -- --scenario=detail-short-id,detail-first-row,detail-last-row --max-calls=20
 ```
 
 `--scenario` wählt eine durch Kommas getrennte Liste aus. `--repeat` ist standardmäßig `1`. `--max-calls` begrenzt den gesamten Lauf auf standardmäßig `160` Anbieteraufrufe. `--timeout-ms` begrenzt ihn auf standardmäßig `600000` Millisekunden. Ein ausgeschöpftes Budget lässt übrige Fälle als nicht ausgeführt im Bericht stehen und beendet den Lauf mit einem Fehlerstatus.
@@ -19,6 +20,8 @@ npm run test:live -- --scenario=repeated-assignment --repeat=2 --max-calls=40
 Jedes Szenario beginnt mit einer neuen Browserumgebung und einer eigenen Datenbank im Arbeitsspeicher. `kontor.sqlite`, offene Formulare und gespeicherte Aufträge der laufenden Entwicklungsanwendung werden nicht verwendet.
 
 Die Szenarien prüfen Navigation, ausdrücklich geordnete Seitenwechsel, Suche, Kundenfilter, Änderungen und anschließende Navigation, mehrere Vorgänge, wiederholte Zuweisungen, fehlende Werte, ungespeicherte Entwürfe und fachliche Blockaden. Ein weiterer Fall verlangt nach einer beauftragten Speicherung eine nicht verfügbare E-Mail-Aktion. Bereits gespeicherte Änderungen müssen erhalten bleiben, ohne den gesamten Auftrag als erledigt auszugeben.
+
+Die drei Detailfälle prüfen eine verkürzte Vorgangskennung sowie die erste und letzte Tabellenzeile. Die erwartete Zeile wird vor dem Auftrag aus der gerenderten Tabelle gelesen. Der Test verlangt den richtigen Vorgang, eine vollständig sichtbare und fokussierte Detailüberschrift unterhalb der fixierten Aktivitätsleiste und unveränderte gespeicherte Daten.
 
 ## Ergebnisse bewerten
 
@@ -32,7 +35,7 @@ Eine gesonderte Prüfung mit menschlicher Bestätigung muss vor dem Klick den ko
 
 ## Fehler auswerten
 
-Die Ausgabe nennt den Bericht unter `live-results/<Zeitstempel>/report.json`. Dieses Verzeichnis bleibt außerhalb von Git. Der Bericht enthält Aufträge, angebotene Aktionen, beobachtete Schritte, Modellantworten und Confidence, das gemeldete Modell, Aufrufzahlen und den gespeicherten Endzustand. API-Key und Anfrageheader werden nicht aufgezeichnet.
+Die Ausgabe nennt den Bericht unter `live-results/<Zeitstempel>/report.json`. Dieses Verzeichnis bleibt außerhalb von Git. Der Bericht enthält Aufträge, angebotene Aktionen, aktuelle Bildschirmfakten, beobachtete Schritte, Modellantworten und Confidence, das gemeldete Modell, Aufrufzahlen und den gespeicherten Endzustand. API-Key und Anfrageheader werden nicht aufgezeichnet.
 
 Prüfe zuerst die angebotenen Optionen, danach Jevs Auswahl und Confidence. Vergleiche sie mit sichtbarem Zustand, tatsächlichen Feldwerten und Speicherbelegen. So lassen sich falsche Auswahl, unsichere Bewertung und Fehler bei der Bedienung unterscheiden. Eine Abschlussmeldung allein beweist keinen Erfolg.
 
@@ -70,6 +73,23 @@ Auf `5013c8a` bestanden vier weitere Live-Prüfungen mit insgesamt 20 Anbieterau
 Der integrierte Stand `2ed6c20` zeigt bestätigte Speicherungen unmittelbar in der Rückfrage. Zwei abschließende Live-Prüfungen belegten diese Anzeige und die Prüfbeleg-Übergabe mit neun Aufrufen ohne Bestätigung. Bericht und Bildschirmaufnahmen liegen lokal unter `live-results/independent-2026-09-20T19-28-23.707Z/`. `npm run verify` bestand auf diesem Stand mit 27 Unit- und Integrationstests sowie 31 Browser-Tests einschließlich Unterbrechung, Reset, Neuladen und verspäteter Speicherantworten.
 
 Die Confidence-Schwelle blieb bei 0,75. Es wurden weder erwartete nächste Aktionen an Jev übermittelt noch falsche Vorschläge bestätigt. Die Beobachtungen zu Zielvorgang und Reihenfolge bleiben als [bekannte Modellfehler](known-issues.md#ki-002-modellunsicherheit-und-mehrteilige-aufträge) offen.
+
+## Bildschirmkontext und Detailansicht
+
+Auf `4840c8d` prüfte der unveränderte Live-Runner sechs Szenarien mit `jev-1.13.0` und 22 Anbieteraufrufen. Der Bericht liegt lokal unter `live-results/2026-09-20T19-58-19.605Z/report.json`. Der Prozess endete wegen der Bestätigungspause mit Exit-Code 1.
+
+| Szenario | Ergebnis | Beobachtung |
+| --- | --- | --- |
+| `detail-short-id` | Autonom erledigt | V-1042 geöffnet; Detailüberschrift sichtbar und fokussiert. |
+| `detail-first-row` | Autonom erledigt | Tatsächliche erste Tabellenzeile geöffnet; Überschrift sichtbar und fokussiert. |
+| `detail-last-row` | Nicht autonom erledigt | Richtiger Vorschlag V-1035, Bestätigung bei Confidence 0,59 erforderlich. |
+| `assign` | Autonom erledigt | V-1042 Lea zugewiesen und gespeichert. |
+| `no-save` | Autonom erledigt | 25 Minuten im sichtbaren Entwurf; gespeicherte Daten unverändert. |
+| `domain-blocker` | Erwartete Übergabe | V-1039 geöffnet; fehlender menschlicher Prüfbeleg sichtbar. |
+
+Eine unabhängige anschließende Browserprüfung auf demselben Stand verwendete sechs weitere Anbieteraufrufe. „Öffne Details von 1042“ gelang autonom. Für die letzte Tabellenzeile wurde der konkrete Vorschlag V-1035 geprüft und einmal ausdrücklich bestätigt. Danach war auch diese Detailüberschrift sichtbar und fokussiert. Beide gespeicherten Datenstände blieben unverändert. Dieser bestätigte Ablauf ersetzt den fehlgeschlagenen Autonomietest nicht.
+
+Die Berichte, Vorher-Messung, Kontextversuche und Bildschirmaufnahmen liegen lokal unter `live-results/screen-context-2026-09-20/`. Die endgültige Prüfung verändert keine Anbieteranfragen. `npm run verify` bestand auf dem integrierten Stand mit 27 Unit-/Integrationstests und 39 Browser-Tests. Dazu gehören tatsächliche Tabellenreihenfolge nach Filtern, ausgeblendete Bereiche, verspätete Antworten nach Scrollen, Entwurfserhalt und ein Stopp während des verzögerten Schließens der Palette.
 
 ## Zuständigkeiten und Quellen
 

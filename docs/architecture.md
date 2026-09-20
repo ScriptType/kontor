@@ -96,7 +96,21 @@ Ein Lauf ist auf 40 ausgeführte Schritte begrenzt. Ein Zustand enthält höchst
 
 Eine neue Komponente registriert ihre Bedienelemente und beschreibt die beobachtbaren Wirkungen. Der Entscheidungszyklus benötigt dafür keine neue Aufgabenart und keine festgelegte Klickfolge. Die Fachfunktion selbst benötigt weiterhin manuelle Bedienung, Validierung und einen prüfbaren Effekt.
 
+## Bildschirmkontext
+
+Der gerenderte Seitentext allein enthält keine verlässliche räumliche Gliederung. Deshalb beschreiben benannte Bereiche zusätzlich Hauptnavigation, Filter, Tabelle, Detailformular und Übersichten. Die Komponenten benennen die Bereiche an ihren tatsächlichen DOM-Elementen. Reihenfolge, Verschachtelung, grobe Position im Browserfenster und zugehörige Aktions- und Feldkennungen werden daraus abgeleitet.
+
+Ein vorhandener Bereich kann oberhalb oder unterhalb des sichtbaren Ausschnitts liegen. Diese Angabe unterscheidet sich von einem ausgeblendeten oder nicht gerenderten Bereich. Eine im Arbeitsbereich erhaltene Auswahl bedeutet ebenfalls nicht, dass ihre Details auf der aktuellen Seite geöffnet sind.
+
+Aktionen in nativen Tabellen erhalten zusätzlich den Tabellennamen und ihre aktuelle Zeilenposition in ihrer Beschreibung. Beispielsweise bezeichnet „Vorgangsliste, Zeile 5 von 5, letzte Zeile“ das tatsächlich gerenderte Bedienelement. Filter verändern diese Angabe mit der Tabelle. Die Ermittlung wertet keinen Nutzerauftrag aus.
+
+Die Bereichsbeschreibungen stehen neben dem begrenzten Seitentext in den aktuellen Fakten. Sie erlauben keine zusätzlichen Bedienhandlungen. Ausschließlich die angebotenen Aktionen bleiben ausführbar. Ändert sich die beschriebene Anordnung während einer Entscheidung, prüft der bestehende Zustandsvergleich diese Änderung vor der Ausführung. Die Beobachtung umfasst höchstens 24 Bereiche. Bei weiteren Bereichen zeigt `truncated` die Kürzung an.
+
+Das Öffnen eines Vorgangs zeigt seine Details unterhalb der Tabelle. Nach dem Rendern scrollt die Anwendung die Detailüberschrift in den sichtbaren Ausschnitt und fokussiert sie. Manuelle Klicks und Jev verwenden denselben Ablauf. Das erneute Öffnen desselben Vorgangs erhält seinen ungespeicherten Entwurf. Normale Feldeingaben lösen keine erneute Fokussierung der Überschrift aus. Die Umsetzung verwendet Angulars [`afterRenderEffect`](https://angular.dev/api/core/afterRenderEffect).
+
 Jede Entscheidung gehört zu einem bestimmten Lauf und Bildschirmzustand. Öffnen des Auftragsfensters, manuelle Änderungen, Stoppen und Reset entwerten ausstehende Antworten. Nach einem Neuladen startet kein Auftrag automatisch. Vor der ausdrücklichen Fortsetzung werden Daten und Bedienelemente erneut gelesen.
+
+Aktionen nach dem Schließen der Palette warten auf das `closed`-Ereignis des Dialogs. Erst dann ist die Hauptansicht wieder zugänglich. Eine vorgemerkte Aktion entfällt, wenn sich der Laufzustand während des Schließens verändert hat.
 
 ## Freigaben, Teilfortschritt und Abschluss
 
