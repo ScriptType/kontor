@@ -55,4 +55,6 @@ Nach einem Verbindungsabbruch öffnet der nächste Aufruf einen neuen Socket. La
 
 Der angezeigte Score darf Nachkommastellen haben. Noul besitzt keinen Confidence-Wert; Confidence ist keine gemessene Genauigkeit.
 
-[Architektur und Bibliotheksvergleich](docs/architecture.md) erläutern die Auswahl. [Mögliche Anwendungen](docs/use-cases.md) beschreiben Incident-Triage, Quellenprüfung und Katalogabgleich als nächsten Ausbau.
+[Architektur und Bibliotheksvergleich](docs/architecture.md) erläutern die Auswahl. [Mögliche Anwendungen](docs/use-cases.md) beschreiben weitere Einsatzmöglichkeiten für TypeSafe.
+
+[Oberfläche und Bedienassistenz](docs/design-system.md) beschreibt die geplante Vorgangsverwaltung, das gemeinsame Designsystem und Jevs schrittweise Bedienung der sichtbaren Oberfläche.
