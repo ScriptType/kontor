@@ -180,12 +180,15 @@
         <input
           #appointmentDate
           id="appointment"
+          (input)="manualFieldInput()"
           [kontorField]="field('appointment', 'Termin', 'datetime-local', draft.appointment?.start?.slice(0,16) ?? '')"
           type="datetime-local"
           [value]="draft.appointment?.start?.slice(0,16) ?? ''"
           (change)="appointment(appointmentDate.value, +appointmentDuration.value)"
         /><input
           #appointmentDuration
+          (input)="manualFieldInput()"
+          [disabled]="!draft.appointment"
           [kontorField]="field('duration', 'Termindauer in Minuten', 'number', String(draft.appointment?.minutes ?? 60), 15, 480)"
           aria-label="Termindauer in Minuten"
           type="number"

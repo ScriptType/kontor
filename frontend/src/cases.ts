@@ -125,11 +125,15 @@ export class Cases {
   discardEffect() {
     return `${this.ui.selectedId()}: Folgende Entwurfsänderungen verwerfen und gespeicherten Stand wiederherstellen. ${this.draftChanges()}`;
   }
+  manualFieldInput() {
+    if (this.runner.registry.actor === "manual") this.ui.manual();
+  }
   number(event: Event) {
     if (event.target instanceof HTMLInputElement) {
       const value = Number(event.target.value);
       if (Number.isInteger(value) && value >= 0 && value <= 10000)
         this.ui.edit({ minutes: value }, this.runner.registry.actor);
+      else this.manualFieldInput();
     }
   }
   appointment(start: string, minutes: number) {

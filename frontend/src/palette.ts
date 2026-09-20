@@ -51,10 +51,6 @@ export class Palette {
       }
     });
   }
-  editDraft() {
-    this.setOpen(false);
-    this.runner.ui.navigate("cases", "manual");
-  }
   editEvidence() {
     const target = this.runner.targetCase();
     if (!target || this.runner.ui.selectedId() !== target.id) return;
@@ -63,8 +59,6 @@ export class Palette {
     this.runner.ui.evidenceFocus.set(target.id);
   }
   readonly open = signal(false);
-  readonly minutes = signal("");
-  readonly scheduleError = signal("");
   readonly shortcut = /Mac|iPhone|iPad/.test(navigator.platform)
     ? "⌘ K"
     : "Ctrl K";

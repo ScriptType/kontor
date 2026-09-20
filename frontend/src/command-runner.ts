@@ -84,6 +84,7 @@ export class CommandRunner {
     null;
   constructor() {
     this.restore();
+    this.ui.currentRunId = () => this.activeId;
     this.ui.beforeManual = () => this.pauseManual();
     this.ui.onSave = (input) => {
       if (input.actor === "jev")
@@ -92,13 +93,19 @@ export class CommandRunner {
           operations: [...r.operations, input.operationId],
         }));
     };
-    this.ui.onReceipt = (receipt) =>
+    this.ui.onReceipt = (receipt, runId, actor) => {
+      const owner = this.history().find(
+        (r) => r.id === runId || r.operations.includes(receipt.operationId),
+      );
+      if (!owner) return actor === "manual";
       this.history.update((history) =>
         history.map((r) =>
-          r.operations.includes(receipt.operationId) &&
-          !r.savedOperations.includes(receipt.operationId)
+          r.id === owner.id && !r.savedOperations.includes(receipt.operationId)
             ? {
                 ...r,
+                operations: r.operations.includes(receipt.operationId)
+                  ? r.operations
+                  : [...r.operations, receipt.operationId],
                 receipts: [...r.receipts, receipt],
                 savedOperations: [...r.savedOperations, receipt.operationId],
                 entries: [
@@ -109,16 +116,19 @@ export class CommandRunner {
             : r,
         ),
       );
-    effect(() =>
-      this.historyStored.set(
-        writeBrowserState("kontor-command-v1", {
-          version: 3,
-          command: this.command(),
-          history: this.history(),
-          unfinished: !["idle", "done", "stopped"].includes(this.state().kind),
-        }),
-      ),
-    );
+      return this.persist();
+    };
+    effect(() => this.persist());
+  }
+  private persist() {
+    const stored = writeBrowserState("kontor-command-v1", {
+      version: 3,
+      command: this.command(),
+      history: this.history(),
+      unfinished: !["idle", "done", "stopped"].includes(this.state().kind),
+    });
+    this.historyStored.set(stored);
+    return stored;
   }
   private run() {
     return this.history().find((r) => r.id === this.activeId);
@@ -445,7 +455,12 @@ export class CommandRunner {
             decision.confidence < 0.75 ||
             this.ui.busy() ||
             this.ui.unknownSave() ||
-            this.run()?.operations.length !== this.run()?.savedOperations.length
+            this.run()?.operations.some(
+              (id) =>
+                !this.run()?.receipts.some(
+                  (receipt) => receipt.operationId === id,
+                ),
+            )
           ) {
             this.block(
               "Auftrag nicht vollständig bestätigt. Bereits ausgeführte Schritte stehen im Verlauf.",
@@ -575,7 +590,34 @@ export class CommandRunner {
     const parsed = persistedSchema.safeParse(
       readBrowserState("kontor-command-v1"),
     );
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      const legacy = z
+        .object({
+          version: z.union([z.literal(1), z.literal(2)]),
+          command: z.string(),
+          history: z.array(
+            historySchema
+              .omit({ receipts: true, answers: true, steps: true })
+              .extend({
+                operations: z.array(z.string()).default([]),
+                savedOperations: z.array(z.string()).default([]),
+              }),
+          ),
+        })
+        .safeParse(readBrowserState("kontor-command-v1"));
+      if (legacy.success) {
+        this.command.set(legacy.data.command);
+        this.history.set(
+          legacy.data.history.map((run) => ({
+            ...run,
+            receipts: [],
+            answers: [],
+            steps: [],
+          })),
+        );
+      }
+      return;
+    }
     this.command.set(parsed.data.command);
     this.history.set(parsed.data.history);
     this.activeId = parsed.data.history[0]?.id ?? null;

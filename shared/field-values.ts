@@ -1,3 +1,4 @@
+import { appointmentSchema } from "./domain.js";
 import type { DecisionInput, FieldDescription } from "./command.js";
 export function fieldValues(
   field: FieldDescription,
@@ -19,13 +20,13 @@ export function fieldValues(
     ))
       add(match[0], "wörtliche Zahl aus Auftrag");
   } else if (field.type === "datetime-local") {
-    const dates = [...request.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g)].map(
-      (m) => m[0],
-    );
-    const times = [...request.matchAll(/\b\d{2}:\d{2}\b/g)].map((m) => m[0]);
-    for (const date of dates)
-      for (const time of times)
-        add(`${date}T${time}`, "Datum und Uhrzeit wörtlich aus Auftrag");
+    for (const match of request.matchAll(
+      /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
+    ))
+      add(
+        `${match[1]}T${match[2]}`,
+        "zusammenhängender Datum-Uhrzeit-Wert aus Auftrag",
+      );
   } else {
     for (const match of request.matchAll(/["„“]([^"„“]+)["“]/g))
       if (match[1]) add(match[1], "zitierter Text aus Auftrag");
@@ -45,7 +46,7 @@ export function validFieldValue(field: FieldDescription, value: string) {
   if (field.type === "datetime-local")
     return (
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) &&
-      Number.isFinite(Date.parse(value))
+      appointmentSchema.shape.start.safeParse(`${value}:00`).success
     );
   return value.length > 0 && value.length <= 200;
 }

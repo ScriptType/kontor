@@ -8,7 +8,6 @@ import { z } from "zod";
 import { createApp } from "../server/app.js";
 import { readConfig } from "../server/config.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
-import { decisionInputSchema } from "../shared/command.js";
 import type { CaseDraft } from "../shared/domain.js";
 type Scenario = {
   id: string;

@@ -169,3 +169,39 @@ test("answers for another record never become candidates in the current field", 
     [],
   );
 });
+
+test("datetime offers keep lexical date-time pairs and reject impossible calendars", () => {
+  const field = {
+    id: "appointment",
+    scope: "V-1042",
+    label: "Termin",
+    kind: "draft",
+    type: "datetime-local",
+    current: "",
+  } as const;
+  assert.deepEqual(
+    fieldValues(
+      field,
+      "V-1041 am 2026-09-24 um 09:00 und V-1042 am 2026-09-25 14:00",
+      [],
+      [],
+    ).map((v) => v.value),
+    ["2026-09-24T09:00", "2026-09-25T14:00"],
+  );
+  assert.deepEqual(
+    fieldValues(field, "Datum 2026-09-24, Zeit eventuell 09:00", [], []),
+    [],
+  );
+  assert(!validFieldValue(field, "2026-02-30T09:00"));
+  assert(!validFieldValue(field, "2026-02-31T09:00"));
+  assert(validFieldValue(field, "2028-02-29T09:00"));
+  assert.deepEqual(
+    fieldValues(
+      field,
+      "2026-02-30 09:00",
+      [{ fieldId: field.id, scope: field.scope, value: "2026-02-31T09:00" }],
+      [],
+    ),
+    [],
+  );
+});

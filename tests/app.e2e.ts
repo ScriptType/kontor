@@ -496,3 +496,100 @@ test("late saved step cannot enter a replacement run after reset", async ({
   expect(history.history[0].receipts).toEqual([]);
   expect(workspace.snapshot().revision).toBe(2);
 });
+
+test("a late receipt preserves manual edits made after submission", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  let release = () => {},
+    arrived = () => {};
+  const held = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  await page.routeWebSocket("**/rpc", (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage((message) => {
+      const text =
+        typeof message === "string" ? message : message.toString("utf8");
+      if (text.includes("operationId") && text.includes("saved")) {
+        release = () => socket.send(message);
+        arrived();
+      } else socket.send(message);
+    });
+  });
+  await page.goto(address);
+  await command(page, demos[3]);
+  await held;
+  expect(workspace.snapshot().cases[0]?.minutes).toBe(45);
+  await page.locator("#minutes").fill("71");
+  release();
+  await expect(page.locator(".editor-footer")).toContainText(
+    "neuerer Entwurf bleibt ungespeichert",
+  );
+  await expect(page.locator("#minutes")).toHaveValue("71");
+  await expect(page.locator(".activity-label")).toContainText(
+    "manuellem Eingriff",
+  );
+  expect(workspace.snapshot().cases[0]?.minutes).toBe(45);
+  expect(workspace.snapshot().revision).toBe(1);
+});
+test("appointment duration is unavailable until its visible date exists", async ({
+  page,
+  address,
+}) => {
+  await page.goto(address);
+  await page.locator('[data-action="case:V-1042"]').click();
+  await expect(
+    page.getByRole("spinbutton", { name: "Termindauer in Minuten" }),
+  ).toBeDisabled();
+  await page.locator("#appointment").fill("2026-09-25T09:00");
+  await page.locator("#appointment").blur();
+  await expect(
+    page.getByRole("spinbutton", { name: "Termindauer in Minuten" }),
+  ).toBeEnabled();
+  await page
+    .getByRole("spinbutton", { name: "Termindauer in Minuten" })
+    .fill("75");
+  await page.getByRole("spinbutton", { name: "Termindauer in Minuten" }).blur();
+  await expect(page.locator("#appointment")).toHaveValue("2026-09-25T09:00");
+});
+
+test("legacy history remains readable without restoring execution authority", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "kontor-command-v1",
+      JSON.stringify({
+        version: 2,
+        command: "Alter Auftrag",
+        goal: { stale: true },
+        unfinished: true,
+        history: [
+          {
+            id: "legacy",
+            request: "Alter Auftrag",
+            entries: ["Früherer sichtbarer Schritt"],
+            operations: [],
+            savedOperations: [],
+            createdAt: "2026-09-01T12:00:00Z",
+            outcome: "Pausiert",
+          },
+        ],
+      }),
+    ),
+  );
+  await page.goto(address);
+  await expect(page.locator(".activity-label")).toHaveText(
+    "Bereit für deinen Auftrag",
+  );
+  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Auftrag an Jev" }),
+  ).toHaveValue("Alter Auftrag");
+  await expect(page.locator(".history")).toContainText("Alter Auftrag");
+  expect(workspace.snapshot().revision).toBe(0);
+});

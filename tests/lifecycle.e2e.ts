@@ -3,7 +3,6 @@ import { once } from "node:events";
 import { z } from "zod";
 import { createApp } from "../server/app.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
-import { decisionInputSchema } from "../shared/command.js";
 function barrier() {
   let release = () => {};
   const promise = new Promise<void>((resolve) => {
@@ -419,6 +418,13 @@ test("unknown save after reload reconciles once and never replays the mutation",
       await start(page);
       await arrived.promise;
       expect(store.snapshot().revision).toBe(1);
+      await page.evaluate(() => {
+        const history = JSON.parse(
+          localStorage.getItem("kontor-command-v1") ?? "{}",
+        );
+        history.history[0].operations = [];
+        localStorage.setItem("kontor-command-v1", JSON.stringify(history));
+      });
       await page.reload();
       await expect(page.locator(".activity-label")).toContainText(
         "Neuladen pausiert",
@@ -438,5 +444,28 @@ test("unknown save after reload reconciles once and never replays the mutation",
       expect(history.history[0].operations).toHaveLength(1);
     },
     { receiptComplete: true },
+  );
+});
+
+test("invalid manual input also invalidates an outstanding choice", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    assignment,
+    async (store, held, arrived) => {
+      await start(page);
+      await arrived;
+      await page.locator("#minutes").fill("-1");
+      held.release();
+      await expect(page.locator(".activity-label")).toContainText(
+        "manuellem Eingriff",
+      );
+      await expect(
+        page.locator('[data-action="menu:technician"]'),
+      ).toHaveAttribute("aria-expanded", "false");
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { hold: "menu:technician" },
   );
 });

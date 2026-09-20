@@ -16,6 +16,9 @@ import {
   type Save,
 } from "../../shared/domain";
 import type { Actor } from "./action-registry";
+const saveJournalSchema = saveSchema.extend({
+  runId: z.string().nullable().default(null),
+});
 const pageSchema = z.enum(["cases", "customers", "team", "reports"]);
 export type Page = z.infer<typeof pageSchema>;
 @Injectable({ providedIn: "root" })
@@ -79,8 +82,12 @@ export class WorkspaceUi {
   pending: Promise<void> = Promise.resolve();
   beforeManual: () => void = () => {};
   onSave: (input: Save) => void = () => {};
-  onReceipt: (receipt: Receipt) => void = () => {};
-  readonly unknownSave = signal<Save | null>(this.restoreUnknown());
+  currentRunId: () => string | null = () => null;
+  onReceipt: (receipt: Receipt, runId: string | null, actor: Actor) => boolean =
+    () => true;
+  readonly unknownSave = signal<z.infer<typeof saveJournalSchema> | null>(
+    this.restoreUnknown(),
+  );
   constructor() {
     window.addEventListener("hashchange", () =>
       this.navigate(
@@ -161,13 +168,17 @@ export class WorkspaceUi {
       draft: structuredClone(draft),
       actor,
     };
-    if (!writeBrowserState("kontor-save-v1", input)) {
+    const journal = {
+      ...input,
+      runId: actor === "jev" ? this.currentRunId() : null,
+    };
+    if (!writeBrowserState("kontor-save-v1", journal)) {
       this.message.set(
         "Lokales Speicherprotokoll nicht verfügbar. Speichern wurde nicht gesendet.",
       );
       return;
     }
-    this.unknownSave.set(input);
+    this.unknownSave.set(journal);
     this.busy.set(true);
     this.onSave(input);
     const generation = this.generation;
@@ -232,8 +243,10 @@ export class WorkspaceUi {
   }
   private async accept(receipt: Receipt, generation: number) {
     if (generation !== this.generation) return;
-    this.unknownSave.set(null);
-    writeBrowserState("kontor-save-v1", null);
+    const submitted = this.unknownSave();
+    const unchangedDraft =
+      submitted?.operationId === receipt.operationId &&
+      JSON.stringify(this.draft()) === JSON.stringify(submitted.draft);
     const current = this.data();
     if (current && current.revision <= receipt.revision)
       this.queries.setQueryData(this.api.workspace.queryKey(), {
@@ -247,11 +260,23 @@ export class WorkspaceUi {
       this.selectedId() === receipt.caseId &&
       (!current || current.revision <= receipt.revision)
     ) {
-      this.draft.set(draftOf(receipt.saved));
+      if (unchangedDraft) this.draft.set(draftOf(receipt.saved));
       this.draftRevision.set(receipt.revision);
     }
-    this.message.set(`${receipt.caseId} gespeichert`);
-    this.onReceipt(receipt);
+    const recorded = this.onReceipt(
+      receipt,
+      submitted?.runId ?? null,
+      submitted?.actor ?? "manual",
+    );
+    if (recorded) {
+      this.unknownSave.set(null);
+      writeBrowserState("kontor-save-v1", null);
+    }
+    this.message.set(
+      recorded
+        ? `${receipt.caseId} gespeichert${this.dirty() ? " · neuerer Entwurf bleibt ungespeichert" : ""}`
+        : `${receipt.caseId} gespeichert · Zuordnung zum Auftrag noch nicht gesichert. Ergebnis erneut prüfen.`,
+    );
     await this.refresh().catch(() => {
       if (generation !== this.generation) return;
       this.message.set(
@@ -311,7 +336,9 @@ export class WorkspaceUi {
     }
   }
   private restoreUnknown() {
-    const parsed = saveSchema.safeParse(readBrowserState("kontor-save-v1"));
+    const parsed = saveJournalSchema.safeParse(
+      readBrowserState("kontor-save-v1"),
+    );
     return parsed.success ? parsed.data : null;
   }
 }

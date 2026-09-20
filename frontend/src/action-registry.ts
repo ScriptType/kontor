@@ -46,7 +46,7 @@ export class ActionRegistry {
       ? []
       : [...this.fields]
           .filter((f) => f.available())
-          .map((f) => f.kontorField());
+          .map((f) => f.description());
   }
   snapshot(
     request = "",
@@ -77,7 +77,7 @@ export class ActionRegistry {
         add(control.kontorAction(), control, () => control.element.click());
     for (const control of this.fields)
       if (control.available()) {
-        const field = control.kontorField();
+        const field = control.description();
         for (const { value, source } of fieldValues(
           field,
           request,
@@ -167,6 +167,9 @@ export class FieldControl implements OnInit, OnDestroy {
   }
   ngOnDestroy() {
     this.registry.removeField(this);
+  }
+  description() {
+    return { ...this.kontorField(), current: this.element.value };
   }
   available() {
     return !this.element.readOnly && available(this.element);
