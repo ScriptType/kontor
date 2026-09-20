@@ -771,6 +771,38 @@ test("invalid manual input also invalidates an outstanding choice", async ({
   );
 });
 
+test("uncertain filter completion does not inherit the selected case's inspection handoff", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    [],
+    async (store) => {
+      const before = store.snapshot();
+      await page.locator('[data-action="case:V-1039"]').click();
+      await page.locator('[data-action="menu:customer"]').click();
+      await page.locator('[data-action="customer:nord"]').click();
+      await start(page, "zeige mir alle vorgänge von nordwerk");
+      await expect(page.locator(".answer-panel")).toBeVisible();
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Auftrag nicht vollständig bestätigt",
+      );
+      await expect(page.locator("tbody tr")).toHaveCount(2);
+      await expect(page.locator("tbody tr td:nth-child(3)")).toHaveText([
+        "Nordwerk GmbH",
+        "Nordwerk GmbH",
+      ]);
+      await expect(page.locator(".editor")).toContainText("V-1039");
+      expect(store.snapshot()).toEqual(before);
+      await expect(page.locator(".blocked-control")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Prüfbeleg erfassen", exact: true }),
+      ).toHaveCount(0);
+    },
+    { low: "done" },
+  );
+});
+
 test("missing evidence stays a concrete handoff tied to the disabled completion control", async ({
   page,
 }) => {
