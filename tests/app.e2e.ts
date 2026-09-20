@@ -394,3 +394,23 @@ test("unavailable browser storage refuses sending a save instead of losing its r
   );
   expect(workspace.snapshot().revision).toBe(0);
 });
+
+test("pending attention opens once and evidence hands off to the correct manual editor", async ({ page, address, workspace }) => {
+  await page.goto(address + '#reports');
+  await command(page, demos[6]);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.answer-panel')).toContainText('V-1039');
+  const evidence = page.getByRole('button', { name: 'Prüfbeleg erfassen', exact: true });
+  await expect(evidence).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.locator('.editor')).toContainText('V-1039');
+  await expect(page.locator('.activity-label')).toHaveText('Antwort ausstehend');
+  await page.waitForTimeout(150);
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await answerPanel(page);
+  await evidence.click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.getByLabel('Tatsächlicher Prüfbeleg')).toBeFocused();
+  expect(workspace.snapshot().revision).toBe(0);
+});
