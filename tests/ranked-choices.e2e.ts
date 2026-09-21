@@ -289,6 +289,45 @@ for (const fresh of ["nav:reports", "done"] as const) {
   });
 }
 
+test("an uncertain blocked choice opens the review and a ranked navigation proceeds", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    [],
+    async (store) => {
+      const before = store.snapshot();
+      await page.locator('[data-action="nav:reports"]').click();
+      await start(page, "Zeige die offenen Vorgänge.");
+      await expect(review(page)).toBeVisible();
+      await expect(rows(page)).toHaveCount(2);
+      await expect(rows(page).nth(0)).toContainText("Als blockiert anhalten");
+      await expect(rows(page).nth(1)).toContainText("Vorgänge öffnen");
+      await expect(review(page)).toContainText("Auswahlkonfidenz 54 %");
+      await expect(
+        page.getByText("Auftrag teilweise oder nicht erledigt"),
+      ).toHaveCount(0);
+      await expect(page.locator(".blocked-control")).toHaveCount(0);
+      expect(store.snapshot()).toEqual(before);
+      await choose(page, "Vorgänge öffnen").click();
+      await expect(page).toHaveURL(/#cases$/);
+      await expect(review(page)).toContainText("Jev hält bei Unklarheit an");
+      expect(store.snapshot()).toEqual(before);
+    },
+    {
+      nextAnswer: (index) =>
+        index === 0
+          ? {
+              choice: "blocked",
+              confidence: 0.54,
+              probabilities: { blocked: 0.54, "nav:cases": 0.3 },
+            }
+          : stopped,
+      effectAnswer: () => ({ choice: "authorized", confidence: 1 }),
+    },
+  );
+});
+
 test("abstention keeps a real earlier receipt visible and invents no cause", async ({
   page,
 }) => {

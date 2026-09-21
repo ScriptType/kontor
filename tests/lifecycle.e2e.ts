@@ -722,7 +722,7 @@ test("uncertain filter completion does not inherit the selected case's inspectio
   );
 });
 
-test("a precise cause after uncertain blocked still requires a manual evidence handoff", async ({
+test("a precise cause after a reviewed uncertain blocked still requires a manual evidence handoff", async ({
   page,
 }) => {
   await withLive(
@@ -732,6 +732,15 @@ test("a precise cause after uncertain blocked still requires a manual evidence h
       const before = store.snapshot();
       await page.addStyleTag({ content: slowPaletteClose });
       await start(page, "Schließe V-1039 ab.");
+      const review = page.getByRole("region", {
+        name: "Jev-Vorschläge prüfen",
+      });
+      await expect(review).toBeVisible();
+      await expect(page.locator(".blocked-control")).toHaveCount(0);
+      expect(store.snapshot()).toEqual(before);
+      await review
+        .getByRole("button", { name: "Als blockiert anhalten", exact: true })
+        .click();
       await expect(page.locator(".blocked-control")).toContainText(
         "Schaltfläche „Vorgang als erledigt markieren“",
       );
