@@ -36,7 +36,11 @@ function provider(choice: string, confidence = 1) {
             type: "choice",
             choice,
             confidence,
-            probabilities: { [choice]: 1 },
+            probabilities: Object.fromEntries(
+              Object.keys(payload.questions[key ?? "next"].criteria).map(
+                (option) => [option, option === choice ? 1 : 0],
+              ),
+            ),
           },
         },
       });
@@ -44,11 +48,14 @@ function provider(choice: string, confidence = 1) {
   );
 }
 test("a real choice uses visible membership and preserves low confidence for concrete confirmation", async () => {
-  assert.deepEqual(await provider("nav:customers", 0.4).decide(input), {
-    snapshotId: "fresh",
-    choice: "nav:customers",
-    confidence: 0.4,
-  });
+  assert.partialDeepStrictEqual(
+    await provider("nav:customers", 0.4).decide(input),
+    {
+      snapshotId: "fresh",
+      choice: "nav:customers",
+      confidence: 0.4,
+    },
+  );
   await assert.rejects(provider("technician:invented").decide(input));
 });
 test("terminal checks are independent from the original next choice", async () => {
@@ -123,7 +130,7 @@ test("lexical candidates exclude IDs and dates and carry explicit provenance", (
   assert(!validFieldValue(field, "10001"));
   assert.deepEqual(
     fieldValues({ ...field, current: "35" }, "35 Minuten", [], []),
-    [],
+    [{ value: "35", source: "wörtliche Zahl aus Auftrag" }],
   );
 });
 test("search accepts quoted and mentioned existing text, never invented values", () => {
@@ -259,7 +266,12 @@ function causalProvider(answers: { choice: string; confidence: number }[]) {
           [key]: {
             type: "choice",
             ...answer,
-            probabilities: { [answer.choice]: 1 },
+            probabilities: Object.fromEntries(
+              Object.keys(question.criteria).map((option) => [
+                option,
+                option === answer.choice ? 1 : 0,
+              ]),
+            ),
           },
         },
       });
@@ -277,7 +289,7 @@ test("every explicit blocked choice with candidates asks one causal question", a
     [{ choice: "blocked", confidence: 0.1 }, input],
   ] satisfies [{ choice: string; confidence: number }, DecisionInput][]) {
     const { jev, calls } = causalProvider([next]);
-    assert.deepEqual(await jev.decide(decisionInput), {
+    assert.partialDeepStrictEqual(await jev.decide(decisionInput), {
       snapshotId: "fresh",
       ...next,
     });
@@ -292,10 +304,11 @@ test("every explicit blocked choice with candidates asks one causal question", a
       { choice: "blocked", confidence },
       { choice: "blocked:complete", confidence: 0.98 },
     ]);
-    assert.deepEqual(await jev.decide(blockedInput), {
+    assert.partialDeepStrictEqual(await jev.decide(blockedInput), {
       snapshotId: "fresh",
-      choice: "blocked:complete",
-      confidence: 0.98,
+      choice: "blocked",
+      confidence,
+      blockedCause: { controlId: "complete", confidence: 0.98 },
     });
     assert.deepEqual(
       calls.map((call) => call.key),
@@ -309,7 +322,7 @@ test("every explicit blocked choice with candidates asks one causal question", a
     );
   }
 });
-test("uncertain or unknown causes remain generic and unoffered causes are rejected", async () => {
+test("unknown causes stay absent, uncertain causes keep their own confidence and unoffered causes are rejected", async () => {
   for (const confidence of [0.52, 1]) {
     for (const cause of [
       { choice: "blocked:complete", confidence: 0.74 },
@@ -319,12 +332,22 @@ test("uncertain or unknown causes remain generic and unoffered causes are reject
         { choice: "blocked", confidence },
         cause,
       ]);
-      assert.deepEqual(await jev.decide(blockedInput), {
+      const decision = await jev.decide(blockedInput);
+      assert.partialDeepStrictEqual(decision, {
         snapshotId: "fresh",
         choice: "blocked",
         confidence,
       });
-      assert.deepEqual(calls.map((call) => call.key), ["next", "cause"]);
+      assert.deepEqual(
+        decision.blockedCause,
+        cause.choice === "unknown"
+          ? undefined
+          : { controlId: "complete", confidence: 0.74 },
+      );
+      assert.deepEqual(
+        calls.map((call) => call.key),
+        ["next", "cause"],
+      );
     }
     const { jev } = causalProvider([
       { choice: "blocked", confidence },

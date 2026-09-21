@@ -28,7 +28,7 @@
           aria-label="Auftrag an Jev"
           placeholder="Beschreibe deinen Auftrag …"
           [ngModel]="runner.command()"
-          (ngModelChange)="runner.command.set($event)"
+          (ngModelChange)="editCommand($event)"
           name="command"
           rows="3"
           (keydown)="enter($event)"
@@ -99,6 +99,40 @@
         />
         <button (click)="answer(answerValue.value)">Wert bestätigen</button>
         <button (click)="runner.stop()">Auftrag stoppen</button>
+      </section>
+      } @if (state.kind === 'review') {
+      <section #attentionPanel class="answer-panel choice-review" aria-label="Jev-Vorschläge prüfen">
+        <h3>{{ state.reason === 'abstain' ? 'Jev hält bei Unklarheit an' : 'Nächsten Schritt prüfen' }}</h3>
+        <p>{{ state.message }}</p>
+        <p>Jev hat „{{ runner.describeChoice(state.capture.decision.choice, state.capture).label }}“ gewählt.
+          Auswahlkonfidenz {{ (state.capture.decision.confidence * 100).toFixed(0) }} %.</p>
+        <p class="muted">Die Optionswahrscheinlichkeit stammt aus derselben Jev-Antwort.
+          Die Bestätigungsschwelle von {{ runner.confidencePercent() }} % gilt für die Auswahlkonfidenz und die separate Effektprüfung.</p>
+        <ol class="ranked-choices" aria-label="Jevs zwei wahrscheinlichste Optionen">
+          @for (row of state.capture.decision.ranked; track row.choice) {
+          <li>
+            <div><strong>{{ runner.describeChoice(row.choice, state.capture).label }}</strong>
+              <span>Optionswahrscheinlichkeit {{ (row.probability * 100).toFixed(0) }} %</span></div>
+            <p>{{ runner.describeChoice(row.choice, state.capture).effect }}</p>
+            @if (row.choice === state.capture.decision.choice) { <small>Von Jev gewählt</small> }
+            @if (state.capture.assessments[row.choice]?.verdict === 'forbidden') { <p class="blocker">Widerspricht dem Auftrag. Nicht freigebbar.</p> }
+            <button type="button" [disabled]="state.capture.assessments[row.choice]?.verdict === 'forbidden'" (click)="selectRanked(row.choice)">
+              {{ runner.describeChoice(row.choice, state.capture).label }}
+            </button>
+          </li>
+          }
+        </ol>
+        @if (runner.confirmedReceipts().length) {
+        <section class="confirmed-receipts" aria-label="Bestätigte Speicherungen dieses Auftrags">
+          <p>In diesem Auftrag bestätigt gespeichert:</p>
+          <ul>@for (receipt of runner.confirmedReceipts(); track receipt.operationId) {
+            <li>{{ receipt.caseId }} · Revision {{ receipt.revision }}</li>
+          }</ul>
+        </section>
+        }
+        <button type="button" (click)="revise()">Auftrag überarbeiten</button>
+        <button type="button" (click)="continueRun()">Fortsetzen</button>
+        <button type="button" (click)="runner.stop()">Stoppen</button>
       </section>
       } @if (state.kind === 'needs_approval') {
       <section #attentionPanel class="answer-panel">

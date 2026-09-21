@@ -33,6 +33,15 @@ export async function withLive(
     receiptComplete?: boolean;
     cause?: string;
     causeConfidence?: number;
+    nextAnswer?: (index: number) => {
+      choice: string;
+      confidence: number;
+      probabilities?: Record<string, number>;
+    };
+    effectAnswer?: (selected: unknown) => {
+      choice: string;
+      confidence: number;
+    };
   } = {},
 ) {
   const held = barrier(),
@@ -66,18 +75,26 @@ export async function withLive(
           currentFacts: z.object({ receipts: z.array(z.unknown()).optional() }),
         })
         .parse(JSON.parse(payload.state));
+      const nextAnswer =
+        key === "next" ? options.nextAnswer?.(snapshots.length) : undefined;
       const next =
-        options.receiptComplete && facts.currentFacts.receipts?.length
+        nextAnswer?.choice ??
+        (options.receiptComplete && facts.currentFacts.receipts?.length
           ? "done"
-          : (sequence[input.observedSteps.length] ?? "done");
+          : (sequence[input.observedSteps.length] ?? "done"));
       const selected = z
         .object({ selected: z.unknown().optional() })
         .parse(JSON.parse(payload.state)).selected;
       const commit = z
         .object({ kind: z.literal("commit") })
         .safeParse(selected).success;
+      const effectAnswer =
+        key === "assessment" && selected !== "done"
+          ? options.effectAnswer?.(selected)
+          : undefined;
       const choice =
-        key === "next"
+        effectAnswer?.choice ??
+        (key === "next"
           ? next
           : key === "cause"
             ? (options.cause ?? "unknown")
@@ -87,7 +104,7 @@ export async function withLive(
                 : (options.completionVerdict ?? "complete")
               : options.forbidCommit && commit
                 ? "forbidden"
-                : (options.assessment ?? "authorized");
+                : (options.assessment ?? "authorized"));
       if (key === "next") {
         observations.push(JSON.parse(payload.state));
         snapshots.push(Object.keys(payload.questions["next"]?.criteria ?? {}));
@@ -109,14 +126,27 @@ export async function withLive(
             type: "choice",
             choice,
             confidence:
-              key === "cause"
+              nextAnswer?.confidence ??
+              effectAnswer?.confidence ??
+              (key === "cause"
                 ? (options.causeConfidence ?? 1)
                 : key === "assessment"
                   ? (options.assessmentConfidence ?? 1)
                   : next === options.low
                     ? (options.lowConfidence ?? 0.4)
-                    : 1,
-            probabilities: { [choice]: 1 },
+                    : 1),
+            probabilities: Object.fromEntries(
+              Object.keys(payload.questions[key]?.criteria ?? {}).map(
+                (option) => [
+                  option,
+                  nextAnswer?.probabilities
+                    ? (nextAnswer.probabilities[option] ?? 0)
+                    : option === choice
+                      ? 1
+                      : 0,
+                ],
+              ),
+            ),
           },
         },
       });

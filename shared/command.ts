@@ -30,6 +30,7 @@ export const stepSchema = z.object({
   snapshotId: z.string(),
   action: actionSchema,
   authorizedBy: z.enum(["request", "user"]).default("request"),
+  outcome: z.enum(["changed", "unchanged", "unknown"]).default("unknown"),
   before: z.string(),
   after: z.string(),
 });
@@ -47,7 +48,16 @@ export const decisionSchema = z.object({
   snapshotId: z.string(),
   choice: z.string(),
   confidence: z.number().min(0).max(1),
+  ranked: z
+    .array(
+      z.object({ choice: z.string(), probability: z.number().min(0).max(1) }),
+    )
+    .length(2),
+  blockedCause: z
+    .object({ controlId: z.string(), confidence: z.number().min(0).max(1) })
+    .optional(),
 });
+export type Decision = z.infer<typeof decisionSchema>;
 export const assessmentInputSchema = decisionInputSchema.extend({
   selected: z.union([actionSchema, z.literal("done")]),
 });
@@ -63,6 +73,7 @@ export const assessmentSchema = z.object({
   ]),
   confidence: z.number().min(0).max(1),
 });
+export type Assessment = z.infer<typeof assessmentSchema>;
 export type ActionDescription = z.infer<typeof actionSchema>;
 export type BlockedControl = z.infer<typeof blockedControlSchema>;
 export type FieldDescription = z.infer<typeof fieldSchema>;

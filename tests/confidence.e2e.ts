@@ -210,7 +210,7 @@ for (const scenario of [
         await start(page, "Zeige Kunden");
         if (scenario.approval) {
           await expect(
-            page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+            page.locator(".ranked-choices button").first(),
           ).toBeVisible();
           await expect(
             page.getByRole("heading", { name: "Kunden & Standorte" }),
@@ -251,7 +251,7 @@ for (const scenario of [
             "Zuständigkeit von Jonas Weber auf Lea Sommer",
           );
           await expect(
-            page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+            page.locator(".ranked-choices button").first(),
           ).toBeVisible();
           expect(store.snapshot().revision).toBe(0);
           expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
@@ -283,11 +283,11 @@ for (const verdict of ["additional", "unclear", "forbidden"]) {
             "widerspricht dem Auftrag",
           );
           await expect(
-            page.getByRole("button", { name: "Diesen Schritt freigeben" }),
-          ).toHaveCount(0);
+            page.locator(".ranked-choices button").first(),
+          ).toBeDisabled();
         } else
           await expect(
-            page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+            page.locator(".ranked-choices button").first(),
           ).toBeVisible();
         expect(store.snapshot().revision).toBe(0);
         expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
@@ -448,13 +448,13 @@ test("changing confidence revokes a displayed approval and requires a fresh deci
     async (_store, _held, _arrived, snapshots) => {
       await start(page, "Zeige Kunden");
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).toBeVisible();
       await openSettings(page);
       await confidence(page).fill("100");
-      await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
-      ).toHaveCount(0);
+      await expect(page.locator(".ranked-choices button").first()).toHaveCount(
+        0,
+      );
       await page
         .getByRole("button", { name: "Befehlspalette schließen" })
         .click();
@@ -467,7 +467,7 @@ test("changing confidence revokes a displayed approval and requires a fresh deci
         .getByRole("button", { name: "Fortsetzen", exact: true })
         .click();
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).toBeVisible();
       expect(snapshots).toHaveLength(2);
       await expect(
@@ -491,11 +491,12 @@ test("changing confidence during palette close revokes an already queued approva
       });
       await start(page, "Zeige Kunden");
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).toBeFocused();
       await openSettings(page);
       await page
-        .getByRole("button", { name: "Diesen Schritt freigeben" })
+        .locator(".ranked-choices button")
+        .first()
         .evaluate((button) => {
           if (!(button instanceof HTMLButtonElement))
             throw new Error("Missing approval");
@@ -518,7 +519,7 @@ test("changing confidence during palette close revokes an already queued approva
         .getByRole("button", { name: "Fortsetzen", exact: true })
         .click();
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).toBeVisible();
       expect(snapshots).toHaveLength(2);
     },

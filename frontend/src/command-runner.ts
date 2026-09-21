@@ -14,22 +14,24 @@ import {
   stepSchema,
   type ActionDescription,
   type BlockedControl,
+  type Assessment,
   type DecisionInput,
+  type Decision,
   type FieldDescription,
 } from "../../shared/command";
 import { validFieldValue } from "../../shared/field-values";
 import { blockers, receiptSchema } from "../../shared/domain";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
+import {
+  catalogFingerprint,
+  choiceDescription,
+  type DecisionCapture,
+} from "./decision-review";
 export type RunState =
   | {
       kind:
-        | "idle"
-        | "deciding"
-        | "executing"
-        | "done"
-        | "stopped"
-        | "reconciling";
+        "idle" | "deciding" | "executing" | "done" | "stopped" | "reconciling";
     }
   | {
       kind: "paused";
@@ -44,9 +46,15 @@ export type RunState =
     }
   | { kind: "needs_input"; field: FieldDescription }
   | {
+      kind: "review";
+      capture: DecisionCapture;
+      reason: "uncertain" | "forbidden" | "abstain" | "completion";
+      message: string;
+    }
+  | {
       kind: "needs_approval";
       action: ActionDescription;
-      fingerprint: string;
+      capture: DecisionCapture;
       message: string;
     };
 const historySchema = z.object({
@@ -124,8 +132,6 @@ export class CommandRunner {
   private activeId: string | null = null;
   private epoch = 0;
   private abort: AbortController | null = null;
-  private approved: { action: ActionDescription; fingerprint: string } | null =
-    null;
   constructor() {
     const preference = confidencePreferenceSchema.safeParse(
       readBrowserState(confidencePreferenceKey),
@@ -223,6 +229,7 @@ export class CommandRunner {
         return "Antwort ausstehend";
       case "needs_approval":
         return "Konkreten Schritt bestätigen";
+      case "review":
       case "paused":
       case "blocked":
       case "completion_unconfirmed":
@@ -265,7 +272,6 @@ export class CommandRunner {
     }
   }
   pauseManual() {
-    this.approved = null;
     if (!["idle", "done", "stopped"].includes(this.state().kind)) {
       this.invalidate();
       this.state.set({
@@ -277,7 +283,6 @@ export class CommandRunner {
   }
   stop() {
     this.invalidate();
-    this.approved = null;
     this.state.set({ kind: "stopped" });
     this.finish(this.label());
   }
@@ -291,7 +296,6 @@ export class CommandRunner {
   }
   async start() {
     this.invalidate();
-    this.approved = null;
     if (!this.command().trim()) return;
     if (this.ui.dirty() || this.ui.unknownSave()) {
       this.block(
@@ -369,15 +373,104 @@ export class CommandRunner {
     });
     return true;
   }
-  approve() {
+  describeChoice(choice: string, capture: DecisionCapture) {
+    return choiceDescription(choice, capture.input);
+  }
+  async approve() {
     const state = this.state();
     if (state.kind !== "needs_approval") return;
-    this.approved = { action: state.action, fingerprint: state.fingerprint };
-    this.state.set({
-      kind: "paused",
-      reason: "manual",
-      message: "Schritt bestätigt",
-    });
+    const capture = state.capture;
+    if (!this.resolveCapture(capture)) return;
+    this.state.set({ kind: "deciding" });
+    try {
+      await this.ui.refresh();
+      await this.render();
+      const input = this.resolveCapture(capture);
+      if (input) await this.performReviewed(capture, input, state.action);
+    } catch (error) {
+      if (capture.epoch === this.epoch) this.fail(error);
+    }
+  }
+  async selectRanked(choice: string) {
+    const state = this.state();
+    if (
+      state.kind !== "review" ||
+      state.capture.assessments[choice]?.verdict === "forbidden" ||
+      !state.capture.decision.ranked.some((row) => row.choice === choice)
+    )
+      return;
+    const capture = state.capture;
+    if (!this.resolveCapture(capture)) return;
+    this.state.set({ kind: "deciding" });
+    try {
+      await this.ui.refresh();
+      await this.render();
+      const input = this.resolveCapture(capture);
+      if (!input) return;
+      if (choice === "done") {
+        const decision = await this.ui.api.decide.call(input, {
+          signal: this.abort?.signal,
+        });
+        if (!this.resolveCapture(capture)) return;
+        if (decision.snapshotId !== input.snapshotId)
+          throw new Error("Veraltete Entscheidung.");
+        const fresh = this.capture(input, decision);
+        if (decision.choice === "done") await this.checkCompletion(fresh);
+        else
+          this.review(
+            fresh,
+            "Neue Entscheidung nach Abschlussprüfung. Bitte den nächsten Schritt prüfen.",
+            decision.choice === "abstain" ? "abstain" : "uncertain",
+          );
+        return;
+      }
+      if (this.terminalOrQuestion(choice, capture, input)) return;
+      const action = input.actions.find((action) => action.id === choice);
+      if (!action) throw new Error("Schritt ist nicht mehr verfügbar.");
+      let assessment = capture.assessments[action.id];
+      if (!assessment) {
+        assessment = await this.ui.api.assess.call(
+          { ...input, selected: action },
+          { signal: this.abort?.signal },
+        );
+        if (!this.resolveCapture(capture)) return;
+        if (assessment.snapshotId !== input.snapshotId)
+          throw new Error("Veraltete Schrittprüfung.");
+      }
+      if (assessment.verdict === "forbidden") {
+        this.review(
+          capture,
+          `Schritt widerspricht dem Auftrag: ${action.effect}`,
+          "forbidden",
+          { choice: action.id, assessment },
+        );
+        return;
+      }
+      if (
+        assessment.verdict !== "authorized" ||
+        assessment.confidence < this.confidencePercent() / 100
+      ) {
+        this.state.set({
+          kind: "needs_approval",
+          action,
+          capture,
+          message: `Diesen konkreten Effekt gesondert bestätigen: ${action.effect}. Effektprüfung ${Math.round(assessment.confidence * 100)} %; ${assessment.verdict === "additional" ? "zusätzliche Änderung" : "Auftragsfreigabe nicht sicher bestätigt"}.`,
+        });
+        this.attention.update((n) => n + 1);
+        return;
+      }
+      await this.performReviewed(capture, input, action);
+    } catch (error) {
+      if (capture.epoch === this.epoch) this.fail(error);
+    }
+  }
+  private async performReviewed(
+    capture: DecisionCapture,
+    input: DecisionInput,
+    action: ActionDescription,
+  ) {
+    if (await this.execute(input, action, "user", capture.epoch, capture.runId))
+      await this.loop(capture.epoch);
   }
   private facts(blockedControls = this.registry.blockedSnapshot()) {
     const screen = this.registry.observeScreen();
@@ -418,14 +511,20 @@ export class CommandRunner {
       ? content.innerText.slice(0, 12000)
       : "";
   }
-  private observed() {
+  private observed(draftAssignment = false) {
     return JSON.stringify({
       page: this.ui.page(),
       revision: this.ui.data()?.revision,
       filters: this.ui.filters(),
-      menu: this.ui.menu(),
+      ...(draftAssignment ? {} : { menu: this.ui.menu() }),
       caseId: this.ui.selectedId(),
+      selected: this.ui.selected(),
       draft: this.ui.draft(),
+      dirty: this.ui.dirty(),
+      draftOwner: this.ui.draftOwner(),
+      operations: this.run()?.operations,
+      receipts: this.run()?.receipts.map((receipt) => receipt.operationId),
+      unknownSave: this.ui.unknownSave(),
       message: this.ui.message(),
     });
   }
@@ -449,15 +548,131 @@ export class CommandRunner {
       steps: run.steps,
     };
   }
+  private capture(input: DecisionInput, decision: Decision): DecisionCapture {
+    return {
+      input,
+      decision,
+      fingerprint: catalogFingerprint(input),
+      epoch: this.epoch,
+      runId: this.activeId,
+      assessments: {},
+    };
+  }
+  private resolveCapture(capture: DecisionCapture) {
+    if (
+      capture.epoch !== this.epoch ||
+      capture.runId !== this.activeId ||
+      this.registry.modal
+    )
+      return null;
+    const input = this.snapshot();
+    if (catalogFingerprint(input) !== capture.fingerprint) {
+      if (capture.decision.choice === "done")
+        this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
+      else
+        this.block(
+          "Daten oder verfügbare Schritte geändert. Bitte erneut prüfen.",
+        );
+      return null;
+    }
+    return input;
+  }
+  private review(
+    capture: DecisionCapture,
+    message: string,
+    reason: Extract<RunState, { kind: "review" }>["reason"] = "uncertain",
+    assessed?: { choice: string; assessment: Assessment },
+  ) {
+    const reviewed = assessed
+      ? {
+          ...capture,
+          assessments: {
+            ...capture.assessments,
+            [assessed.choice]: assessed.assessment,
+          },
+        }
+      : capture;
+    this.state.set({ kind: "review", capture: reviewed, message, reason });
+    this.finish(message);
+    this.attention.update((n) => n + 1);
+  }
+  private terminalOrQuestion(
+    choice: string,
+    capture: DecisionCapture,
+    input: DecisionInput,
+  ) {
+    if (choice === "abstain") {
+      this.review(
+        capture,
+        "Jev kann keinen sinnvollen nächsten Schritt wählen. Auftrag überarbeiten oder Vorschlag prüfen.",
+        "abstain",
+      );
+      return true;
+    }
+    if (choice === "blocked") {
+      const cause =
+        capture.decision.choice === "blocked"
+          ? capture.decision.blockedCause
+          : undefined;
+      const control =
+        cause && cause.confidence >= 0.75
+          ? input.blockedControls.find(
+              (control) => control.action.id === cause.controlId,
+            )
+          : undefined;
+      this.block(
+        "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.",
+        control ? { kind: "control", control } : { kind: "unknown" },
+      );
+      return true;
+    }
+    if (choice.startsWith("ask:")) {
+      const field = input.fields.find((field) => `ask:${field.id}` === choice);
+      if (!field) throw new Error("Unbekannte Rückfrage.");
+      this.state.set({ kind: "needs_input", field });
+      this.attention.update((n) => n + 1);
+      return true;
+    }
+    return false;
+  }
+  private async checkCompletion(capture: DecisionCapture) {
+    const { input, decision } = capture;
+    const assessment = await this.ui.api.assess.call(
+      { ...input, selected: "done" },
+      { signal: this.abort?.signal },
+    );
+    if (!this.resolveCapture(capture)) return;
+    if (assessment.snapshotId !== input.snapshotId) {
+      this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
+      return;
+    }
+    if (
+      assessment.verdict !== "complete" ||
+      assessment.confidence < this.confidencePercent() / 100 ||
+      decision.confidence < this.confidencePercent() / 100 ||
+      this.ui.busy() ||
+      this.ui.unknownSave() ||
+      this.run()?.operations.some(
+        (id) =>
+          !this.run()?.receipts.some((receipt) => receipt.operationId === id),
+      )
+    ) {
+      this.review(
+        capture,
+        `Jev konnte die vollständige Erfüllung noch nicht bestätigen. Abschlussprüfung ${Math.round(assessment.confidence * 100)} %. Bereits ausgeführte Schritte stehen im Verlauf.`,
+        "completion",
+      );
+      return;
+    }
+    this.state.set({ kind: "done" });
+    this.finish(this.label());
+  }
   private async loop(epoch: number) {
     for (let count = 0; count < 40 && epoch === this.epoch; count++) {
       this.state.set({ kind: "deciding" });
       await this.render();
       if (epoch !== this.epoch || this.registry.modal) return;
-      const input = this.snapshot(),
-        fingerprint = input.context,
-        before = this.observed(),
-        runId = this.activeId;
+      const input = this.snapshot();
       if (new TextEncoder().encode(JSON.stringify(input)).byteLength > 180000) {
         this.block(
           "Verlaufslimit erreicht. Bereits ausgeführte Schritte bleiben im Verlauf. Bitte verbleibende Arbeit als neuen Auftrag formulieren.",
@@ -470,184 +685,139 @@ export class CommandRunner {
         );
         return;
       }
-      let action: ActionDescription | undefined;
-      let authorizedBy: "request" | "user" = "request";
-      if (this.approved && this.approved.fingerprint === fingerprint) {
-        const approved = this.approved;
-        authorizedBy = "user";
-        action = input.actions.find(
-          (a) => JSON.stringify(a) === JSON.stringify(approved.action),
-        );
-        this.approved = null;
-        if (!action) {
-          this.block(
-            "Bestätigter Schritt ist nicht mehr verfügbar. Bitte erneut prüfen.",
-          );
-          return;
-        }
-      } else {
-        this.approved = null;
-        const decision = await this.ui.api.decide.call(input, {
-          signal: this.abort?.signal,
-        });
-        if (epoch !== this.epoch) return;
-        if (
-          decision.snapshotId !== input.snapshotId ||
-          fingerprint !== this.facts()
-        ) {
-          if (decision.choice === "done")
-            this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
-          else
-            this.block(
-              "Daten haben sich während der Entscheidung geändert. Bitte fortsetzen.",
-            );
-          return;
-        }
-        if (
-          decision.choice === "blocked" ||
-          decision.choice.startsWith("blocked:")
-        ) {
-          const control =
-            decision.confidence >= 0.75
-              ? input.blockedControls.find(
-                  (candidate) =>
-                    `blocked:${candidate.action.id}` === decision.choice,
-                )
-              : undefined;
-          this.block(
-            "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.",
-            control ? { kind: "control", control } : { kind: "unknown" },
-          );
-          return;
-        }
-        if (decision.choice === "done") {
-          const assessment = await this.ui.api.assess.call(
-            { ...input, selected: "done" },
-            { signal: this.abort?.signal },
-          );
-          if (epoch !== this.epoch) return;
-          if (
-            assessment.snapshotId !== input.snapshotId ||
-            fingerprint !== this.facts()
-          ) {
-            this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
-            return;
-          }
-          if (
-            assessment.verdict !== "complete" ||
-            assessment.confidence < this.confidencePercent() / 100 ||
-            decision.confidence < this.confidencePercent() / 100 ||
-            this.ui.busy() ||
-            this.ui.unknownSave() ||
-            this.run()?.operations.some(
-              (id) =>
-                !this.run()?.receipts.some(
-                  (receipt) => receipt.operationId === id,
-                ),
-            )
-          ) {
-            this.unconfirmed(
-              "Jev konnte die vollständige Erfüllung noch nicht bestätigen. Bereits ausgeführte Schritte stehen im Verlauf.",
-            );
-            return;
-          }
-          this.state.set({ kind: "done" });
-          this.finish(this.label());
-          return;
-        }
-        if (decision.choice.startsWith("ask:")) {
-          const field = input.fields.find(
-            (f) => `ask:${f.id}` === decision.choice,
-          );
-          if (!field) throw new Error("Unbekannte Rückfrage.");
-          this.state.set({ kind: "needs_input", field });
-          this.attention.update((n) => n + 1);
-          return;
-        }
-        action = input.actions.find((a) => a.id === decision.choice);
-        if (!action)
-          throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
-        let needsApproval = decision.confidence < this.confidencePercent() / 100;
-        if (action.kind !== "view") {
-          const assessment = await this.ui.api.assess.call(
-            { ...input, selected: action },
-            { signal: this.abort?.signal },
-          );
-          if (epoch !== this.epoch) return;
-          if (
-            assessment.snapshotId !== input.snapshotId ||
-            fingerprint !== this.facts()
-          ) {
-            this.block("Daten geändert. Schritt erneut prüfen.");
-            return;
-          }
-          if (assessment.verdict === "forbidden") {
-            this.block(`Schritt widerspricht dem Auftrag: ${action.effect}`);
-            return;
-          }
-          needsApproval ||=
-            assessment.verdict !== "authorized" ||
-            assessment.confidence < this.confidencePercent() / 100;
-        }
-        if (needsApproval) {
-          this.state.set({
-            kind: "needs_approval",
-            action,
-            fingerprint,
-            message: `Diesen konkreten Schritt bestätigen: ${action.effect}`,
-          });
-          this.attention.update((n) => n + 1);
-          return;
-        }
-      }
-      if (!action) throw new Error("Kein ausführbarer Schritt.");
-      if (
-        input.steps.filter(
-          (s) => s.before === before && s.action.id === action.id,
-        ).length >= 2
-      ) {
-        this.block(
-          "Wiederholter Schritt ohne Fortschritt. Bitte aktuellen Stand prüfen.",
-        );
-        return;
-      }
-      this.state.set({ kind: "executing" });
-      this.registry.execute(action);
-      await this.ui.pending;
-      await this.render();
-      const after = this.observed();
-      this.history.update((history) =>
-        history.map((r) =>
-          r.id === runId
-            ? {
-                ...r,
-                steps: [
-                  ...r.steps,
-                  {
-                    snapshotId: input.snapshotId,
-                    action,
-                    authorizedBy,
-                    before,
-                    after,
-                  },
-                ],
-                entries: [...r.entries, action.effect],
-              }
-            : r,
-        ),
-      );
+      const decision = await this.ui.api.decide.call(input, {
+        signal: this.abort?.signal,
+      });
       if (epoch !== this.epoch) return;
-      if (this.ui.unknownSave()) {
-        this.state.set({ kind: "reconciling" });
+      const capture = this.capture(input, decision);
+      if (!this.resolveCapture(capture)) return;
+      if (decision.snapshotId !== input.snapshotId)
+        throw new Error("Veraltete Entscheidung.");
+      if (decision.choice === "done") {
+        await this.checkCompletion(capture);
         return;
       }
-      if (action.kind === "commit" && this.ui.dirty()) {
-        this.block(this.ui.message() || "Speichern nicht bestätigt.");
+      if (decision.choice === "abstain" || decision.choice === "blocked") {
+        this.terminalOrQuestion(decision.choice, capture, input);
         return;
       }
+      if (decision.choice.startsWith("ask:")) {
+        if (decision.confidence < this.confidencePercent() / 100)
+          this.review(
+            capture,
+            "Jev ist bei der Rückfrage unsicher. Vorschläge prüfen.",
+          );
+        else this.terminalOrQuestion(decision.choice, capture, input);
+        return;
+      }
+      const action = input.actions.find(
+        (action) => action.id === decision.choice,
+      );
+      if (!action)
+        throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
+      let reason =
+        decision.confidence < this.confidencePercent() / 100
+          ? "Auswahlkonfidenz unter der Bestätigungsschwelle. Vorschläge prüfen."
+          : "";
+      let assessed: { choice: string; assessment: Assessment } | undefined;
+      if (action.kind !== "view") {
+        const assessment = await this.ui.api.assess.call(
+          { ...input, selected: action },
+          { signal: this.abort?.signal },
+        );
+        if (!this.resolveCapture(capture)) return;
+        if (assessment.snapshotId !== input.snapshotId)
+          throw new Error("Veraltete Schrittprüfung.");
+        assessed = { choice: action.id, assessment };
+        if (assessment.verdict === "forbidden") {
+          this.review(
+            capture,
+            `Schritt widerspricht dem Auftrag: ${action.effect}`,
+            "forbidden",
+            assessed,
+          );
+          return;
+        }
+        if (
+          assessment.verdict !== "authorized" ||
+          assessment.confidence < this.confidencePercent() / 100
+        )
+          reason = `Effektprüfung ${Math.round(assessment.confidence * 100)} %: ${assessment.verdict === "additional" ? "zusätzliche Änderung" : "Auftragsfreigabe nicht sicher bestätigt"}. Vorschläge prüfen.`;
+      }
+      if (reason) {
+        this.review(capture, reason, "uncertain", assessed);
+        return;
+      }
+      if (!(await this.execute(input, action, "request", epoch, capture.runId)))
+        return;
     }
     if (epoch === this.epoch)
       this.block("Zu viele Schritte. Bitte aktuellen Stand prüfen.");
+  }
+  private async execute(
+    input: DecisionInput,
+    action: ActionDescription,
+    authorizedBy: "request" | "user",
+    epoch: number,
+    runId: string | null,
+  ) {
+    if (epoch !== this.epoch || this.registry.modal || runId !== this.activeId)
+      return false;
+    const before = this.observed();
+    const semanticBefore = this.observed(action.kind === "draft");
+    if (
+      input.steps.filter(
+        (s) => s.before === before && s.action.id === action.id,
+      ).length >= 2
+    ) {
+      this.block(
+        "Wiederholter Schritt ohne Fortschritt. Bitte aktuellen Stand prüfen.",
+      );
+      return false;
+    }
+    this.state.set({ kind: "executing" });
+    this.registry.execute(action);
+    await this.ui.pending;
+    await this.render();
+    const after = this.observed();
+    const outcome =
+      semanticBefore === this.observed(action.kind === "draft")
+        ? "unchanged"
+        : "changed";
+    this.history.update((history) =>
+      history.map((run) =>
+        run.id === runId
+          ? {
+              ...run,
+              steps: [
+                ...run.steps,
+                {
+                  snapshotId: input.snapshotId,
+                  action,
+                  authorizedBy,
+                  before,
+                  after,
+                  outcome,
+                },
+              ],
+              entries: [
+                ...run.entries,
+                `${action.effect}${outcome === "unchanged" ? " · ohne Änderung" : ""}`,
+              ],
+            }
+          : run,
+      ),
+    );
+    if (epoch !== this.epoch) return false;
+    if (this.ui.unknownSave()) {
+      this.state.set({ kind: "reconciling" });
+      return false;
+    }
+    if (action.kind === "commit" && this.ui.dirty()) {
+      this.block(this.ui.message() || "Speichern nicht bestätigt.");
+      return false;
+    }
+    return true;
   }
   private render() {
     return new Promise<void>((resolve) =>

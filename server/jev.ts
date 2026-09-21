@@ -3,6 +3,7 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import {
   demos,
+  type Decision,
   type DecisionInput,
   type assessmentInputSchema,
 } from "../shared/command.js";
@@ -14,6 +15,7 @@ const answerSchema = z.object({
       type: z.literal("choice"),
       choice: z.string(),
       confidence: z.number().min(0).max(1),
+      probabilities: z.record(z.string(), z.number().min(0).max(1)),
     }),
   ),
 });
@@ -65,20 +67,25 @@ export function createJev(config: Config, fetch?: Fetch) {
     const answers: Record<string, Answer> = {};
     for (const [key, question] of Object.entries(questions)) {
       const answer = parsed.data.answers[key];
-      if (!answer || !Object.hasOwn(question.options, answer.choice))
+      if (
+        !answer ||
+        !Object.hasOwn(question.options, answer.choice) ||
+        Object.keys(answer.probabilities).length !==
+          Object.keys(question.options).length ||
+        Object.keys(question.options).some(
+          (option) => !Object.hasOwn(answer.probabilities, option),
+        )
+      )
         throw new ORPCError("PROVIDER_INVALID_RESPONSE");
       answers[key] = answer;
     }
     return answers;
   }
   return {
-    async decide(input: DecisionInput, signal?: AbortSignal) {
-      if (!client)
-        return {
-          snapshotId: input.snapshotId,
-          choice: fixture(input),
-          confidence: 1,
-        };
+    async decide(
+      input: DecisionInput,
+      signal?: AbortSignal,
+    ): Promise<Decision> {
       const options = Object.fromEntries(
         input.actions
           .filter((a) => !a.id.startsWith("blocked:"))
@@ -91,11 +98,30 @@ export function createJev(config: Config, fetch?: Fetch) {
         "Every part of the original request is satisfied, in its requested order. Drafts are not saved changes.";
       options["blocked"] =
         "Outstanding request work cannot proceed with available controls or needs human evidence. Never silently omit a trailing task.";
+      options["abstain"] =
+        "Cannot understand the request or choose a sensible next step. Stop automatic work and ask the user to revise or select a suggestion.";
+      if (!client) {
+        const selected = fixture(input);
+        return {
+          snapshotId: input.snapshotId,
+          choice: selected,
+          confidence: 1,
+          ranked: rank(
+            options,
+            Object.fromEntries(
+              Object.keys(options).map((key) => [
+                key,
+                key === selected ? 1 : 0,
+              ]),
+            ),
+          ),
+        };
+      }
       const answers = await ask(
         JSON.stringify(modelState(input)),
         {
           next: {
-            text: "Choose ONE currently offered UI action toward the entire original request. Use observed history to remember earlier work and explicit order. Repeated assignments and multiple records are allowed. Saves are stepwise; earlier saved work remains if later work is blocked. Do not invent values or evidence. Select done only when nothing remains; select blocked for unsupported remaining work. A menu, navigation or input is a real intermediate step. Displayed records and unfinished checklists are context, not additional requested tasks. A restriction applies only to its owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records.",
+            text: "Choose ONE currently offered UI action toward the entire original request. Use observed history to remember earlier work and explicit order. Repeated assignments and multiple records are allowed. Already matching saved values can satisfy an assignment without another write. An unchanged step records no change; do not repeat it while its value remains the same. Respect explicitly requested sequences of different assignments. Saves are stepwise; earlier saved work remains if later work is blocked. Do not invent values or evidence. Select done only when nothing remains; select blocked for unsupported remaining work; select abstain when you cannot understand or choose sensibly. A menu, navigation or input is a real intermediate step. Displayed records and unfinished checklists are context, not additional requested tasks. A restriction applies only to its owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records.",
             options,
           },
         },
@@ -103,6 +129,12 @@ export function createJev(config: Config, fetch?: Fetch) {
       );
       const answer = answers["next"];
       if (!answer) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
+      const decision: Decision = {
+        snapshotId: input.snapshotId,
+        choice: answer.choice,
+        confidence: answer.confidence,
+        ranked: rank(options, answer.probabilities),
+      };
       if (answer.choice === "blocked" && input.blockedControls.length) {
         const causes = Object.fromEntries(
           input.blockedControls.map((control) => [
@@ -125,18 +157,13 @@ export function createJev(config: Config, fetch?: Fetch) {
         );
         const cause = answers["cause"];
         if (!cause) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
-        if (cause.choice !== "unknown" && cause.confidence >= 0.75)
-          return {
-            snapshotId: input.snapshotId,
-            choice: cause.choice,
+        if (cause.choice !== "unknown")
+          decision.blockedCause = {
+            controlId: cause.choice.slice("blocked:".length),
             confidence: cause.confidence,
           };
       }
-      return {
-        snapshotId: input.snapshotId,
-        choice: answer.choice,
-        confidence: answer.confidence,
-      };
+      return decision;
     },
     async assess(
       input: z.infer<typeof assessmentInputSchema>,
@@ -155,7 +182,7 @@ export function createJev(config: Config, fetch?: Fetch) {
         input.selected === "done"
           ? {
               complete:
-                "The entire original request is satisfied by observed steps and current screen facts, respecting order. Navigation, search, filters and requested drafts need no save receipt. Requested persisted changes need matching receipts.",
+                "The entire original request is satisfied by observed steps and current screen facts, respecting order. Navigation, search, filters and requested drafts need no save receipt. New persisted changes need matching receipts. Already matching saved records can satisfy repeated assignments without another write. Equal dirty drafts are not saved records.",
               outstanding:
                 "Some requested work remains, including unsupported trailing tasks or work not yet observed.",
               unclear: "Cannot establish that all original work is satisfied.",
@@ -176,7 +203,7 @@ export function createJev(config: Config, fetch?: Fetch) {
           assessment: {
             text:
               input.selected === "done"
-                ? "Independently inspect the FULL original request against observed history and current screen facts. Is the entire request satisfied? Read-only UI work and no-save drafts do not need receipts; requested saves do. A trailing unsupported task remains outstanding. Do not assume proposed done is correct. Displayed records and unfinished checklists are context, not additional requested tasks. Restrictions apply only to their owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records."
+                ? "Independently inspect the FULL original request against observed history and current screen facts. Is the entire request satisfied? Read-only UI work and no-save drafts do not need receipts; new requested saves do. Already matching saved records need no duplicate write; dirty draft equality is not persisted evidence. A trailing unsupported task remains outstanding. Do not assume proposed done is correct. Displayed records and unfinished checklists are context, not additional requested tasks. Restrictions apply only to their owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records."
                 : "Evaluate authority for selected, a concrete effect already chosen. A necessary prerequisite is not permission for an extra mutation. Saving must cover exactly the authorized draft, and explicit no-save always forbids commit.",
             options,
           },
@@ -237,6 +264,7 @@ function modelState(input: DecisionInput & { selected?: unknown }) {
     observedSteps: input.steps.map((step) => ({
       action: step.action,
       authorizedBy: step.authorizedBy,
+      outcome: step.outcome,
       before: JSON.parse(step.before),
       after: JSON.parse(step.after),
     })),
@@ -245,4 +273,14 @@ function modelState(input: DecisionInput & { selected?: unknown }) {
     blockedControls: input.blockedControls,
     ...(input.selected === undefined ? {} : { selected: input.selected }),
   };
+}
+
+function rank(
+  options: Record<string, string>,
+  probabilities: Record<string, number>,
+) {
+  return Object.keys(options)
+    .map((choice) => ({ choice, probability: probabilities[choice] ?? 0 }))
+    .sort((a, b) => b.probability - a.probability)
+    .slice(0, 2);
 }

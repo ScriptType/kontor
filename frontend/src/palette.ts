@@ -36,6 +36,7 @@ export class Palette {
     const state = this.runner.state();
     return state.kind === "needs_input" ||
       state.kind === "needs_approval" ||
+      state.kind === "review" ||
       state.kind === "blocked" ||
       state.kind === "completion_unconfirmed"
       ? ".answer-panel input, .answer-panel button"
@@ -138,7 +139,19 @@ export class Palette {
     this.closeThen(() => void this.runner.resume());
   }
   approve() {
-    this.runner.approve();
-    this.closeThen(() => void this.runner.resume());
+    this.closeThen(() => void this.runner.approve());
+  }
+  selectRanked(choice: string) {
+    this.closeThen(() => void this.runner.selectRanked(choice));
+  }
+  revise() {
+    this.runner.pauseManual();
+    document
+      .querySelector<HTMLTextAreaElement>('textarea[name="command"]')
+      ?.focus();
+  }
+  editCommand(value: string) {
+    this.runner.pauseManual();
+    this.runner.command.set(value);
   }
 }

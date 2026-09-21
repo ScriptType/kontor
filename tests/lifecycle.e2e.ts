@@ -195,7 +195,7 @@ test("scrolling while a choice is pending rejects the stale layout observation",
       );
       held.release();
       await expect(page.locator(".activity-label")).toContainText(
-        "Daten haben sich während der Entscheidung geändert",
+        "Daten oder verfügbare Schritte geändert",
       );
       await expect(
         page.locator('[data-action="menu:technician"]'),
@@ -361,9 +361,7 @@ test("low confidence exposes exact chosen action and requires confirmation", asy
       await expect(
         page.getByRole("heading", { name: "Kunden & Standorte" }),
       ).not.toBeVisible();
-      await page
-        .getByRole("button", { name: "Diesen Schritt freigeben" })
-        .click();
+      await page.locator(".ranked-choices button").first().click();
       await expect(
         page.getByRole("heading", { name: "Kunden & Standorte" }),
       ).toBeVisible();
@@ -385,7 +383,7 @@ test("additional mutation pauses with exact target and does not execute before a
         "V-1042: Zuständigkeit von Jonas Weber auf Lea Sommer",
       );
       expect(store.snapshot().revision).toBe(0);
-      await page.getByRole("button", { name: "Ablehnen und stoppen" }).click();
+      await page.getByRole("button", { name: "Stoppen", exact: true }).click();
       await expect(page.locator(".activity-label")).toContainText("Gestoppt");
       expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
     },
@@ -527,7 +525,7 @@ test("reloading a concrete confirmation revokes approval authority", async ({
     async (store) => {
       await start(page);
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).toBeVisible();
       await page.reload();
       await expect(page.locator(".activity-label")).toContainText(
@@ -535,7 +533,7 @@ test("reloading a concrete confirmation revokes approval authority", async ({
       );
       await page.getByRole("button", { name: "Verlauf", exact: true }).click();
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).not.toBeVisible();
       expect(store.snapshot().revision).toBe(0);
     },
@@ -551,15 +549,14 @@ test("changed revision revokes a displayed concrete confirmation", async ({
     async (store) => {
       await start(page);
       await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        page.locator(".ranked-choices button").first(),
       ).toBeVisible();
       store.reset(store.snapshot().revision);
-      await page
-        .getByRole("button", { name: "Diesen Schritt freigeben" })
-        .click();
-      await expect(
-        page.getByRole("button", { name: "Diesen Schritt freigeben" }),
-      ).toBeVisible();
+      await page.locator(".ranked-choices button").first().click();
+      await expect(page.locator(".activity-label")).toContainText(
+        "Daten oder verfügbare Schritte geändert",
+      );
+      await expect(page.locator(".ranked-choices")).toHaveCount(0);
       expect(store.snapshot().revision).toBe(1);
       expect(store.snapshot().cases[0]?.technicianId).toBe("jonas");
     },
@@ -839,7 +836,7 @@ test("a control hidden during causal attribution cannot supply stale guidance", 
         .evaluate((element) => element.setAttribute("hidden", ""));
       held.release();
       await expect(page.locator(".answer-panel")).toContainText(
-        "Daten haben sich während der Entscheidung geändert",
+        "Daten oder verfügbare Schritte geändert",
       );
       await expect(page.locator(".blocked-control")).toHaveCount(0);
       await expect(
