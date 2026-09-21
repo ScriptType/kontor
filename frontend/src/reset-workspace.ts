@@ -13,9 +13,9 @@ type ResetState =
     <button class="text-button" (click)="open()">Demodaten zurücksetzen</button>
     <span role="status">{{ result() }}</span>
     <brn-dialog
+      #dialog="brnDialog"
       [state]="state().kind === 'closed' ? 'closed' : 'open'"
-      (stateChanged)="$event === 'closed' && close()"
-      [disableClose]="state().kind === 'pending'"
+      (stateChanged)="$event === 'closed' && (state().kind === 'pending' ? dialog.open() : close())"
       [autoFocus]="'.reset-cancel'"
     >
       <ng-template brnDialogContent>
