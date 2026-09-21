@@ -49,9 +49,11 @@ Das Öffnen des Auftragsfensters pausiert die Bedienung. Escape schließt das Fe
 
 Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Jev kann zuvor über sichtbare Bedienelemente zum betroffenen Vorgang navigieren. Escape schließt die aktuelle Rückfrage, ohne sie sofort erneut zu öffnen. Über **Antworten** erreichst du sie wieder.
 
+Öffne **Jev-Einstellungen** in der Palette, um die Sicherheitsschwelle einzustellen. Wähle einen ganzen Prozentwert von 0 bis 100. Unterhalb dieses Werts verlangt Jev eine Bestätigung vor Aktionen und bestätigt keinen Auftragsabschluss. Der Standard ist 75 Prozent. Die Einstellung bleibt in diesem Browser erhalten. Änderst du sie während eines Auftrags, musst du anschließend ausdrücklich fortsetzen.
+
 Bei einem fehlenden Prüfbeleg führt **Prüfbeleg erfassen** direkt zum Feld im betroffenen Vorgang. Trage deine tatsächliche Beobachtung ein, übernimm sie in den Entwurf und speichere. Mit **Auftrag fortsetzen** prüft Jev anschließend den ursprünglichen Abschlussauftrag erneut.
 
-Mit **Demodaten zurücksetzen** unten im Arbeitsbereich stellst du die ursprünglichen Beispieldaten wieder her. Die Bestätigung verwirft gespeicherte Änderungen sowie Entwürfe, Filter und den Jev-Verlauf im aktuellen Tab. Ein laufender Auftrag wird beendet. API-Schlüssel und Betriebsmodus bleiben erhalten, sodass der Reset auch im Live-Modus funktioniert.
+Mit **Demodaten zurücksetzen** unten im Arbeitsbereich stellst du die ursprünglichen Beispieldaten wieder her. Die Bestätigung verwirft gespeicherte Änderungen sowie Entwürfe, Filter und den Jev-Verlauf im aktuellen Tab. Ein laufender Auftrag wird beendet. API-Schlüssel, Betriebsmodus und Sicherheitsschwelle bleiben erhalten, sodass der Reset auch im Live-Modus funktioniert.
 
 Nach jeder Bedienhandlung wählt Jev erneut aus den aktuell zugänglichen Aktionen. Der ursprüngliche Auftrag und die beobachteten Schritte bleiben erhalten. Unsichere Schritte erscheinen konkret zur Bestätigung. Ausdrücklich beauftragte Änderungen werden schrittweise gespeichert. Eine spätere Blockade lässt diese Speicherungen bestehen und wird mit dem erreichten Stand angezeigt.
 

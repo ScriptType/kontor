@@ -76,6 +76,12 @@ Im Browser entwertet der bestätigte Reset laufende Entscheidungen und ältere S
 
 Ein Formularentwurf ist kein gespeicherter Vorgang. Jev und menschliche Bedienung verwenden dieselben sichtbaren Handler. Erst Speichern erzeugt eine fachliche Mutation. Jev darf einen Prüfbeleg weder erzeugen noch verändern.
 
+Priorität, Status und ein optionaler Termin gehören zu `CaseDraft`. Die Wiederöffnung setzt den Status auf offen, die Terminlöschung setzt den Termin auf `null`. Beide Änderungen erhalten Arbeitszeit und Prüfbeleg. Ihre beschriebenen Wirkungen fließen wie die Priorität in die Umfangsprüfung einer Speicherung ein.
+
+Neue Speicheraufträge enthalten die Priorität ausdrücklich. Der private Parser des Browser-Speicherprotokolls akzeptiert auch ältere Einträge ohne Priorität. Sie dienen ausschließlich zum Abgleichen eines Ergebnisses über die Operations-ID. Der Browser ergänzt keine vermutete Priorität und sendet die alte Änderung nicht erneut.
+
+`WorkspaceUi` hält Kundenfilter, Status, Zuständigkeit und Suchtext in einem gemeinsamen Filterwert. Tabelle, Jev-Kontext und Zustandsvergleich verwenden diesen Wert. Kunden-, Team- und Berichtsverweise ersetzen ihn vollständig durch den passenden Ausschnitt. Auswahl und Entwurf bleiben davon unabhängig. Der bestehende Entwurfsschutz greift beim Öffnen eines anderen Vorgangs.
+
 ## Auftrag und sichtbare Aktionen
 
 Ein laufender Auftrag enthält den unveränderten Nutzertext, ausdrückliche Antworten, beobachtete Bedienhandlungen und Speicherbelege. Es gibt keinen Katalog erlaubter Auftragskombinationen und keinen vom Anwendungscode vorgegebenen nächsten Schritt.
@@ -121,6 +127,12 @@ Aktionen nach dem Schließen der Palette warten auf das `closed`-Ereignis des Di
 ## Freigaben, Teilfortschritt und Abschluss
 
 Eine unsichere, aber konkrete Aktionsauswahl erscheint zur Bestätigung in der Palette. Sie nennt das Bedienelement und die geplante Wirkung. Die Bestätigung gilt für diesen Schritt im geprüften Zustand. Sie erlaubt keine späteren, andersartigen Änderungen.
+
+`CommandRunner` besitzt eine persönliche Sicherheitsschwelle als ganzen Prozentwert von 0 bis 100, mit Standard 75. Sie bleibt separat von Verlauf und Speicherprotokoll im Browser gespeichert. Die Prüfung lautet `confidence < percent / 100`. Sie gilt für Aktionsauswahl, Auftragsumfang und beide Modellbewertungen des Abschlusses. Zusätzliche oder unklare Änderungen benötigen unabhängig vom Wert eine Freigabe. Ein verbotener Schritt bleibt blockiert. Auch bei 0 Prozent gelten die Anforderungen an Abschlussurteil, ausstehende Speicherungen und Speicherbelege.
+
+Nur das manuelle Einstellungsfeld in der Palette kann die Schwelle ändern. Der Setter entwertet laufende Entscheidungen und bestehende Freigaben synchron über die vorhandene Unterbrechung. Die Einstellung erscheint weder in den angebotenen Jev-Aktionen noch im Modellkontext. Ein Reset der Fachdaten erhält sie. Ungültige gespeicherte Werte fallen auf 75 zurück. Scheitert das Speichern einer neuen Einstellung, gilt sie im aktuellen Tab mit einem sichtbaren Hinweis.
+
+Die Confidence für eine konkrete Blockadeursache bleibt getrennt und unverändert bei mindestens 0,75. Sie entscheidet über die Zuordnung eines Hinweises zu einer deaktivierten Aktion. Die persönliche Schwelle verändert diese fachliche Zuordnung nicht.
 
 Zusätzliche fachliche Änderungen benötigen eine eigene Freigabe, sofern sie nicht schon im ursprünglichen Auftrag enthalten sind. Eine Speicherung beschreibt alle Änderungen des betroffenen Entwurfs. Eine hohe Confidence ersetzt diese Umfangsprüfung nicht. Fehlende menschliche Beobachtungen, etwa ein Prüfbeleg, bleiben eine manuelle Aufgabe.
 

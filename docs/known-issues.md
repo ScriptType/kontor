@@ -77,3 +77,13 @@ Die Korrektur trennt eine unbestätigte Ergebnisbewertung von einer konkret zuge
 Die drei abschließenden unabhängigen Filterprüfungen zeigten die richtigen Zeilen ohne den falschen Hinweis. Daten und offene Entwürfe blieben unverändert. Zwei Menüschritte benötigten eine geprüfte Bestätigung. Zwei Ergebnisbewertungen blieben unsicher; sie zählen nicht als autonome Erledigung. Der echte Abschlussauftrag für V-1039 führte zur passenden Prüfbeleg-Übergabe und nach einem manuellen Klick zum leeren, fokussierten Eingabefeld. Die [Live-Messung](jev-live.md#auftragsbezogene-blockaden) enthält auch die fehlgeschlagenen Autonomietests.
 
 Unabhängig davon schlug Jev in einem anderen Live-Lauf nach erfolgreichem Filtern unnötig das Öffnen von V-1042 vor. Dieser unsichere Vorschlag wurde nicht bestätigt. Die Zuordnung von Aufgaben bleibt eine Modellentscheidung und fällt weiterhin unter KI-002.
+
+## KI-008: Laufender Reset lässt sich über den Dialog ausblenden
+
+Status: auf `74de5c3` behoben; beide Schließwege vor der Korrektur im Browser reproduziert.
+
+Während einer zurückgehaltenen Reset-Antwort konnten Escape und ein Klick außerhalb den Dialog schließen. Die Anwendung hielt den Reset noch für modal und sperrte die Jev-Palette. Der ursprüngliche Test scheiterte auch fünfmal auf dem unveränderten Ausgangsstand `2468329`.
+
+Spartan Brain 1.4.1 übernimmt `disableClose` beim Öffnen des Dialogs. Eine spätere Änderung des Inputs während des Resets aktualisiert diese Optionen nicht. Das `stateChanged`-Ereignis meldet den bereits begonnenen Schließvorgang; der bisherige Guard in der Anwendung konnte ihn nicht verhindern.
+
+Solange der Reset aussteht, stellt die Anwendung den geöffneten Zustand synchron über die öffentliche Dialog-API wieder her. Nach einer bestätigten Antwort schließt der Dialog. Bei der Bestätigung und nach einem Fehler bleiben Abbrechen, Escape und Außenklick möglich. Die Browser-Tests halten die echte WebSocket-Antwort zurück und prüfen beide Schließversuche, die Fokussperre und die anschließende Freigabe der Bedienung.

@@ -43,6 +43,8 @@ Gewählt ist die erste Variante mit einem Auftragsfenster nach dem Muster von Sp
 
 Der Verlauf gruppiert nach Nutzerauftrag. Jeder Eintrag enthält Auftrag, Zeitpunkt, Status und aufklappbare ausgeführte Schritte. Ein erneutes Öffnen startet keinen Auftrag und wiederholt keine Speicherung. Die Oberfläche verwendet feste Statusmeldungen; sie benötigt keine freie Textgenerierung durch Jev.
 
+**Jev-Einstellungen** enthält die persönliche Sicherheitsschwelle als beschriftetes Prozentfeld und eine Rückkehr zum Standard von 75 Prozent. Der Bereich liegt außerhalb des Auftragsformulars. Enter im Einstellungsfeld sendet keinen Auftrag. Die Erklärung nennt die Wirkung auf Aktionsbestätigung und Abschlussbewertung. Die Einstellung gehört ausschließlich zur manuellen Bedienung.
+
 Eine neue Rückfrage oder Freigabe öffnet das Fenster automatisch und fokussiert die passende Antwort, Eingabe oder Handlung. Escape schließt dieselbe Rückfrage dauerhaft bis zum bewussten erneuten Öffnen über **Antworten**. Eine spätere neue Rückfrage öffnet das Fenster wieder. Der ausstehende Inhalt bleibt beim Schließen erhalten.
 
 Ein bekannter Zielvorgang wird vor einer vorgangsbezogenen Rückfrage über die sichtbaren Bedienaktionen geöffnet. Ein fremder ungespeicherter Entwurf und ein ausdrücklich widersprüchlicher Filter müssen zuerst geklärt werden. Der Dialog nennt den Vorgang und seinen Kontext. Bei einem fehlenden Prüfbeleg schließt **Prüfbeleg erfassen** den Dialog und setzt den Fokus in das tatsächliche Feld. Die Anleitung im Vorgang nennt die manuellen Schritte bis zum ausdrücklichen Fortsetzen.

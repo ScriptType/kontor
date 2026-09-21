@@ -4,9 +4,13 @@ Kontor Service verwaltet Servicevorgänge für Nordwerk, Hafen & Partner und Lin
 
 ## Bedienbare Funktionen
 
-Jev kann Seiten öffnen, Kundenfilter und Suche bedienen, Vorgänge öffnen, Zuständigkeit und Formularwerte ändern und speichern. Es wählt nach jedem Schritt erneut aus den zugänglichen Bedienelementen. Die Anwendung legt keine bestimmte Kombination dieser Funktionen als zulässigen Auftrag fest.
+Jev kann Seiten öffnen, Kunden-, Status- und Zuständigkeitsfilter sowie die Suche bedienen. Im Vorgang kann es Zuständigkeit, Priorität, Arbeitszeit und Termin bearbeiten, einen Termin entfernen und einen abgeschlossenen Vorgang wieder öffnen. Es wählt nach jedem Schritt erneut aus den zugänglichen Bedienelementen. Die Anwendung legt keine bestimmte Kombination dieser Funktionen als zulässigen Auftrag fest.
 
 Die Oberfläche bleibt manuell bedienbar. Auswählen und Ausfüllen ändern zunächst einen Entwurf. Speichern prüft die Fachregeln erneut. Eine eigenständige Aufgabenverwaltung mit Abhängigkeiten und frei anlegbaren Aufgaben gehört zum [Ausbaukatalog](action-catalog.md).
+
+Die Filter lassen sich kombinieren. **Zurücksetzen** entfernt alle Filter einschließlich der Suche. Kundenverweise öffnen alle Vorgänge des gewählten Kunden. Teamverweise öffnen die offenen Vorgänge der gewählten Person. Die Kennzahlen für offene und abgeschlossene Vorgänge in Berichten führen zur jeweiligen Liste. Diese Verweise ersetzen die bisherigen Filter. Ein offener Entwurf bleibt erhalten und verhindert weiterhin das Öffnen eines anderen Vorgangs.
+
+Prioritätsänderung, Wiederöffnung und Terminlöschung werden erst durch **Speichern** verbindlich. **Entwurf verwerfen** stellt den gespeicherten Stand wieder her. Arbeitszeit und Prüfbeleg bleiben bei einer Wiederöffnung erhalten. Team und Berichte berücksichtigen die Änderung nach dem Speichern.
 
 ## Aufträge und erwartete Ergebnisse
 
@@ -17,6 +21,10 @@ Diese Beispiele beschreiben die gewünschten Ergebnisse im Live-Modus. Die konkr
 | „Zeig mir die Kunden.“ | Die Kundenansicht ist geöffnet. Keine Fachdaten ändern sich. |
 | „Öffne zuerst Kunden, dann Berichte und zuletzt das Team.“ | Die drei Ansichten wurden in dieser Reihenfolge geöffnet. Das Team bleibt sichtbar. |
 | „Filter nach Nordwerk.“ | Die Vorgangsliste zeigt die Nordwerk-Vorgänge. |
+| „Zeige die offenen Vorgänge von Lea Sommer.“ | Die Liste zeigt nur offene Vorgänge mit Lea Sommer als zuständiger Person. |
+| „Setze V-1041 auf hohe Priorität und speichere.“ | Die gespeicherte Priorität lautet Hoch. Andere Felder bleiben unverändert. |
+| „Öffne V-1035 wieder und speichere.“ | Der Vorgang ist wieder offen. Erfasste Arbeitszeit und ein vorhandener Prüfbeleg bleiben erhalten. |
+| „Entferne den Termin von V-1041 und speichere.“ | Der Vorgang hat keinen Termin mehr. Zuständigkeit und Arbeitszeit bleiben erhalten. |
 | „Suche nach "Lindenwerk".“ | Der vorhandene Suchtext wird in das sichtbare Suchfeld übernommen. |
 | „Öffne V-1042, erfasse 35 Minuten, speichere und zeige Berichte.“ | V-1042 enthält die bestätigte Arbeitszeit. Danach sind die Berichte sichtbar. |
 | „Trage für V-1042 25 Minuten als Entwurf ein, nicht speichern.“ | Das Formular enthält 25 Minuten. Die gespeicherten Daten bleiben unverändert. |
@@ -31,11 +39,15 @@ Mehrere Änderungen können verschiedene Vorgänge betreffen. Bei ausdrücklich 
 
 Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Escape schließt es und lässt die Frage offen. Unsichere Aktionsvorschläge nennen die geplante Bedienhandlung. Die Bestätigung gilt für diese Handlung und den dazugehörigen Zustand.
 
+Unter **Jev-Einstellungen** legt der Nutzer eine Sicherheitsschwelle von 0 bis 100 Prozent fest. Der Standard ist 75 Prozent. Unterhalb der Schwelle fragt Jev vor einem konkreten Schritt nach. Derselbe Wert gilt für die Auswahl und die gesonderte Bewertung des Auftragsabschlusses. Bei genau erreichter Schwelle genügt die Sicherheit. Zusätzliche Änderungen brauchen weiterhin eine Freigabe. Fehlende Werte und menschliche Prüfbelege bleiben eigene Voraussetzungen.
+
+Die Einstellung bleibt in diesem Browser gespeichert. Scheitert das Speichern der Einstellung, weist die Palette darauf hin, dass sie nur für die aktuelle Sitzung gilt. Eine Änderung entwertet ausstehende Entscheidungen und Freigaben. Ein laufender Auftrag wartet anschließend auf ausdrückliches Fortsetzen. Jev kann seine eigene Sicherheitsschwelle nicht ändern.
+
 Das Öffnen des Auftragsfensters pausiert einen laufenden Auftrag. Manuelle Änderungen pausieren ebenfalls. Ein fremder ungespeicherter Entwurf muss vor einem neuen Auftrag gespeichert oder verworfen werden. Jev übernimmt ihn nicht stillschweigend.
 
 Stoppen verhindert weitere Schritte. Eine bereits gestartete Speicherung kann noch abgeschlossen werden. Speicherbelege bestimmen das Ergebnis. Nach Neuladen läuft kein unterbrochener Auftrag automatisch weiter.
 
-**Demodaten zurücksetzen** stellt nach Bestätigung den Ausgangsstand her. Der Reset beendet den Auftrag im aktuellen Tab und leert dessen Entwürfe, Filter, Eingabe und Verlauf. API-Schlüssel und Betriebsmodus bleiben erhalten.
+**Demodaten zurücksetzen** stellt nach Bestätigung den Ausgangsstand her. Der Reset beendet den Auftrag im aktuellen Tab und leert dessen Entwürfe, Filter, Eingabe und Verlauf. API-Schlüssel, Betriebsmodus und die persönliche Sicherheitsschwelle bleiben erhalten.
 
 ## Demo und Live
 
