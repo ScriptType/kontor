@@ -702,15 +702,17 @@ export class CommandRunner {
         await this.checkCompletion(capture);
         return;
       }
-      if (decision.choice === "abstain" || decision.choice === "blocked") {
+      if (decision.choice === "abstain") {
         this.terminalOrQuestion(decision.choice, capture, input);
         return;
       }
-      if (decision.choice.startsWith("ask:")) {
+      if (decision.choice === "blocked" || decision.choice.startsWith("ask:")) {
         if (decision.confidence < this.confidencePercent() / 100)
           this.review(
             capture,
-            "Jev ist bei der Rückfrage unsicher. Vorschläge prüfen.",
+            decision.choice === "blocked"
+              ? "Jev ist unsicher, ob verbleibende Arbeit blockiert ist. Vorschläge prüfen."
+              : "Jev ist bei der Rückfrage unsicher. Vorschläge prüfen.",
           );
         else this.terminalOrQuestion(decision.choice, capture, input);
         return;
