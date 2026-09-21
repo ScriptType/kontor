@@ -13,6 +13,7 @@ npm run test:live
 npm run test:live -- --scenario=customers,filter-original,no-save --max-calls=40
 npm run test:live -- --scenario=repeated-assignment --repeat=2 --max-calls=40
 npm run test:live -- --scenario=detail-short-id,detail-first-row,detail-last-row --max-calls=20
+npm run test:live -- --scenario=filter-exact-clean,filter-exact-preselected,filter-exact-already-filtered,domain-blocker --max-calls=30
 ```
 
 `--scenario` wählt eine durch Kommas getrennte Liste aus. `--repeat` ist standardmäßig `1`. `--max-calls` begrenzt den gesamten Lauf auf standardmäßig `160` Anbieteraufrufe. `--timeout-ms` begrenzt ihn auf standardmäßig `600000` Millisekunden. Ein ausgeschöpftes Budget lässt übrige Fälle als nicht ausgeführt im Bericht stehen und beendet den Lauf mit einem Fehlerstatus.
@@ -22,6 +23,8 @@ Jedes Szenario beginnt mit einer neuen Browserumgebung und einer eigenen Datenba
 Die Szenarien prüfen Navigation, ausdrücklich geordnete Seitenwechsel, Suche, Kundenfilter, Änderungen und anschließende Navigation, mehrere Vorgänge, wiederholte Zuweisungen, fehlende Werte, ungespeicherte Entwürfe und fachliche Blockaden. Ein weiterer Fall verlangt nach einer beauftragten Speicherung eine nicht verfügbare E-Mail-Aktion. Bereits gespeicherte Änderungen müssen erhalten bleiben, ohne den gesamten Auftrag als erledigt auszugeben.
 
 Die drei Detailfälle prüfen eine verkürzte Vorgangskennung sowie die erste und letzte Tabellenzeile. Die erwartete Zeile wird vor dem Auftrag aus der gerenderten Tabelle gelesen. Der Test verlangt den richtigen Vorgang, eine vollständig sichtbare und fokussierte Detailüberschrift unterhalb der fixierten Aktivitätsleiste und unveränderte gespeicherte Daten.
+
+Die drei `filter-exact-*`-Fälle verwenden "zeige mir alle vorgänge von nordwerk". Sie beginnen ohne Auswahl, mit geöffnetem V-1039 oder mit geöffnetem V-1039 und bereits gesetztem Kundenfilter. Neben den richtigen Zeilen prüft der Lauf unveränderte Daten, Auswahl und Formularwerte. Ein Hinweis auf den fehlenden Prüfbeleg ist bei diesem Auftrag ein Fehler. `domain-blocker` prüft dagegen den ausdrücklich gewünschten Abschluss von V-1039.
 
 ## Ergebnisse bewerten
 
@@ -90,6 +93,25 @@ Auf `4840c8d` prüfte der unveränderte Live-Runner sechs Szenarien mit `jev-1.1
 Eine unabhängige anschließende Browserprüfung auf demselben Stand verwendete sechs weitere Anbieteraufrufe. „Öffne Details von 1042“ gelang autonom. Für die letzte Tabellenzeile wurde der konkrete Vorschlag V-1035 geprüft und einmal ausdrücklich bestätigt. Danach war auch diese Detailüberschrift sichtbar und fokussiert. Beide gespeicherten Datenstände blieben unverändert. Dieser bestätigte Ablauf ersetzt den fehlgeschlagenen Autonomietest nicht.
 
 Die Berichte, Vorher-Messung, Kontextversuche und Bildschirmaufnahmen liegen lokal unter `live-results/screen-context-2026-09-20/`. Die endgültige Prüfung verändert keine Anbieteranfragen. `npm run verify` bestand auf dem integrierten Stand mit 27 Unit-/Integrationstests und 39 Browser-Tests. Dazu gehören tatsächliche Tabellenreihenfolge nach Filtern, ausgeblendete Bereiche, verspätete Antworten nach Scrollen, Entwurfserhalt und ein Stopp während des verzögerten Schließens der Palette.
+
+## Auftragsbezogene Blockaden
+
+Auf `a58d322` prüfte der Standardlauf vier Szenarien mit `jev-1.13.0` und zehn Anbieteraufrufen. Er bestätigte keinen Vorschlag automatisch und endete mit Exit-Code 1. Der Bericht liegt lokal unter `live-results/2026-09-21T11-39-47.898Z/report.json`.
+
+| Szenario | Ergebnis | Beobachtung |
+| --- | --- | --- |
+| `filter-exact-clean` | Nicht autonom erledigt | Kundenfilter gesetzt; Abschlussbewertung bei 0,71. Kein fachlicher Blockadehinweis. |
+| `filter-exact-preselected` | Nicht autonom erledigt | Passender Vorschlag zum Öffnen des Kundenfilters benötigt Bestätigung bei 0,59. Auswahl und Entwurf unverändert. |
+| `filter-exact-already-filtered` | Nicht autonom erledigt | Richtige Liste bleibt sichtbar; `done` bei 0,73, Abschlussbewertung bei 0,62. Kein Prüfbeleg-Hinweis. |
+| `domain-blocker` | Erwartete Übergabe | V-1039 geöffnet; `blocked` bei 0,73, konkret zugeordnete Abschlussaktion bei 0,98. Keine Datenänderung. |
+
+Eine unabhängige Prüfung verwendete dieselben drei Filterzustände und zehn weitere Aufrufe. Alle zeigten die richtigen Nordwerk-Zeilen ohne Prüfbeleg-Hinweis. Gespeicherte Daten, Auswahl und Formularwerte blieben unverändert. In zwei Fällen wurde der konkrete Vorschlag zum Öffnen des Filtermenüs geprüft und einmal bestätigt. Nur der Fall mit vorher geöffnetem V-1039 erreichte danach eine Erledigungsmeldung. Die beiden anderen blieben bei der Ergebnisbewertung unsicher. Der Bericht liegt unter `live-results/filter-scope-2026-09-21/probe-2026-09-21T11-39-47.780Z/report.json`.
+
+Die gesonderte Live-Prüfung von "Schließe V-1039 ab." benötigte drei Aufrufe und keine Freigabe eines Modellvorschlags. Die Palette zeigte den fehlenden Prüfbeleg für V-1039. Erst ein Klick auf **Prüfbeleg erfassen** fokussierte dessen leeres Eingabefeld. Die Daten blieben unverändert. Bericht und Bildschirmaufnahmen liegen unter `live-results/filter-scope-2026-09-21/handoff-2026-09-21T11-40-20.875Z/`.
+
+Frühere Fehlversuche bleiben in `live-results/filter-scope-2026-09-21/` erhalten. Dazu gehört die genaue Reproduktion des falschen Hinweises bei null ausgeführten Aktionen. Eine erste Umsetzung verhinderte außerdem bei unsicherem `blocked` schon die reine Nachfrage nach der Ursache. Der aktuelle Ablauf trennt diese Informationsfrage von einer Ausführungsfreigabe. Die Schwellen für Bedienhandlungen und Abschlussbewertungen bleiben bei 0,75.
+
+`npm run verify` bestand auch nach der Übernahme ins Hauptverzeichnis mit Typprüfung, Build, 30 Unit- und Integrationstests sowie 51 Browser-Tests. Die ursprüngliche Regression verlangte null unpassende Blockadehinweise und erhielt vor der Korrektur einen. Sie besteht jetzt ebenso wie unbekannte Ursachen, veraltete Antworten und die manuelle Übergabe nach dem Dialogschließen. Das Protokoll liegt unter `live-results/filter-scope-2026-09-21/integrated-verify.log`.
 
 ## Zuständigkeiten und Quellen
 

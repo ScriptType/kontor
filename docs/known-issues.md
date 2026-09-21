@@ -61,3 +61,19 @@ Status: behoben und auf `4840c8d` mit verzögertem Dialogschließen geprüft.
 Bei verzögertem Schließen der Befehlspalette konnte der Lauf fortgesetzt werden, während Angular CDK die Hauptansicht noch als `aria-hidden` markierte. Die nächste Entscheidung enthielt dadurch keine bedienbaren Aktionen. Ein Browser-Test mit einer 250 Millisekunden langen Schließanimation reproduzierte den Fehler. Der Anbieter erhielt nur `done` und `blocked`, obwohl als nächster Schritt Speichern möglich sein sollte.
 
 Start, Fortsetzen, Antworten, Freigaben und der Wechsel zum Prüfbeleg warten nun auf das tatsächliche `closed`-Ereignis des Dialogs. Eine zwischenzeitliche Änderung des Laufzustands verwirft die vorgemerkte Aktion. Die Sichtbarkeitsprüfung für ausgeblendete Inhalte bleibt bestehen.
+
+Die Korrektur von KI-007 ergänzt einen Renderdurchlauf nach `closed`. Eine synchrone Prüfung des Prüfbeleg-Ziels kam sonst noch vor der Wiederherstellung von `aria-hidden` durch Angular CDK. Der Browser-Test prüft die Übergabe sowie Stoppen, Zielwechsel und ausgeblendete Bedienelemente während dieser Wartezeit.
+
+## KI-007: Unpassender Prüfbeleg nach einem Kundenfilter
+
+Status: behoben und auf `a58d322` im Browser und mit Live-Jev geprüft.
+
+Der Auftrag "zeige mir alle vorgänge von nordwerk" konnte bei geöffnetem V-1039 einen Prüfbeleg-Hinweis auslösen. In der entscheidenden Live-Reproduktion war die Liste bereits korrekt gefiltert. Jev führte keine Aktion aus und schlug den Abschluss des Auftrags vor. Seine Confidence und die anschließende Ergebnisbewertung lagen unter der Ausführungsschwelle.
+
+Die Anwendung behandelte diese Unsicherheit als allgemeine Blockade. Die Palette leitete daraus die Abschlussvoraussetzungen des gerade ausgewählten Vorgangs ab. So erschien dessen fehlender Prüfbeleg als vermeintlich notwendiger nächster Schritt, obwohl der Auftrag nur die Liste betraf. Die gespeicherten Daten blieben unverändert.
+
+Die Korrektur trennt eine unbestätigte Ergebnisbewertung von einer konkret zugeordneten blockierten Aktion. Hinweise beziehen sich auf deren erfassten Zielvorgang. Eine bloße Auswahl oder eine unsichere Abschlussmeldung erzeugt keine Prüfbeleg-Übergabe.
+
+Die drei abschließenden unabhängigen Filterprüfungen zeigten die richtigen Zeilen ohne den falschen Hinweis. Daten und offene Entwürfe blieben unverändert. Zwei Menüschritte benötigten eine geprüfte Bestätigung. Zwei Ergebnisbewertungen blieben unsicher; sie zählen nicht als autonome Erledigung. Der echte Abschlussauftrag für V-1039 führte zur passenden Prüfbeleg-Übergabe und nach einem manuellen Klick zum leeren, fokussierten Eingabefeld. Die [Live-Messung](jev-live.md#auftragsbezogene-blockaden) enthält auch die fehlgeschlagenen Autonomietests.
+
+Unabhängig davon schlug Jev in einem anderen Live-Lauf nach erfolgreichem Filtern unnötig das Öffnen von V-1042 vor. Dieser unsichere Vorschlag wurde nicht bestätigt. Die Zuordnung von Aufgaben bleibt eine Modellentscheidung und fällt weiterhin unter KI-002.

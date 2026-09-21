@@ -88,7 +88,13 @@ Der Ablauf wiederholt diese Schritte:
 4. Die Anwendung prüft, ob die Entscheidung noch zum aktuellen Zustand gehört und die konkrete Änderung beauftragt oder bestätigt ist.
 5. Das sichtbare Bedienelement führt dieselbe Bedienhandlung wie bei manueller Eingabe aus. Nach Rendering und ausstehenden Speicherungen beginnt die nächste Entscheidung mit neuen Beobachtungen.
 
-Menüeinträge sind erst nach dem Öffnen des Menüs ausführbar. Unsichtbare, deaktivierte oder durch einen Dialog gesperrte Elemente gehören nicht zur Auswahl. Fachliche Blockaden bleiben als Informationen verfügbar. Eine Beschreibung einer künftig erreichbaren Seite erteilt keine Ausführungsberechtigung für ihre versteckten Elemente.
+Menüeinträge sind erst nach dem Öffnen des Menüs ausführbar. Unsichtbare, deaktivierte oder durch einen Dialog gesperrte Elemente gehören nicht zur Auswahl. Eine Beschreibung einer künftig erreichbaren Seite erteilt keine Ausführungsberechtigung für ihre versteckten Elemente.
+
+Sichtbare deaktivierte Bedienelemente können ihre fachlichen Voraussetzungen getrennt als `BlockedControl` beschreiben. Die Beschreibung bindet Gründe an eine konkrete Aktion und einen Zielvorgang. Sie macht das Element nicht ausführbar. Erst wenn Jev ausdrücklich eine Blockade meldet, fragt das Backend nach der dafür erforderlichen deaktivierten Aktion. Die geschlossene Auswahl enthält auch eine unbekannte Ursache. Nur eine ausreichend sichere Zuordnung erlaubt einen konkreten Hinweis. Normale Bedienhandlungen und Abschlussprüfungen benötigen diesen zusätzlichen Aufruf nicht.
+
+Die Nachfrage ist auch bei einer unsicheren Blockademeldung zulässig. Sie klärt ausschließlich den Grund und erteilt keine Ausführungsfreigabe. Ihre eigene Confidence bestimmt, ob die Palette einen konkreten Hinweis zeigt. Unsicherheit über den nächsten Schritt wird damit nicht als Unsicherheit über jede mögliche Ursache behandelt. Beide Antworten bleiben im Live-Bericht sichtbar.
+
+Angezeigte Vorgänge und unerledigte Checklisten erweitern den Nutzerauftrag nicht. Beispielsweise verlangt das Anzeigen einer Vorgangsliste keinen Abschluss ihrer Einträge. Die Modellfragen unterscheiden deshalb das gewünschte Ergebnis in der Oberfläche von den fachlichen Voraussetzungen einzelner Bedienelemente.
 
 Buttons beschreiben ihre konkrete Wirkung. Eingabefelder beschreiben ihren Datentyp, ihren aktuellen Wert und zulässige Wertkandidaten. Werte stammen aus wörtlichen Angaben im Auftrag, vorhandenen Daten oder ausdrücklichen Antworten. Jev wählt einen solchen Kandidaten. Die Registrierung verbindet ihn mit dem sichtbaren Feld und dessen normalem Handler. Es gibt keinen versteckten Zielentwurf, aus dem ein Handler nachträglich seinen Wert liest.
 
@@ -110,7 +116,7 @@ Das Öffnen eines Vorgangs zeigt seine Details unterhalb der Tabelle. Nach dem R
 
 Jede Entscheidung gehört zu einem bestimmten Lauf und Bildschirmzustand. Öffnen des Auftragsfensters, manuelle Änderungen, Stoppen und Reset entwerten ausstehende Antworten. Nach einem Neuladen startet kein Auftrag automatisch. Vor der ausdrücklichen Fortsetzung werden Daten und Bedienelemente erneut gelesen.
 
-Aktionen nach dem Schließen der Palette warten auf das `closed`-Ereignis des Dialogs. Erst dann ist die Hauptansicht wieder zugänglich. Eine vorgemerkte Aktion entfällt, wenn sich der Laufzustand während des Schließens verändert hat.
+Aktionen nach dem Schließen der Palette warten auf das `closed`-Ereignis des Dialogs und den nächsten Renderdurchlauf. Angular CDK stellt die Zugänglichkeit der Hauptansicht erst nach den `closed`-Abonnenten wieder her. Eine vorgemerkte Aktion entfällt, wenn die Palette erneut geöffnet wurde oder sich der Laufzustand während des Schließens verändert hat.
 
 ## Freigaben, Teilfortschritt und Abschluss
 
@@ -121,6 +127,10 @@ Zusätzliche fachliche Änderungen benötigen eine eigene Freigabe, sofern sie n
 Ausdrücklich beauftragte Änderungen dürfen schrittweise gespeichert werden. Wird ein späterer Teil blockiert, bleiben bestätigte Speicherungen bestehen. Die Rückfrage zeigt diese Speicherungen direkt mit Vorgang und Revision. Der Verlauf enthält die einzelnen Wirkungen. Stoppen ist kein Zurückrollen. Ein unbekanntes Speicherergebnis wird über die Operations-ID abgeglichen und nicht durch eine neue Mutation wiederholt.
 
 Ein ausdrücklich gewünschter Entwurf kann fertig vorbereitet sein, ohne gespeichert zu werden. Dagegen dürfen ausstehende oder unbekannte Speicherungen nicht als erfolgreich gelten. Speicherbelege und gelesene Werte belegen tatsächliche Änderungen. Ob ein beliebiger mehrteiliger Text vollständig erfüllt ist, bleibt zusätzlich eine Bewertung des Modells. Ein Abschlussvorschlag wird deshalb nochmals gegen den ursprünglichen Auftrag und die beobachteten Ergebnisse geprüft. Diese Prüfung ist kein formaler Nachweis des Sprachverständnisses.
+
+Eine nicht bestätigte Abschlussbewertung führt zum Zustand `completion_unconfirmed`. Dieser Zustand enthält keine fachliche Blockade und bietet keinen Prüfbeleg an. Bereits bestätigte Speicherungen bleiben sichtbar. Fortsetzen prüft den Auftrag erneut. Das bloße Schließen der Palette startet keine weitere Arbeit.
+
+Die Übergabe zum Prüfbeleg benötigt eine dem Auftrag zugeordnete Abschlussaktion mit fehlendem Beleg. Die Palette merkt sich den Zielvorgang dieser Aktion. Nach dem tatsächlichen Schließen prüft sie Laufzustand, ausgewählten Vorgang und aktuelle Voraussetzung erneut, bevor sie das manuelle Eingabefeld fokussiert. Ein beliebiger geöffneter Vorgang genügt nicht als Grund für diese Übergabe.
 
 Neue Rückfragen und Freigaben öffnen das Auftragsfenster. Escape schließt es, ohne die Frage zu beantworten. Dieselbe Frage öffnet sich dadurch nicht sofort erneut. Die Palette und der Verlauf zeigen, was ausgeführt wurde und wo eine Entscheidung des Nutzers fehlt.
 
