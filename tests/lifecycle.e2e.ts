@@ -99,9 +99,14 @@ test("provider receives mounted regions, ordered controls and detail state witho
         "dirty",
         "blockers",
         "completionBlockers",
-        "retainedDraft",
+        "message",
       ])
         expect(finalFacts).not.toHaveProperty(key);
+      expect(finalFacts.retainedSelection).toEqual({
+        caseId: "V-1042",
+        mounted: false,
+        saved: before.cases[0],
+      });
       for (const observation of observations) {
         const state = z
           .object({
@@ -122,6 +127,39 @@ test("provider receives mounted regions, ordered controls and detail state witho
       }
       expect(snapshots[1]).not.toContain("case-detail:V-1042");
       expect(snapshots[2]).not.toContain("menu:technician");
+      expect(store.snapshot()).toEqual(before);
+    },
+  );
+});
+
+test("a selection kept off its detail page is current saved data, not an open detail", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["nav:cases"],
+    async (store, _held, _arrived, _snapshots, observations) => {
+      const before = store.snapshot();
+      await page.locator('[data-action="case:V-1041"]').click();
+      await page.locator('[data-action="nav:reports"]').click();
+      await start(page, "Zeige die Vorgänge.");
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      const [away, back] = observations.map(
+        (observation) =>
+          z
+            .object({ currentFacts: z.record(z.string(), z.unknown()) })
+            .parse(observation).currentFacts,
+      );
+      expect(away?.retainedSelection).toMatchObject({
+        caseId: "V-1041",
+        mounted: false,
+        saved: { id: "V-1041", technicianId: "jonas", minutes: 45 },
+      });
+      expect(away?.retainedSelection).not.toHaveProperty("draft");
+      for (const key of ["selected", "draft", "dirty", "blockers", "message"])
+        expect(away).not.toHaveProperty(key);
+      expect(back).toMatchObject({ selected: { id: "V-1041" } });
+      expect(back).not.toHaveProperty("retainedSelection");
       expect(store.snapshot()).toEqual(before);
     },
   );

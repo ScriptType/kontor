@@ -179,6 +179,16 @@ test("equal values in a dirty draft remain unsaved evidence", async ({
           dirty: true,
         },
       });
+      expect(observations.at(-1)).toMatchObject({
+        currentFacts: {
+          retainedSelection: {
+            caseId: "V-1041",
+            mounted: false,
+            saved: { minutes: 45 },
+            draft: { minutes: 60 },
+          },
+        },
+      });
       expect(store.snapshot().revision).toBe(0);
     },
   );
