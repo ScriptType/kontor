@@ -220,6 +220,13 @@ test("manual reset preserves canceled drafts then clears saved data, drafts, fil
     page.getByRole("textbox", { name: "Auftrag an Jev" }),
   ).not.toBeVisible();
   await page.getByRole("button", { name: "Abbrechen" }).click();
+  for (const dismissal of ["Escape", "backdrop"]) {
+    await page.getByRole("button", { name: "Demodaten zurücksetzen", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Abbrechen" })).toBeFocused();
+    if (dismissal === "Escape") await page.keyboard.press("Escape");
+    else await page.mouse.click(5, 5);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  }
   await expect(page.locator(".editor-footer")).toContainText(
     "Ungespeicherter Entwurf",
   );
@@ -330,39 +337,44 @@ test("reset finishes while Save response is held and late receipt cannot restore
   expect(workspace.snapshot()).toEqual({ ...seed, revision: 2 });
 });
 
-test("failed confirmed reset keeps Jev stopped and never retries automatically", async ({
-  page,
-  address,
-  workspace,
-}) => {
-  let attempts = 0;
-  workspace.reset = () => {
-    attempts++;
-    throw new Error("isolated reset failure");
-  };
-  await page.goto(address);
-  await command(page, demos[2]);
-  await expect(page.locator(".activity-label")).toHaveText(
-    "Jev meldet den Auftrag als erledigt",
-  );
-  const before = workspace.snapshot();
-  await page
-    .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Jetzt zurücksetzen" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Zurücksetzen nicht bestätigt",
-  );
-  await expect(
-    page.getByRole("button", { name: "Jetzt zurücksetzen" }),
-  ).not.toBeVisible();
-  await page.getByRole("button", { name: "Schließen", exact: true }).click();
-  await expect(page.locator(".activity-label")).toContainText("Gestoppt");
-  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
-  await expect(page.locator(".history")).toContainText(demos[2]);
-  expect(workspace.snapshot()).toEqual(before);
-  expect(attempts).toBe(1);
-});
+for (const dismissal of ["button", "Escape", "backdrop"]) {
+  test(`failed confirmed reset keeps Jev stopped and never retries after ${dismissal}`, async ({
+    page,
+    address,
+    workspace,
+  }) => {
+    let attempts = 0;
+    workspace.reset = () => {
+      attempts++;
+      throw new Error("isolated reset failure");
+    };
+    await page.goto(address);
+    await command(page, demos[2]);
+    await expect(page.locator(".activity-label")).toHaveText(
+      "Jev meldet den Auftrag als erledigt",
+    );
+    const before = workspace.snapshot();
+    await page
+      .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Jetzt zurücksetzen" }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "Zurücksetzen nicht bestätigt",
+    );
+    await expect(
+      page.getByRole("button", { name: "Jetzt zurücksetzen" }),
+    ).not.toBeVisible();
+    if (dismissal === "Escape") await page.keyboard.press("Escape");
+    else if (dismissal === "backdrop") await page.mouse.click(5, 5);
+    else await page.getByRole("button", { name: "Schließen", exact: true }).click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.locator(".activity-label")).toContainText("Gestoppt");
+    await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+    await expect(page.locator(".history")).toContainText(demos[2]);
+    expect(workspace.snapshot()).toEqual(before);
+    expect(attempts).toBe(1);
+  });
+}
 
 test("reset cancels a held Jev decision and keeps the confirmation modal exclusive", async ({
   page,
@@ -477,50 +489,58 @@ test("late reconciliation cannot restore a draft after reset", async ({
   ).toBeNull();
 });
 
-test("pending reset traps the dialog until the held reset reply arrives", async ({
-  page,
-  address,
-  workspace,
-}) => {
-  let replies = 0;
-  let release = () => {};
-  let arrived = () => {};
-  const held = new Promise<void>((resolve) => {
-    arrived = resolve;
-  });
-  await page.routeWebSocket("**/rpc", (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((message) => {
-      const text =
-        typeof message === "string" ? message : message.toString("utf8");
-      if (text.includes("customers") && text.includes("technicians")) replies++;
-      if (replies === 3 && text.includes("customers")) {
-        release = () => socket.send(message);
-        arrived();
-      } else socket.send(message);
+for (const dismissal of ["Escape", "backdrop"]) {
+  test(`pending reset traps ${dismissal} until the held reset reply arrives`, async ({
+    page,
+    address,
+    workspace,
+  }) => {
+    let replies = 0;
+    let release = () => {};
+    let arrived = () => {};
+    const held = new Promise<void>((resolve) => {
+      arrived = resolve;
     });
+    await page.routeWebSocket("**/rpc", (socket) => {
+      const server = socket.connectToServer();
+      server.onMessage((message) => {
+        const text =
+          typeof message === "string" ? message : message.toString("utf8");
+        if (text.includes("customers") && text.includes("technicians")) replies++;
+        if (replies === 3 && text.includes("customers")) {
+          release = () => socket.send(message);
+          arrived();
+        } else socket.send(message);
+      });
+    });
+    await page.goto(address);
+    await page
+      .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
+      .click();
+    await expect(page.getByRole("button", { name: "Abbrechen" })).toBeFocused();
+    await page.getByRole("button", { name: "Jetzt zurücksetzen" }).click();
+    await held;
+    if (dismissal === "Escape") await page.keyboard.press("Escape");
+    else await page.mouse.click(5, 5);
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(page.locator(".reset-dialog")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Abbrechen" })).toBeDisabled();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("dialog")).toBeFocused();
+    await expect(
+      page.getByRole("textbox", { name: "Auftrag an Jev" }),
+    ).not.toBeVisible();
+    expect(workspace.snapshot().revision).toBe(1);
+    release();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByRole("status")).toContainText(
+      "Demodaten zurückgesetzt.",
+    );
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("textbox", { name: "Auftrag an Jev" })).toBeVisible();
   });
-  await page.goto(address);
-  await page
-    .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
-    .click();
-  await page.getByRole("button", { name: "Jetzt zurücksetzen" }).click();
-  await held;
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("Control+k");
-  await expect(page.getByRole("dialog")).toHaveCount(1);
-  await expect(page.locator(".reset-dialog")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Abbrechen" })).toBeDisabled();
-  await expect(
-    page.getByRole("textbox", { name: "Auftrag an Jev" }),
-  ).not.toBeVisible();
-  expect(workspace.snapshot().revision).toBe(1);
-  release();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect(page.getByRole("status")).toContainText(
-    "Demodaten zurückgesetzt.",
-  );
-});
+}
 
 test("Stop while Save reply is held records the committed result without resuming", async ({
   page,
