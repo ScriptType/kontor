@@ -39,6 +39,8 @@ npm start
 
 `npm run test:live` prüft deutsche Aufträge im Browser mit echten Jev-Antworten. Der Lauf benötigt den API-Key aus `.env` und verwendet für jedes Szenario frische Beispieldaten in einer eigenen Datenbank im Arbeitsspeicher. Er prüft sichtbare Filter, Rückfragen und Formulare sowie die tatsächlich gespeicherten Änderungen. Die lokale `kontor.sqlite` wird dabei nicht verwendet. Die Aufrufe können Kosten verursachen. [Live-Szenarien und Auswertung](docs/jev-live.md) beschreibt Aufruf, Ergebnisse und Grenzen.
 
+`npm run eval:jev -- --variant <Name>` misst ganze Jev-Läufe über feste und generierte Szenarien. [Jev-Auswertung](docs/jev-eval.md) beschreibt Szenarien, Kennzahlen und den Bestätigungsvertrag für Varianten.
+
 [Offene Prüfungen](docs/known-issues.md) dokumentiert beobachtete Modellfehler und die Grenzen der Live-Messungen.
 
 ## Aufträge ausführen
