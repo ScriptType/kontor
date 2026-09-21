@@ -20,8 +20,17 @@ export function fieldValues(
   if (field.type === "number") {
     for (const match of request.matchAll(
       /(?<![\p{L}\p{N}_.,:/+\-])(\d{1,5})(?![\p{L}\p{N}_.,:/+\-])/gu,
-    ))
-      add(match[0], "wörtliche Zahl aus Auftrag");
+    )) {
+      const identifiers = existing.filter(
+        (value) => /^\p{L}+-(\d+)$/u.exec(value)?.[1] === match[0],
+      );
+      add(
+        match[0],
+        identifiers.length
+          ? `wörtliche Zahl aus Auftrag; entspricht auch Kennung ${identifiers.join(", ")}`
+          : "wörtliche Zahl aus Auftrag",
+      );
+    }
   } else if (field.type === "datetime-local") {
     for (const match of request.matchAll(
       /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
