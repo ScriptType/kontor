@@ -90,7 +90,7 @@ Der Ablauf wiederholt diese Schritte:
 
 1. Angular liest den aktuellen Bildschirmzustand und die registrierten, zugänglichen Bedienelemente.
 2. Jev erhält den ursprünglichen Auftrag, die bisherigen Ergebnisse, offene Blockaden und diese Auswahl.
-3. Jev wählt eine Aktion, eine angebotene Rückfrage oder einen Abschluss.
+3. Jev wählt eine Aktion, eine angebotene Rückfrage, einen Abschluss, eine Blockade oder einen Halt bei fehlender Orientierung.
 4. Die Anwendung prüft, ob die Entscheidung noch zum aktuellen Zustand gehört und die konkrete Änderung beauftragt oder bestätigt ist.
 5. Das sichtbare Bedienelement führt dieselbe Bedienhandlung wie bei manueller Eingabe aus. Nach Rendering und ausstehenden Speicherungen beginnt die nächste Entscheidung mit neuen Beobachtungen.
 
@@ -103,6 +103,10 @@ Die Nachfrage ist auch bei einer unsicheren Blockademeldung zulässig. Sie klär
 Angezeigte Vorgänge und unerledigte Checklisten erweitern den Nutzerauftrag nicht. Beispielsweise verlangt das Anzeigen einer Vorgangsliste keinen Abschluss ihrer Einträge. Die Modellfragen unterscheiden deshalb das gewünschte Ergebnis in der Oberfläche von den fachlichen Voraussetzungen einzelner Bedienelemente.
 
 Buttons beschreiben ihre konkrete Wirkung. Eingabefelder beschreiben ihren Datentyp, ihren aktuellen Wert und zulässige Wertkandidaten. Werte stammen aus wörtlichen Angaben im Auftrag, vorhandenen Daten oder ausdrücklichen Antworten. Jev wählt einen solchen Kandidaten. Die Registrierung verbindet ihn mit dem sichtbaren Feld und dessen normalem Handler. Es gibt keinen versteckten Zielentwurf, aus dem ein Handler nachträglich seinen Wert liest.
+
+Ein passender Wert bleibt auch dann als Kandidat verfügbar, wenn er bereits im sichtbaren Feld steht. Gleiche numerische Werte werden vereinheitlicht. Eine erneute gleiche Zuweisung verwendet den normalen Handler, verändert aber weder den Entwurf noch dessen Eigentümer oder Statusmeldung. Manuelle Eingaben entwerten trotzdem ausstehende Entscheidungen. Bereits ausgewählte, deaktivierte Buttons werden dadurch nicht ausführbar.
+
+Der Verlauf unterscheidet tatsächliche Änderungen von Schritten ohne Änderung. Er hält gespeicherten Vorgang, Entwurf und Änderungszustand getrennt fest. Diese Beobachtung bleibt auch nach einer Navigation verfügbar. Ältere Verlaufseinträge ohne solche Ergebnisangabe erhalten keine nachträglich erfundene Bewertung.
 
 Ein Lauf ist auf 40 ausgeführte Schritte begrenzt. Ein Zustand enthält höchstens 100 Aktionen und 30 Eingabefelder. Der Browser stoppt vor einer Anfrage über 180.000 Byte. Wiederholungen ohne Fortschritt werden ebenfalls beendet. Diese Grenzen schützen den lokalen Versuch; größere Tabellen benötigen eine passende sichtbare Auswahl oder Paginierung.
 
@@ -126,9 +130,17 @@ Aktionen nach dem Schließen der Palette warten auf das `closed`-Ereignis des Di
 
 ## Freigaben, Teilfortschritt und Abschluss
 
-Eine unsichere, aber konkrete Aktionsauswahl erscheint zur Bestätigung in der Palette. Sie nennt das Bedienelement und die geplante Wirkung. Die Bestätigung gilt für diesen Schritt im geprüften Zustand. Sie erlaubt keine späteren, andersartigen Änderungen.
+Bei Unsicherheit zeigt die Palette die beiden am höchsten bewerteten Optionen derselben Jev-Antwort. Die Optionen können auch eine Rückfrage, Abschlussprüfung, Blockade oder einen Halt enthalten. Die ursprüngliche Auswahl bleibt zusammen mit ihrer Confidence erkennbar, auch wenn sie nicht an erster Stelle der Rangfolge steht.
 
-`CommandRunner` besitzt eine persönliche Sicherheitsschwelle als ganzen Prozentwert von 0 bis 100, mit Standard 75. Sie bleibt separat von Verlauf und Speicherprotokoll im Browser gespeichert. Die Prüfung lautet `confidence < percent / 100`. Sie gilt für Aktionsauswahl, Auftragsumfang und beide Modellbewertungen des Abschlusses. Zusätzliche oder unklare Änderungen benötigen unabhängig vom Wert eine Freigabe. Ein verbotener Schritt bleibt blockiert. Auch bei 0 Prozent gelten die Anforderungen an Abschlussurteil, ausstehende Speicherungen und Speicherbelege.
+Der Anbieter liefert Auswahl-Confidence und Optionswahrscheinlichkeiten als unterschiedliche Werte. Die Sicherheitsschwelle verwendet weiterhin die Auswahl-Confidence. Die Rangfolge verwendet die unveränderten Optionswahrscheinlichkeiten. Bei Gleichstand gilt die Reihenfolge der angebotenen Optionen. Das Backend prüft die vollständige Zuordnung der Wahrscheinlichkeiten zu den angebotenen Kennungen und Werte zwischen 0 und 1. Ein weiterer Aufruf zur Ermittlung einer zweiten Option ist nicht erforderlich.
+
+Eine gewählte Alternative wird nach dem tatsächlichen Schließen der Palette erneut gegen den vollständigen aktuellen Katalog geprüft. Sie erhält eine eigene Umfangsbewertung. Für Jevs ursprüngliche Auswahl gilt dagegen die Umfangsbewertung aus demselben geprüften Zustand weiter. Zusätzliche oder unklare Änderungen benötigen anschließend eine konkrete Freigabe; eine erneute Bewertung kann diese Freigabe nicht ersetzen. Ein verbotener Schritt bleibt unbestätigbar. Die Freigabe gilt ausschließlich für diese Wirkung im geprüften Zustand.
+
+Die Entscheidung `abstain` hält den Lauf an, wenn Jev keinen sinnvollen nächsten Schritt wählen kann. Sie öffnet die Auswahl mit den beiden Bewertungen und Möglichkeiten zum Überarbeiten oder Stoppen. Sie erzeugt keine fachliche Blockadeursache. Eine tatsächliche `blocked`-Entscheidung kann weiterhin eine unabhängig bewertete Ursache enthalten; deren Confidence ersetzt niemals die ursprüngliche Auswahl-Confidence.
+
+Die Auswahl einer niedriger bewerteten Abschlussoption startet eine neue Abschlussprüfung. Nur eine neue Jev-Auswahl von `done` kann deren Auswahl-Confidence liefern. Eine andere neue Auswahl erscheint zur Prüfung und wird dabei nicht unmittelbar ausgeführt. Optionswahrscheinlichkeit oder Nutzerklick ersetzen keine der Abschlussvoraussetzungen.
+
+`CommandRunner` besitzt eine persönliche Sicherheitsschwelle als ganzen Prozentwert von 0 bis 100, mit Standard 75. Sie bleibt separat von Verlauf und Speicherprotokoll im Browser gespeichert. Die Prüfung lautet `confidence < percent / 100`. Sie gilt für Aktionsauswahl, Auftragsumfang und beide Modellbewertungen des Abschlusses. Zusätzliche oder unklare Änderungen benötigen unabhängig vom Wert eine Freigabe. Ein verbotener Schritt bleibt gesperrt. Auch bei 0 Prozent gelten die Anforderungen an Abschlussurteil, ausstehende Speicherungen und Speicherbelege.
 
 Nur das manuelle Einstellungsfeld in der Palette kann die Schwelle ändern. Der Setter entwertet laufende Entscheidungen und bestehende Freigaben synchron über die vorhandene Unterbrechung. Die Einstellung erscheint weder in den angebotenen Jev-Aktionen noch im Modellkontext. Ein Reset der Fachdaten erhält sie. Ungültige gespeicherte Werte fallen auf 75 zurück. Scheitert das Speichern einer neuen Einstellung, gilt sie im aktuellen Tab mit einem sichtbaren Hinweis.
 
@@ -140,7 +152,9 @@ Ausdrücklich beauftragte Änderungen dürfen schrittweise gespeichert werden. W
 
 Ein ausdrücklich gewünschter Entwurf kann fertig vorbereitet sein, ohne gespeichert zu werden. Dagegen dürfen ausstehende oder unbekannte Speicherungen nicht als erfolgreich gelten. Speicherbelege und gelesene Werte belegen tatsächliche Änderungen. Ob ein beliebiger mehrteiliger Text vollständig erfüllt ist, bleibt zusätzlich eine Bewertung des Modells. Ein Abschlussvorschlag wird deshalb nochmals gegen den ursprünglichen Auftrag und die beobachteten Ergebnisse geprüft. Diese Prüfung ist kein formaler Nachweis des Sprachverständnisses.
 
-Eine nicht bestätigte Abschlussbewertung führt zum Zustand `completion_unconfirmed`. Dieser Zustand enthält keine fachliche Blockade und bietet keinen Prüfbeleg an. Bereits bestätigte Speicherungen bleiben sichtbar. Fortsetzen prüft den Auftrag erneut. Das bloße Schließen der Palette startet keine weitere Arbeit.
+Bereits passend gespeicherte Werte benötigen keine erneute Speicherung. Für jede im aktuellen Lauf gesendete Änderung bleibt dagegen ihr eigener Speicherbeleg erforderlich. Ein passender Entwurf ersetzt weder den gespeicherten Wert noch einen ausstehenden Beleg. Schritte ohne Änderung erzeugen keine künstlichen Operations-IDs oder Speicherbelege.
+
+Eine nicht bestätigte Abschlussbewertung öffnet die Auswahl mit den beiden bewerteten Optionen und nennt das Ergebnis der Abschlussprüfung. Ändern sich Daten oder verfügbare Schritte während der Abschlussprüfung, entsteht der Zustand `completion_unconfirmed`. Beide Fälle enthalten keine fachliche Blockade und bieten keinen Prüfbeleg an. Bereits bestätigte Speicherungen bleiben sichtbar. Fortsetzen prüft den Auftrag erneut. Das bloße Schließen der Palette startet keine weitere Arbeit.
 
 Die Übergabe zum Prüfbeleg benötigt eine dem Auftrag zugeordnete Abschlussaktion mit fehlendem Beleg. Die Palette merkt sich den Zielvorgang dieser Aktion. Nach dem tatsächlichen Schließen prüft sie Laufzustand, ausgewählten Vorgang und aktuelle Voraussetzung erneut, bevor sie das manuelle Eingabefeld fokussiert. Ein beliebiger geöffneter Vorgang genügt nicht als Grund für diese Übergabe.
 

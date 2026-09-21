@@ -43,9 +43,15 @@ Gewählt ist die erste Variante mit einem Auftragsfenster nach dem Muster von Sp
 
 Der Verlauf gruppiert nach Nutzerauftrag. Jeder Eintrag enthält Auftrag, Zeitpunkt, Status und aufklappbare ausgeführte Schritte. Ein erneutes Öffnen startet keinen Auftrag und wiederholt keine Speicherung. Die Oberfläche verwendet feste Statusmeldungen; sie benötigt keine freie Textgenerierung durch Jev.
 
+Ein Schritt ohne Änderung erhält einen entsprechenden Hinweis im Verlauf. Bereits gleiche Werte erzeugen keine irreführende Meldung über einen neuen ungespeicherten Entwurf.
+
 **Jev-Einstellungen** enthält die persönliche Sicherheitsschwelle als beschriftetes Prozentfeld und eine Rückkehr zum Standard von 75 Prozent. Der Bereich liegt außerhalb des Auftragsformulars. Enter im Einstellungsfeld sendet keinen Auftrag. Die Erklärung nennt die Wirkung auf Aktionsbestätigung und Abschlussbewertung. Die Einstellung gehört ausschließlich zur manuellen Bedienung.
 
 Eine neue Rückfrage oder Freigabe öffnet das Fenster automatisch und fokussiert die passende Antwort, Eingabe oder Handlung. Escape schließt dieselbe Rückfrage dauerhaft bis zum bewussten erneuten Öffnen über **Antworten**. Eine spätere neue Rückfrage öffnet das Fenster wieder. Der ausstehende Inhalt bleibt beim Schließen erhalten.
+
+Bei Unsicherheit enthält das Fenster zwei nach Optionswahrscheinlichkeit sortierte Vorschläge mit Wirkung und Prozentwert. Jevs ursprüngliche Auswahl und deren Confidence erscheinen getrennt davon. Auch Rückfrage, Abschlussprüfung oder Halt können zu diesen beiden Optionen gehören. Die Ansicht erfindet keine Ersatzaktion, wenn Jev eine solche Entscheidung höher bewertet.
+
+Eine Auswahl führt erst nach dem vollständigen Schließen des Dialogs und einer erneuten Prüfung weiter. Verbotene Vorschläge sind nicht auswählbar. Zusätzliche oder unklare Wirkungen erhalten eine gesonderte konkrete Freigabe. Überarbeiten und Stoppen bleiben direkt erreichbar.
 
 Ein bekannter Zielvorgang wird vor einer vorgangsbezogenen Rückfrage über die sichtbaren Bedienaktionen geöffnet. Ein fremder ungespeicherter Entwurf und ein ausdrücklich widersprüchlicher Filter müssen zuerst geklärt werden. Der Dialog nennt den Vorgang und seinen Kontext. Bei einem fehlenden Prüfbeleg schließt **Prüfbeleg erfassen** den Dialog und setzt den Fokus in das tatsächliche Feld. Die Anleitung im Vorgang nennt die manuellen Schritte bis zum ausdrücklichen Fortsetzen.
 

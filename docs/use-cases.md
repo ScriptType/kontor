@@ -29,6 +29,7 @@ Diese Beispiele beschreiben die gewünschten Ergebnisse im Live-Modus. Die konkr
 | „Öffne V-1042, erfasse 35 Minuten, speichere und zeige Berichte.“ | V-1042 enthält die bestätigte Arbeitszeit. Danach sind die Berichte sichtbar. |
 | „Trage für V-1042 25 Minuten als Entwurf ein, nicht speichern.“ | Das Formular enthält 25 Minuten. Die gespeicherten Daten bleiben unverändert. |
 | „Weise V-1042 zuerst Lea Sommer zu und speichere. Danach Jonas Weber zuweisen und erneut speichern.“ | Zwei ausdrücklich verlangte Speicherungen bleiben im Verlauf unterscheidbar, auch wenn der Endwert dem Anfangswert entspricht. |
+| „Weise V-1041 Mara Schulz zu, erfasse 60 Minuten, filtere nach Nordwerk und zeige Berichte.“ | Bereits passend gespeicherte Zuständigkeit und Minuten bleiben erhalten. Schritte ohne Änderung sind im Verlauf erkennbar. Der Filter und die Berichtsansicht bleiben eigene Teile des Auftrags. |
 | „Erfasse Arbeitszeit für V-1042.“ | Jev öffnet den Vorgang und fragt nach einem fehlenden Wert. Es erfindet keine geleisteten Minuten. |
 | „Schließe V-1039 ab.“ | Fehlende Abschlussvoraussetzungen werden im geöffneten Vorgang verständlich. Ein Prüfbeleg bleibt eine menschliche Eingabe. |
 | „Weise V-1042 Lea Sommer zu und speichere. Sende danach eine E-Mail.“ | Die Anwendung hat keine E-Mail-Aktion. Sie darf den gesamten Auftrag nicht als erledigt melden. Bereits bestätigte Speicherungen bleiben erhalten. |
@@ -37,7 +38,11 @@ Mehrere Änderungen können verschiedene Vorgänge betreffen. Bei ausdrücklich 
 
 ## Rückfragen und Unterbrechungen
 
-Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Escape schließt es und lässt die Frage offen. Unsichere Aktionsvorschläge nennen die geplante Bedienhandlung. Die Bestätigung gilt für diese Handlung und den dazugehörigen Zustand.
+Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Escape schließt es und lässt die Frage offen. Bei Unsicherheit stehen die zwei am höchsten bewerteten Jev-Optionen mit Prozentwerten zur Auswahl. Jede Option nennt ihre geplante Wirkung. Die ursprüngliche Auswahl und deren Confidence bleiben gesondert sichtbar. Die Bestätigung gilt für die gewählte Handlung und den dazugehörigen Zustand.
+
+Die Prozentwerte der Rangfolge sind Optionswahrscheinlichkeiten aus derselben Antwort. Sie ersetzen nicht die Auswahl-Confidence für die Sicherheitsschwelle. Eine andere gewählte Aktion wird erneut geprüft. Zusätzliche oder unklare Änderungen benötigen eine konkrete Freigabe; widersprüchliche Änderungen bleiben gesperrt. Eine gewählte Abschlussprüfung kann keine Erledigung erzwingen.
+
+Kann Jev keinen sinnvollen nächsten Schritt wählen, kann es ausdrücklich anhalten. Die Palette bietet die bewerteten Optionen sowie Überarbeiten und Stoppen an. Bereits gespeicherte Änderungen bleiben erhalten. Dieser Halt allein erzeugt keinen fachlichen Hinweis auf einen fehlenden Prüfbeleg.
 
 Unter **Jev-Einstellungen** legt der Nutzer eine Sicherheitsschwelle von 0 bis 100 Prozent fest. Der Standard ist 75 Prozent. Unterhalb der Schwelle fragt Jev vor einem konkreten Schritt nach. Derselbe Wert gilt für die Auswahl und die gesonderte Bewertung des Auftragsabschlusses. Bei genau erreichter Schwelle genügt die Sicherheit. Zusätzliche Änderungen brauchen weiterhin eine Freigabe. Fehlende Werte und menschliche Prüfbelege bleiben eigene Voraussetzungen.
 

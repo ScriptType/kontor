@@ -87,3 +87,19 @@ Während einer zurückgehaltenen Reset-Antwort konnten Escape und ein Klick auß
 Spartan Brain 1.4.1 übernimmt `disableClose` beim Öffnen des Dialogs. Eine spätere Änderung des Inputs während des Resets aktualisiert diese Optionen nicht. Das `stateChanged`-Ereignis meldet den bereits begonnenen Schließvorgang; der bisherige Guard in der Anwendung konnte ihn nicht verhindern.
 
 Solange der Reset aussteht, stellt die Anwendung den geöffneten Zustand synchron über die öffentliche Dialog-API wieder her. Nach einer bestätigten Antwort schließt der Dialog. Bei der Bestätigung und nach einem Fehler bleiben Abbrechen, Escape und Außenklick möglich. Die Browser-Tests halten die echte WebSocket-Antwort zurück und prüfen beide Schließversuche, die Fokussperre und die anschließende Freigabe der Bedienung.
+
+## KI-009: Wiederholte Aufträge verlieren bereits passende Feldwerte
+
+Status: Behandlung gleicher Werte behoben. Ein autonomer Abschluss des wiederholten Auftrags gelingt im echten Lauf weiterhin nicht.
+
+Ein wiederholter Auftrag für V-1041 enthielt die alleinstehenden Zahlen 1041 und 60. Bei bereits erfassten 60 Minuten entfernte die Kandidatensuche den passenden Wert aus den Feldaktionen. Die Zahl 1041 blieb als gültiger numerischer Kandidat verfügbar. Eine echte Jev-Antwort wählte diesen falschen Wert. Die gesonderte Auftragsprüfung lehnte ihn ab; die gespeicherten 60 Minuten blieben unverändert.
+
+Die Browser-Reproduktion mit drei aufgezeichneten Anbieterantworten zeigte denselben Hinweis wie der gemeldete Fehler. Zwei weitere echte Läufe über den bereits gespeicherten Stand mit Mara Schulz und 60 Minuten endeten als blockiert. Sie zählen als fehlgeschlagene Autonomietests. Die Berichte und Traces liegen lokal unter `live-results/repeated-actions-2026-09-21/`.
+
+Die aktuelle Zuständigkeit blieb dagegen als sichtbarer Menüeintrag verfügbar. Ihre erneute Auswahl setzte bisher trotz gleichen Werts den Entwurfseigentümer und die Meldung über einen ungespeicherten Entwurf. Diese Unterschiede zwischen Feld- und Menüaktionen erklären die inkonsistente Behandlung gleicher Werte. Sie beweisen nicht, dass das Entfernen des passenden Kandidaten jede falsche Modellentscheidung verursacht.
+
+Alleinstehende Zahlen bleiben grundsätzlich Kandidaten, sofern sie die Feldvalidierung erfüllen. Ihre Bedeutung muss Jev beurteilen. Eine besondere Regel für diese Vorgangsnummer oder diesen Auftrag würde andere gültige Minutenwerte ausschließen. Die unter KI-002 beschriebenen Grenzen der Zielwahl und Auftragsauswertung bleiben bestehen.
+
+Nach der Korrektur bleibt ein passender Wert als Kandidat verfügbar. Gleiche Zuweisungen verändern weder Entwurf noch Eigentümer oder Statusmeldung. Der Verlauf kennzeichnet sie als Schritt ohne Änderung. Die Browser-Tests mit vorgegebenen Antworten führen den Auftrag zweimal ohne Speicherung und ohne erfundene Speicherbelege aus.
+
+Zwei echte Jev-Läufe nach der Korrektur liefen mit einer Schwelle von 10 Prozent über den gespeicherten Stand mit Mara Schulz und 60 Minuten. Beide Läufe speicherten nichts; Revision und Werte blieben unverändert. Der erste Lauf öffnete das Zuständigkeitsmenü, setzte den Kundenfilter und zeigte die Berichte. Er wählte weder die vorhandene Zuständigkeit noch die vorhandenen Minuten. Seine Abschlussprüfung ergab `outstanding` mit 25 Prozent; der Lauf endete in der Auswahl. Der zweite Lauf wählte sofort `blocked`. Falsche Änderungen entstanden nicht. Ob Jev bereits passende gespeicherte Werte als erfüllt bewertet, bleibt eine offene Grenze der Modellentscheidung. Die Aufzeichnungen liegen lokal unter `live-results/repeated-actions-2026-09-21/live-first/`.
