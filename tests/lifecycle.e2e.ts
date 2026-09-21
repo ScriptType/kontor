@@ -23,6 +23,7 @@ async function withLive(
   options: {
     hold?: string;
     low?: string;
+    lowConfidence?: number;
     assessment?: string;
     forbidCommit?: boolean;
     outstanding?: boolean;
@@ -107,7 +108,7 @@ async function withLive(
               key === "cause"
                 ? (options.causeConfidence ?? 1)
                 : next === options.low && key === "next"
-                  ? 0.4
+                  ? (options.lowConfidence ?? 0.4)
                   : 1,
             probabilities: { [choice]: 1 },
           },
@@ -822,13 +823,14 @@ test("uncertain filter completion does not inherit the selected case's inspectio
   );
 });
 
-test("missing evidence stays a concrete handoff tied to the disabled completion control", async ({
+test("a precise cause after uncertain blocked still requires a manual evidence handoff", async ({
   page,
 }) => {
   await withLive(
     page,
     ["case:V-1039", "blocked"],
     async (store, _held, _arrived, snapshots, observations) => {
+      const before = store.snapshot();
       await page.addStyleTag({ content: slowPaletteClose });
       await start(page, "Schließe V-1039 ab.");
       await expect(page.locator(".blocked-control")).toContainText(
@@ -846,6 +848,11 @@ test("missing evidence stays a concrete handoff tied to the disabled completion 
           .locator(".blocked-control li")
           .filter({ hasText: "Prüfung vor Ort" }),
       ).toBeVisible();
+      await expect(page.locator(".blocked-control")).toContainText("V-1039");
+      await expect(page.locator("#evidence:focus")).toHaveCount(0);
+      await expect(page.locator("#evidence")).toHaveValue("");
+      await expect(page.locator('[data-action="complete"]')).toBeDisabled();
+      expect(store.snapshot()).toEqual(before);
       await page
         .getByRole("button", { name: "Prüfbeleg erfassen", exact: true })
         .click();
@@ -867,9 +874,14 @@ test("missing evidence stays a concrete handoff tied to the disabled completion 
       expect(observations[1]).not.toHaveProperty(
         "currentFacts.completionBlockers",
       );
-      expect(store.snapshot().revision).toBe(0);
+      expect(store.snapshot()).toEqual(before);
     },
-    { cause: "blocked:complete" },
+    {
+      low: "blocked",
+      lowConfidence: 0.52,
+      cause: "blocked:complete",
+      causeConfidence: 0.98,
+    },
   );
 });
 

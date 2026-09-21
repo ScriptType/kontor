@@ -103,11 +103,7 @@ export function createJev(config: Config, fetch?: Fetch) {
       );
       const answer = answers["next"];
       if (!answer) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
-      if (
-        answer.choice === "blocked" &&
-        answer.confidence >= 0.75 &&
-        input.blockedControls.length
-      ) {
+      if (answer.choice === "blocked" && input.blockedControls.length) {
         const causes = Object.fromEntries(
           input.blockedControls.map((control) => [
             `blocked:${control.action.id}`,
@@ -129,14 +125,12 @@ export function createJev(config: Config, fetch?: Fetch) {
         );
         const cause = answers["cause"];
         if (!cause) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
-        return {
-          snapshotId: input.snapshotId,
-          choice:
-            cause.choice !== "unknown" && cause.confidence >= 0.75
-              ? cause.choice
-              : "blocked",
-          confidence: Math.min(answer.confidence, cause.confidence),
-        };
+        if (cause.choice !== "unknown" && cause.confidence >= 0.75)
+          return {
+            snapshotId: input.snapshotId,
+            choice: cause.choice,
+            confidence: cause.confidence,
+          };
       }
       return {
         snapshotId: input.snapshotId,

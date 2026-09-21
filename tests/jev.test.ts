@@ -267,12 +267,14 @@ function causalProvider(answers: { choice: string; confidence: number }[]) {
   );
   return { jev, calls };
 }
-test("only a confident blocked choice with candidates asks one causal question", async () => {
+test("every explicit blocked choice with candidates asks one causal question", async () => {
   for (const [next, decisionInput] of [
     [{ choice: "nav:customers", confidence: 1 }, blockedInput],
+    [{ choice: "nav:customers", confidence: 0.4 }, blockedInput],
     [{ choice: "done", confidence: 1 }, blockedInput],
-    [{ choice: "blocked", confidence: 0.74 }, blockedInput],
+    [{ choice: "done", confidence: 0.4 }, blockedInput],
     [{ choice: "blocked", confidence: 1 }, input],
+    [{ choice: "blocked", confidence: 0.1 }, input],
   ] satisfies [{ choice: string; confidence: number }, DecisionInput][]) {
     const { jev, calls } = causalProvider([next]);
     assert.deepEqual(await jev.decide(decisionInput), {
@@ -285,48 +287,53 @@ test("only a confident blocked choice with candidates asks one causal question",
     );
     assert(!calls[0]?.options.some((key) => key.startsWith("blocked:")));
   }
-  const { jev, calls } = causalProvider([
-    { choice: "blocked", confidence: 0.8 },
-    { choice: "blocked:complete", confidence: 0.9 },
-  ]);
-  assert.deepEqual(await jev.decide(blockedInput), {
-    snapshotId: "fresh",
-    choice: "blocked:complete",
-    confidence: 0.8,
-  });
-  assert.deepEqual(
-    calls.map((call) => call.key),
-    ["next", "cause"],
-  );
-  assert.deepEqual(calls[1]?.options, ["blocked:complete", "unknown"]);
-  assert.deepEqual(
-    z.object({ blockedControls: z.unknown() }).parse(calls[1]?.state)
-      .blockedControls,
-    blockedInput.blockedControls,
-  );
-});
-test("uncertain or unknown causes remain generic and unoffered causes are rejected", async () => {
-  for (const cause of [
-    { choice: "blocked:complete", confidence: 0.74 },
-    { choice: "unknown", confidence: 1 },
-  ]) {
-    const { jev } = causalProvider([
-      { choice: "blocked", confidence: 0.9 },
-      cause,
+  for (const confidence of [0.52, 0.1, 1]) {
+    const { jev, calls } = causalProvider([
+      { choice: "blocked", confidence },
+      { choice: "blocked:complete", confidence: 0.98 },
     ]);
     assert.deepEqual(await jev.decide(blockedInput), {
       snapshotId: "fresh",
-      choice: "blocked",
-      confidence: Math.min(0.9, cause.confidence),
+      choice: "blocked:complete",
+      confidence: 0.98,
+    });
+    assert.deepEqual(
+      calls.map((call) => call.key),
+      ["next", "cause"],
+    );
+    assert.deepEqual(calls[1]?.options, ["blocked:complete", "unknown"]);
+    assert.deepEqual(
+      z.object({ blockedControls: z.unknown() }).parse(calls[1]?.state)
+        .blockedControls,
+      blockedInput.blockedControls,
+    );
+  }
+});
+test("uncertain or unknown causes remain generic and unoffered causes are rejected", async () => {
+  for (const confidence of [0.52, 1]) {
+    for (const cause of [
+      { choice: "blocked:complete", confidence: 0.74 },
+      { choice: "unknown", confidence: 1 },
+    ]) {
+      const { jev, calls } = causalProvider([
+        { choice: "blocked", confidence },
+        cause,
+      ]);
+      assert.deepEqual(await jev.decide(blockedInput), {
+        snapshotId: "fresh",
+        choice: "blocked",
+        confidence,
+      });
+      assert.deepEqual(calls.map((call) => call.key), ["next", "cause"]);
+    }
+    const { jev } = causalProvider([
+      { choice: "blocked", confidence },
+      { choice: "blocked:other", confidence: 1 },
+    ]);
+    await assert.rejects(jev.decide(blockedInput), {
+      code: "PROVIDER_INVALID_RESPONSE",
     });
   }
-  const { jev } = causalProvider([
-    { choice: "blocked", confidence: 1 },
-    { choice: "blocked:other", confidence: 1 },
-  ]);
-  await assert.rejects(jev.decide(blockedInput), {
-    code: "PROVIDER_INVALID_RESPONSE",
-  });
   await assert.rejects(provider("blocked:complete").decide(blockedInput), {
     code: "PROVIDER_INVALID_RESPONSE",
   });
