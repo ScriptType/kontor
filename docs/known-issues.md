@@ -90,7 +90,7 @@ Solange der Reset aussteht, stellt die Anwendung den geöffneten Zustand synchro
 
 ## KI-009: Wiederholte Aufträge verlieren bereits passende Feldwerte
 
-Status: Behandlung gleicher Werte behoben. Ein autonomer Abschluss des wiederholten Auftrags gelingt im echten Lauf weiterhin nicht.
+Status: bei niedriger Sicherheitsschwelle im echten Lauf autonom erfüllt. Bei der Standardschwelle von 75 Prozent hält Jev weiterhin zur Auswahl an.
 
 Ein wiederholter Auftrag für V-1041 enthielt die alleinstehenden Zahlen 1041 und 60. Bei bereits erfassten 60 Minuten entfernte die Kandidatensuche den passenden Wert aus den Feldaktionen. Die Zahl 1041 blieb als gültiger numerischer Kandidat verfügbar. Eine echte Jev-Antwort wählte diesen falschen Wert. Die gesonderte Auftragsprüfung lehnte ihn ab; die gespeicherten 60 Minuten blieben unverändert.
 
@@ -103,3 +103,7 @@ Alleinstehende Zahlen bleiben grundsätzlich Kandidaten, sofern sie die Feldvali
 Nach der Korrektur bleibt ein passender Wert als Kandidat verfügbar. Gleiche Zuweisungen verändern weder Entwurf noch Eigentümer oder Statusmeldung. Der Verlauf kennzeichnet sie als Schritt ohne Änderung. Die Browser-Tests mit vorgegebenen Antworten führen den Auftrag zweimal ohne Speicherung und ohne erfundene Speicherbelege aus.
 
 Zwei echte Jev-Läufe nach der Korrektur liefen mit einer Schwelle von 10 Prozent über den gespeicherten Stand mit Mara Schulz und 60 Minuten. Beide Läufe speicherten nichts; Revision und Werte blieben unverändert. Der erste Lauf öffnete das Zuständigkeitsmenü, setzte den Kundenfilter und zeigte die Berichte. Er wählte weder die vorhandene Zuständigkeit noch die vorhandenen Minuten. Seine Abschlussprüfung ergab `outstanding` mit 25 Prozent; der Lauf endete in der Auswahl. Der zweite Lauf wählte sofort `blocked`. Falsche Änderungen entstanden nicht. Ob Jev bereits passende gespeicherte Werte als erfüllt bewertet, bleibt eine offene Grenze der Modellentscheidung. Die Aufzeichnungen liegen lokal unter `live-results/repeated-actions-2026-09-21/live-first/`.
+
+Seitdem beschreibt `retainedSelection` den gespeicherten Stand des ausgewählten Vorgangs auch auf der Berichtsansicht. Eine unsichere `blocked`-Entscheidung öffnet die Auswahl, statt den Lauf zu beenden. Eine Zahl, die einer vorhandenen Kennung entspricht, nennt diese Kennung in ihrer Herkunftsangabe. Der lokale Prüftreiber liest den Filter aus der letzten Jev-Entscheidung; ein richtiger Lauf ohne Schritte kann dadurch bestehen.
+
+Drei echte Läufe mit einer Schwelle von 10 Prozent führten beide Wiederholungen jeweils autonom aus. Keiner speicherte etwas. Die erste Wiederholung setzte Filter und Berichtsansicht; ihre Abschlussprüfung ergab `complete` mit einer Confidence von 61 bis 65 Prozent. Die zweite Wiederholung meldete ohne weiteren Schritt den Abschluss. Ihre Abschlussprüfung ergab `complete` mit nur 30 bis 34 Prozent und würde bei einer höheren Schwelle zur Auswahl führen. Jev wählte `field:minutes:1041` in keinem Lauf. Diese Option erhielt weiterhin 2 bis 19 Prozent der Optionswahrscheinlichkeit, die Termindauer von 60 Minuten 11 bis 24 Prozent. Bei 75 Prozent hielt der Lauf bereits beim ersten Schritt mit einer Auswahl-Confidence von 23 Prozent zur Auswahl an. Die Aufzeichnungen liegen lokal unter `live-results/repeated-actions-2026-09-21/retained-10`, `retained-10b`, `retained-10c` und `retained-75`.
