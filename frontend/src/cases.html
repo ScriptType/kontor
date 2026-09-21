@@ -198,7 +198,7 @@
           @for (t of ui.data()?.technicians; track t.id) {
           <button
             [disabled]="!t.skills.includes(selected.skill)"
-            [kontorAction]="action('technician:' + t.id, t.name + ' zuweisen', selected.id + ': Zuständigkeit von ' + ui.technicianName(draft.technicianId) + ' auf ' + t.name + ' im Entwurf ändern', 'draft')"
+            [kontorAction]="action('technician:' + t.id, t.name + ' zuweisen', selected.id + (draft.technicianId === t.id ? ': Zuständigkeit ist bereits ' + t.name : ': Zuständigkeit von ' + ui.technicianName(draft.technicianId) + ' auf ' + t.name + ' im Entwurf ändern'), 'draft')"
             (invoked)="actions.execute('technician:' + t.id, $event)"
           >
             {{ t.name }} <small>{{ t.skills.join(', ') }}</small>

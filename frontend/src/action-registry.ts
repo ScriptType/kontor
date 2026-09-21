@@ -217,7 +217,10 @@ export class ActionRegistry {
             {
               id: `field:${field.id}:${value}`,
               label: `${field.label} auf ${value} setzen`,
-              effect: `${field.label}: ${field.current || "leer"} → ${value}; ${source}`,
+              effect:
+                field.current === value
+                  ? `${field.label} ist bereits ${value}; ${source}`
+                  : `${field.label}: ${field.current || "leer"} → ${value}; ${source}`,
               kind: field.kind,
             },
             control,

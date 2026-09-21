@@ -9,7 +9,7 @@ const minutes: FieldDescription = {
 };
 test("grounded repeated minutes remain available alongside a legitimate bare 1041", () => {
   assert.deepEqual(
-    fieldValues(minutes, "Ändere 1041. 060 minuten, 60 Minuten.", [], []).map((item) => item.value),
+    fieldValues(minutes, "Ändere 1041 auf Mara. 060 minuten, 60 Minuten.", [], []).map((item) => item.value),
     ["1041", "60"],
   );
 });

@@ -8,8 +8,8 @@ export function fieldValues(
 ) {
   const values = new Map<string, string>();
   const add = (value: string, source: string) => {
-    if (validFieldValue(field, value) && value !== field.current)
-      values.set(value, source);
+    if (validFieldValue(field, value))
+      values.set(field.type === "number" ? String(Number(value)) : value, source);
   };
   for (const answer of answers)
     if (answer.fieldId === field.id && answer.scope === field.scope)

@@ -169,9 +169,13 @@ export class WorkspaceUi {
     this.detailFocus.set(id);
   }
   edit(patch: Partial<CaseDraft>, actor: Actor) {
-    this.draftOwner.set(actor);
     if (actor === "manual") this.manual();
-    this.draft.update((d) => (d ? { ...d, ...patch } : d));
+    const draft = this.draft();
+    if (!draft) return;
+    const next = { ...draft, ...patch };
+    if (JSON.stringify(draft) === JSON.stringify(next)) return;
+    this.draftOwner.set(actor);
+    this.draft.set(next);
     this.message.set("Ungespeicherter Entwurf");
   }
   discard(actor: Actor = "manual") {
