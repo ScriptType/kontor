@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createApp } from "../server/app.js";
 import { demos } from "../shared/command.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
+import { draftOf } from "../shared/domain.js";
 const test = base.extend<{ workspace: WorkspaceStore; address: string }>({
   workspace: async ({}, use) => {
     const store = new WorkspaceStore();
@@ -226,7 +227,11 @@ test("manual reset preserves canceled drafts then clears saved data, drafts, fil
   await page
     .getByRole("searchbox", { name: "Vorgänge durchsuchen" })
     .fill("Nord");
-  await page.getByRole("button", { name: "Nur offen", exact: true }).click();
+  await page.locator('[data-action="filter:open"]').click();
+  await page.locator('[data-action="menu:customer"]').click();
+  await page.locator('[data-action="customer:nord"]').click();
+  await page.locator('[data-action="menu:filter-technician"]').click();
+  await page.locator('[data-action="filter-technician:lea"]').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page
     .getByRole("button", { name: "Demodaten zurücksetzen", exact: true })
@@ -243,9 +248,16 @@ test("manual reset preserves canceled drafts then clears saved data, drafts, fil
   await expect(
     page.getByRole("searchbox", { name: "Vorgänge durchsuchen" }),
   ).toHaveValue("");
+  await expect(page.locator('[data-action="filter:all"]')).toHaveAttribute(
+    "aria-pressed", "true",
+  );
+  await expect(page.locator('[data-action="menu:customer"]')).toContainText(
+    "Alle",
+  );
   await expect(
-    page.getByRole("button", { name: "Nur offen", exact: true }),
-  ).toHaveAttribute("aria-pressed", "false");
+    page.locator('[data-action="menu:filter-technician"]'),
+  ).toContainText("Alle");
+  await expect(page.locator("tbody tr")).toHaveCount(5);
   await expect(page.locator(".editor-footer")).not.toBeVisible();
   await expect(page.locator(".activity-label")).toHaveText(
     "Bereit für deinen Auftrag",
@@ -418,6 +430,7 @@ test("late reconciliation cannot restore a draft after reset", async ({
       status: original.status,
       appointment: original.appointment,
       inspection: original.inspection,
+      priority: original.priority,
     },
   };
   workspace.save(input);
@@ -712,3 +725,255 @@ test("legacy history remains readable without restoring execution authority", as
   await expect(page.locator(".history")).toContainText("Alter Auftrag");
   expect(workspace.snapshot().revision).toBe(0);
 });
+
+test("a done case still shows save blockers beside the reopen workflow", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const before = workspace.snapshot();
+  await page.goto(address);
+  await page.locator('[data-action="case:V-1035"]').click();
+  await page.locator('[data-action="menu:technician"]').click();
+  await page.locator('[data-action="technician:jonas"]').click();
+  await page.locator("#appointment").fill("2026-09-24T09:00");
+  await page.locator("#minutes").click();
+  await expect(page.locator('[data-action="reopen"]')).toBeEnabled();
+  await expect(page.locator('[data-action="save"]')).toBeDisabled();
+  await expect(
+    page.getByText("Jonas Weber ist durch V-1041 belegt.", { exact: true }),
+  ).toBeVisible();
+  expect(workspace.snapshot()).toEqual(before);
+});
+
+test("priority, reopening and appointment removal stay in the draft until saved and discard restores every value", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const original = workspace
+    .snapshot()
+    .cases.find((c) => c.id === "V-1039");
+  if (!original) throw new Error("Missing seed case");
+  const saved = workspace.save({
+    operationId: crypto.randomUUID(),
+    revision: 0,
+    caseId: original.id,
+    actor: "manual",
+    draft: {
+      ...draftOf(original),
+      status: "done",
+      appointment: { start: "2026-09-25T10:00:00", minutes: 60 },
+      inspection: { note: "Schutzleiter vor Ort geprüft.", by: "user" },
+    },
+  }).saved;
+  const before = workspace.snapshot();
+  await page.goto(address);
+  await page.locator('[data-action="case:V-1039"]').click();
+  await expect(
+    page.locator('[data-action="priority:Hoch"]'),
+  ).toBeDisabled();
+  for (const id of ["priority:Normal", "reopen", "remove-appointment"])
+    await page.locator(`[data-action="${id}"]`).click();
+  await expect(page.locator("#appointment")).toHaveValue("");
+  await expect(
+    page.locator('[data-action="priority:Normal"]'),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-action="complete"]')).toBeEnabled();
+  expect(workspace.snapshot()).toEqual(before);
+  await page.locator('[data-action="discard"]').click();
+  await expect(
+    page.locator('[data-action="priority:Hoch"]'),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#appointment")).toHaveValue(
+    "2026-09-25T10:00",
+  );
+  await expect(page.locator('[data-action="reopen"]')).toBeVisible();
+  await expect(page.locator("#evidence")).toHaveValue(
+    saved.inspection?.note ?? "",
+  );
+  expect(workspace.snapshot()).toEqual(before);
+  for (const id of ["priority:Normal", "reopen", "remove-appointment"])
+    await page.locator(`[data-action="${id}"]`).click();
+  await page.locator('[data-action="save"]').click();
+  await expect(page.locator(".editor-footer [role=status]")).toHaveText(
+    "V-1039 gespeichert",
+  );
+  expect(workspace.snapshot().cases.find((c) => c.id === saved.id)).toEqual(
+    { ...saved, priority: "Normal", status: "open", appointment: null },
+  );
+  expect(workspace.snapshot().revision).toBe(before.revision + 1);
+  await page.reload();
+  await page.locator('[data-action="case:V-1039"]').click();
+  await expect(
+    page.locator('[data-action="priority:Normal"]'),
+  ).toBeDisabled();
+  await expect(
+    page.locator('[data-action="remove-appointment"]'),
+  ).toHaveCount(0);
+  await expect(page.locator("#minutes")).toHaveValue(String(saved.minutes));
+  await expect(page.locator("#evidence")).toHaveValue(
+    saved.inspection?.note ?? "",
+  );
+});
+
+test("case filters combine, reset and drilldowns replace filters while retaining a dirty selection", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  const before = workspace.snapshot();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(address);
+  await page.locator('[data-action="case:V-1042"]').click();
+  await page.locator('[data-action="priority:Normal"]').click();
+  await page.locator('[data-action="menu:customer"]').click();
+  await page.locator('[data-action="customer:nord"]').click();
+  await page.locator('[data-action="menu:filter-technician"]').click();
+  await page.locator('[data-action="filter-technician:lea"]').click();
+  await page.locator('[data-action="filter:open"]').click();
+  await page.getByRole("searchbox").fill("Süd");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("V-1039");
+  await expect(page.locator(".editor h2")).toHaveText(
+    "Wartung Standort Nord",
+  );
+  await page.locator('[data-action="case:V-1039"]').click();
+  await expect(page.locator(".editor-footer")).toContainText(
+    "zuerst speichern oder verwerfen",
+  );
+  await expect(page.locator(".editor h2")).toHaveText(
+    "Wartung Standort Nord",
+  );
+  await page.locator('[data-action="filter:done"]').click();
+  await expect(page.locator("tbody")).toContainText(
+    "Keine passenden Vorgänge",
+  );
+  await page.locator('[data-action="filter:reset"]').click();
+  await expect(page.locator("tbody tr")).toHaveCount(5);
+  await expect(page.getByRole("searchbox")).toHaveValue("");
+  await expect(page.locator('[data-action="menu:customer"]')).toContainText(
+    "Alle",
+  );
+  await expect(
+    page.locator('[data-action="menu:filter-technician"]'),
+  ).toContainText("Alle");
+  await expect(page.locator('[data-action="filter:all"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("searchbox").fill("unpassend");
+  await page.locator('[data-action="nav:team"]').click();
+  await page.locator('[data-action="technician-cases:mara"]').click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("V-1037");
+  await expect(page.getByRole("searchbox")).toHaveValue("");
+  await expect(page.locator('[data-action="menu:customer"]')).toContainText(
+    "Alle",
+  );
+  await expect(page.locator('[data-action="filter:open"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.locator('[data-action="nav:reports"]').click();
+  await page.locator('[data-action="status-cases:done"]').click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("V-1035");
+  await expect(
+    page.locator('[data-action="menu:filter-technician"]'),
+  ).toContainText("Alle");
+  await page.locator('[data-action="nav:customers"]').click();
+  await page.locator('[data-action="customer-cases:hafen"]').click();
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.locator('[data-action="filter:all"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.locator('[data-action="nav:reports"]').click();
+  await page.locator('[data-action="status-cases:open"]').click();
+  await expect(page.locator("tbody tr")).toHaveCount(4);
+  await expect(page.locator('[data-action="menu:customer"]')).toContainText(
+    "Alle",
+  );
+  await expect(page.locator(".editor h2")).toHaveText(
+    "Wartung Standort Nord",
+  );
+  await expect(
+    page.locator('[data-action="priority:Normal"]'),
+  ).toBeDisabled();
+  await expect(page.locator('[data-action="save"]')).toBeEnabled();
+  expect(workspace.snapshot()).toEqual(before);
+});
+
+for (const outcome of ["found", "missing"] as const) {
+  test(`legacy pending save without priority stays blocked until ${outcome} receipt and never replays`, async ({
+    page,
+    address,
+    workspace,
+  }) => {
+    const original = workspace.snapshot().cases[0];
+    if (!original) throw new Error("Missing seed case");
+    const input = {
+      operationId: crypto.randomUUID(),
+      revision: 0,
+      caseId: original.id,
+      actor: "manual" as const,
+      draft: { ...draftOf(original), minutes: 88 },
+    };
+    if (outcome === "found") workspace.save(input);
+    const { priority, ...legacyDraft } = input.draft;
+    const legacy = { ...input, draft: legacyDraft };
+    expect(priority).toBe("Hoch");
+    const before = workspace.snapshot();
+    const receiptIds: string[] = [];
+    const receipt = workspace.receipt.bind(workspace);
+    workspace.receipt = (id) => {
+      receiptIds.push(id);
+      return receipt(id);
+    };
+    let saves = 0;
+    const save = workspace.save.bind(workspace);
+    workspace.save = (value) => {
+      saves++;
+      return save(value);
+    };
+    await page.addInitScript(
+      (journal) =>
+        localStorage.setItem("kontor-save-v1", JSON.stringify(journal)),
+      legacy,
+    );
+    await page.goto(address);
+    await expect(
+      page.getByRole("button", { name: "Ergebnis prüfen", exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("kontor-save-v1") ?? "null"),
+      ),
+    ).toEqual(legacy);
+    await page.locator('[data-action="case:V-1042"]').click();
+    await page.locator('[data-action="priority:Normal"]').click();
+    await expect(page.locator('[data-action="save"]')).toBeDisabled();
+    await page
+      .getByRole("button", { name: "Ergebnis prüfen", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Ergebnis prüfen", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.locator(".editor-footer")).toContainText(
+      outcome === "found"
+        ? "V-1042 gespeichert"
+        : "Keine Speicherung gefunden",
+    );
+    await expect(page.locator('[data-action="save"]')).toBeEnabled();
+    await expect(
+      page.locator('[data-action="priority:Normal"]'),
+    ).toBeDisabled();
+    expect(
+      await page.evaluate(() => localStorage.getItem("kontor-save-v1")),
+    ).toBeNull();
+    expect(receiptIds).toEqual([input.operationId]);
+    expect(saves).toBe(0);
+    expect(workspace.snapshot()).toEqual(before);
+  });
+}

@@ -390,11 +390,7 @@ export class CommandRunner {
       currentScreen: this.screenText(),
       screen,
       revision: data?.revision,
-      filters: {
-        customer: this.ui.customer(),
-        openOnly: this.ui.openOnly(),
-        search: this.ui.search(),
-      },
+      filters: this.ui.filters(),
       menu: this.ui.menu(),
       visibleCases: this.ui.page() === "cases" ? this.ui.filtered() : [],
       selected: detailMounted ? selected : undefined,
@@ -426,9 +422,7 @@ export class CommandRunner {
     return JSON.stringify({
       page: this.ui.page(),
       revision: this.ui.data()?.revision,
-      customer: this.ui.customer(),
-      openOnly: this.ui.openOnly(),
-      search: this.ui.search(),
+      filters: this.ui.filters(),
       menu: this.ui.menu(),
       caseId: this.ui.selectedId(),
       draft: this.ui.draft(),

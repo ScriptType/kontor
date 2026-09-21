@@ -29,6 +29,12 @@ export class Cases {
   readonly runner = this.actions.runner;
   readonly action = action;
   readonly caseAction = caseAction;
+  readonly statuses = [
+    { value: "all", label: "Alle" },
+    { value: "open", label: "Offen" },
+    { value: "done", label: "Erledigt" },
+  ] as const;
+  readonly priorities = ["Normal", "Hoch"] as const;
   readonly evidenceInput =
     viewChild<ElementRef<HTMLTextAreaElement>>("evidenceNote");
   readonly detailHeading =
@@ -90,8 +96,10 @@ export class Cases {
     };
   }
   search(value: string) {
-    if (this.runner.registry.actor === "manual") this.ui.manual();
-    this.ui.search.set(value);
+    this.ui.setFilters(
+      { ...this.ui.filters(), search: value },
+      this.runner.registry.actor,
+    );
   }
   draftChanges() {
     const before = this.ui.selected(),
@@ -102,6 +110,7 @@ export class Cases {
         ? `${value.start.replace("T", " ").slice(0, 16)} · ${value.minutes} Minuten`
         : "kein Termin";
     const fields = [
+      ["Priorität", before.priority, after.priority],
       [
         "Zuständigkeit",
         this.ui.technicianName(before.technicianId),

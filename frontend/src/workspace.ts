@@ -10,17 +10,32 @@ import { ORPC } from "./api";
 import {
   blockers,
   draftOf,
+  editableSchema,
   saveSchema,
   type CaseDraft,
   type Receipt,
   type Save,
+  type ServiceCase,
 } from "../../shared/domain";
 import type { Actor } from "./action-registry";
 const saveJournalSchema = saveSchema.extend({
+  draft: editableSchema.partial({ priority: true }),
   runId: z.string().nullable().default(null),
 });
 const pageSchema = z.enum(["cases", "customers", "team", "reports"]);
 export type Page = z.infer<typeof pageSchema>;
+export interface CaseFilters {
+  readonly customerId: string | null;
+  readonly technicianId: string | null;
+  readonly status: ServiceCase["status"] | "all";
+  readonly search: string;
+}
+export const defaultCaseFilters: CaseFilters = {
+  customerId: null,
+  technicianId: null,
+  status: "all",
+  search: "",
+};
 @Injectable({ providedIn: "root" })
 export class WorkspaceUi {
   readonly api = inject(ORPC);
@@ -43,10 +58,11 @@ export class WorkspaceUi {
   readonly page = signal<Page>(
     pageSchema.catch("cases").parse(location.hash.slice(1)),
   );
-  readonly customer = signal("all");
-  readonly openOnly = signal(false);
-  readonly search = signal("");
-  readonly menu = signal<"customer" | "technician" | null>(null);
+  private readonly filterState = signal<CaseFilters>({ ...defaultCaseFilters });
+  readonly filters = this.filterState.asReadonly();
+  readonly menu = signal<
+    "customer" | "filter-technician" | "technician" | null
+  >(null);
   readonly evidenceFocus = signal<string | null>(null);
   readonly detailFocus = signal<string | null>(null);
   readonly selectedId = signal<string | null>(null);
@@ -62,16 +78,18 @@ export class WorkspaceUi {
     const c = this.selected();
     return !!c && JSON.stringify(draftOf(c)) !== JSON.stringify(this.draft());
   });
-  readonly filtered = computed(() =>
-    (this.data()?.cases ?? []).filter(
+  readonly filtered = computed(() => {
+    const { customerId, technicianId, status, search } = this.filters();
+    return (this.data()?.cases ?? []).filter(
       (c) =>
-        (this.customer() === "all" || c.customerId === this.customer()) &&
-        (!this.openOnly() || c.status === "open") &&
+        (customerId === null || c.customerId === customerId) &&
+        (technicianId === null || c.technicianId === technicianId) &&
+        (status === "all" || c.status === status) &&
         `${c.id} ${c.title} ${this.customerName(c.customerId)}`
           .toLowerCase()
-          .includes(this.search().toLowerCase()),
-    ),
-  );
+          .includes(search.toLowerCase()),
+    );
+  });
   readonly blocked = computed(() => {
     const data = this.data(),
       c = this.selected(),
@@ -117,6 +135,17 @@ export class WorkspaceUi {
     this.page.set(page);
     history.replaceState(null, "", "#" + page);
     this.menu.set(null);
+  }
+  setFilters(filters: CaseFilters, actor: Actor) {
+    if (actor === "manual") this.manual();
+    this.cancelFocus();
+    this.menu.set(null);
+    this.filterState.set(filters);
+  }
+  showCases(filters: CaseFilters, actor: Actor) {
+    this.setFilters(filters, actor);
+    this.page.set("cases");
+    history.replaceState(null, "", "#cases");
   }
   openCase(id: string, actor: Actor) {
     if (actor === "manual") this.manual();
@@ -338,9 +367,7 @@ export class WorkspaceUi {
       this.draft.set(null);
       this.draftOwner.set(null);
       this.draftRevision.set(workspace.revision);
-      this.customer.set("all");
-      this.openOnly.set(false);
-      this.search.set("");
+      this.filterState.set({ ...defaultCaseFilters });
       this.menu.set(null);
       this.evidenceFocus.set(null);
       this.page.set("cases");

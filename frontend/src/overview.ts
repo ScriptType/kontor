@@ -75,6 +75,10 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
             <h2>{{ t.name }}</h2>
             <p class="muted">{{ t.skills.join(" · ") }}</p>
             <p>{{ assigned(t.id).length }} offene Vorgänge</p>
+            <button
+              [kontorAction]="action('technician-cases:' + t.id, 'Offene Vorgänge von ' + t.name + ' anzeigen')"
+              (invoked)="actions.execute('technician-cases:' + t.id, $event)"
+            >Offene Vorgänge anzeigen</button>
             <div class="linked-list">
               @for (c of assigned(t.id); track c.id) {
                 <button
@@ -115,14 +119,18 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
         </div>
       </div>
       <div class="metrics">
-        <article class="card">
+        <button class="card metric-link"
+          [kontorAction]="action('status-cases:open', 'Offene Vorgänge anzeigen')"
+          (invoked)="actions.execute('status-cases:open', $event)">
           <span class="muted">Offene Vorgänge</span
-          ><strong>{{ openCount() }}</strong>
-        </article>
-        <article class="card">
+          ><strong>{{ openCount() }} ↗</strong>
+        </button>
+        <button class="card metric-link"
+          [kontorAction]="action('status-cases:done', 'Erledigte Vorgänge anzeigen')"
+          (invoked)="actions.execute('status-cases:done', $event)">
           <span class="muted">Abgeschlossen</span
-          ><strong>{{ doneCount() }}</strong>
-        </article>
+          ><strong>{{ doneCount() }} ↗</strong>
+        </button>
         <article class="card">
           <span class="muted">Geleistete Minuten</span
           ><strong>{{ totalMinutes() }}</strong>

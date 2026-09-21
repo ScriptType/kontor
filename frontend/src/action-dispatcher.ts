@@ -1,6 +1,6 @@
 import { Injectable, inject } from "@angular/core";
 import { z } from "zod";
-import { WorkspaceUi } from "./workspace";
+import { defaultCaseFilters, WorkspaceUi } from "./workspace";
 import { CommandRunner } from "./command-runner";
 import type { Actor } from "./action-registry";
 @Injectable({ providedIn: "root" })
@@ -8,7 +8,6 @@ export class ActionDispatcher {
   readonly ui = inject(WorkspaceUi);
   readonly runner = inject(CommandRunner);
   execute(id: string, actor: Actor) {
-    if (actor === "manual") this.ui.manual();
     const [kind, value] = id.split(":");
     switch (kind) {
       case "nav":
@@ -18,28 +17,68 @@ export class ActionDispatcher {
         );
         break;
       case "menu":
+        if (actor === "manual") this.ui.manual();
         this.ui.menu.set(
           this.ui.menu() === value
             ? null
-            : z.enum(["customer", "technician"]).parse(value),
+            : z
+                .enum(["customer", "filter-technician", "technician"])
+                .parse(value),
         );
         break;
       case "customer-cases":
-        this.ui.navigate("cases", actor);
-        this.ui.customer.set(value ?? "all");
-        this.ui.openOnly.set(false);
-        this.ui.search.set("");
+        this.ui.showCases(
+          { ...defaultCaseFilters, customerId: value ?? null },
+          actor,
+        );
+        break;
+      case "technician-cases":
+        this.ui.showCases(
+          {
+            ...defaultCaseFilters,
+            technicianId: value ?? null,
+            status: "open",
+          },
+          actor,
+        );
+        break;
+      case "status-cases":
+        this.ui.showCases(
+          {
+            ...defaultCaseFilters,
+            status: z.enum(["open", "done"]).parse(value),
+          },
+          actor,
+        );
         break;
       case "customer":
-        this.ui.customer.set(value ?? "all");
-        this.ui.menu.set(null);
+        this.ui.setFilters(
+          {
+            ...this.ui.filters(),
+            customerId: value === "all" ? null : (value ?? null),
+          },
+          actor,
+        );
+        break;
+      case "filter-technician":
+        this.ui.setFilters(
+          {
+            ...this.ui.filters(),
+            technicianId: value === "all" ? null : (value ?? null),
+          },
+          actor,
+        );
         break;
       case "filter":
-        if (value === "reset") {
-          this.ui.customer.set("all");
-          this.ui.openOnly.set(false);
-          this.ui.search.set("");
-        } else this.ui.openOnly.update((v) => !v);
+        this.ui.setFilters(
+          value === "reset"
+            ? { ...defaultCaseFilters }
+            : {
+                ...this.ui.filters(),
+                status: z.enum(["all", "open", "done"]).parse(value),
+              },
+          actor,
+        );
         break;
       case "case":
         this.ui.navigate("cases", actor);
@@ -51,6 +90,18 @@ export class ActionDispatcher {
         break;
       case "complete":
         this.ui.edit({ status: "done" }, actor);
+        break;
+      case "reopen":
+        this.ui.edit({ status: "open" }, actor);
+        break;
+      case "priority":
+        this.ui.edit(
+          { priority: z.enum(["Hoch", "Normal"]).parse(value) },
+          actor,
+        );
+        break;
+      case "remove-appointment":
+        this.ui.edit({ appointment: null }, actor);
         break;
       case "close":
         this.ui.closeCase(actor);

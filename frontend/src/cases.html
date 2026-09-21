@@ -18,9 +18,9 @@
     type="search"
     aria-label="Vorgänge durchsuchen"
     placeholder="Vorgänge durchsuchen …"
-    [ngModel]="ui.search()"
+    [ngModel]="ui.filters().search"
     (ngModelChange)="search($event)"
-    [kontorField]="field('search', 'Vorgänge durchsuchen', 'text', ui.search())"
+    [kontorField]="field('search', 'Vorgänge durchsuchen', 'text', ui.filters().search)"
   />
   <div class="menu-wrap">
     <button
@@ -28,12 +28,13 @@
       (invoked)="actions.execute('menu:customer', $event)"
       [attr.aria-expanded]="ui.menu() === 'customer'"
     >
-      Kunde · {{ ui.customer() === 'all' ? 'Alle' :
-      ui.customerName(ui.customer()) }} ⌄
+      Kunde · {{ ui.filters().customerId === null ? 'Alle' :
+      ui.customerName(ui.filters().customerId ?? '') }} ⌄
     </button>
     @if (ui.menu() === 'customer') {
     <div class="popover" aria-label="Kundenfilter">
       <button
+        [disabled]="ui.filters().customerId === null"
         [kontorAction]="action('customer:all', 'Alle Kunden anzeigen')"
         (invoked)="actions.execute('customer:all', $event)"
       >
@@ -41,6 +42,7 @@
       </button>
       @for (c of ui.data()?.customers; track c.id) {
       <button
+        [disabled]="ui.filters().customerId === c.id"
         [kontorAction]="action('customer:' + c.id, c.name + ' anzeigen')"
         (invoked)="actions.execute('customer:' + c.id, $event)"
       >
@@ -50,14 +52,42 @@
     </div>
     }
   </div>
-  <button
-    [class.active-filter]="ui.openOnly()"
-    [attr.aria-pressed]="ui.openOnly()"
-    [kontorAction]="action('filter:open', ui.openOnly() ? 'Alle Status anzeigen' : 'Nur offene Vorgänge anzeigen')"
-    (invoked)="actions.execute('filter:open', $event)"
-  >
-    Nur offen
-  </button>
+  <div class="menu-wrap">
+    <button
+      [kontorAction]="action('menu:filter-technician', 'Zuständigkeitsfilter öffnen')"
+      (invoked)="actions.execute('menu:filter-technician', $event)"
+      [attr.aria-expanded]="ui.menu() === 'filter-technician'"
+    >
+      Zuständig · {{ ui.filters().technicianId === null ? 'Alle' : ui.technicianName(ui.filters().technicianId ?? '') }} ⌄
+    </button>
+    @if (ui.menu() === 'filter-technician') {
+    <div class="popover" aria-label="Zuständigkeitsfilter">
+      <button
+        [disabled]="ui.filters().technicianId === null"
+        [kontorAction]="action('filter-technician:all', 'Alle Zuständigen anzeigen')"
+        (invoked)="actions.execute('filter-technician:all', $event)"
+      >Alle Zuständigen</button>
+      @for (t of ui.data()?.technicians; track t.id) {
+      <button
+        [disabled]="ui.filters().technicianId === t.id"
+        [kontorAction]="action('filter-technician:' + t.id, 'Vorgänge mit Zuständigkeit ' + t.name + ' anzeigen')"
+        (invoked)="actions.execute('filter-technician:' + t.id, $event)"
+      >{{ t.name }}</button>
+      }
+    </div>
+    }
+  </div>
+  <div class="choice-group" role="group" aria-label="Vorgangsstatus">
+    @for (status of statuses; track status.value) {
+    <button
+      [class.active-filter]="ui.filters().status === status.value"
+      [attr.aria-pressed]="ui.filters().status === status.value"
+      [disabled]="ui.filters().status === status.value"
+      [kontorAction]="action('filter:' + status.value, status.label + ' · Vorgangsstatus anzeigen')"
+      (invoked)="actions.execute('filter:' + status.value, $event)"
+    >{{ status.label }}</button>
+    }
+  </div>
   <button
     class="text-button"
     [kontorAction]="action('filter:reset', 'Filter zurücksetzen')"
@@ -141,6 +171,18 @@
   </header>
   <div class="editor-grid">
     <div>
+      <span class="field-label" id="priority-label">Priorität</span>
+      <div class="choice-group" role="group" aria-labelledby="priority-label">
+        @for (priority of priorities; track priority) {
+        <button
+          [class.active-filter]="draft.priority === priority"
+          [attr.aria-pressed]="draft.priority === priority"
+          [disabled]="draft.priority === priority"
+          [kontorAction]="action('priority:' + priority, 'Priorität ' + priority + ' setzen', selected.id + ': Priorität von ' + draft.priority + ' auf ' + priority + ' im Entwurf ändern', 'draft')"
+          (invoked)="actions.execute('priority:' + priority, $event)"
+        >{{ priority }}</button>
+        }
+      </div>
       <label class="field-label">Zuständig</label>
       <div class="menu-wrap">
         <button
@@ -199,6 +241,13 @@
           (change)="appointment(appointmentDate.value, +appointmentDuration.value)"
         />
       </div>
+      @if (draft.appointment) {
+      <button
+        class="text-button"
+        [kontorAction]="action('remove-appointment', 'Termin entfernen', selected.id + ': Bestehenden Termin im Entwurf entfernen', 'draft')"
+        (invoked)="actions.execute('remove-appointment', $event)"
+      >Termin entfernen</button>
+      }
     </div>
     <div>
       <h3>Aufgaben für diesen Vorgang</h3>
@@ -250,17 +299,23 @@
       </button>
       <p class="muted">Diese Bestätigung kann Jev nicht abgeben.</p>
       }
+      @if (draft.status === 'done') {
       <button
-        [disabled]="completionBlockers().length > 0 || draft.status === 'done'"
+        [kontorAction]="action('reopen', 'Vorgang wieder öffnen', selected.id + ': Status auf offen im Entwurf ändern', 'draft')"
+        (invoked)="actions.execute('reopen', $event)"
+      >Wieder öffnen</button>
+      } @else {
+      <button
+        [disabled]="completionBlockers().length > 0"
         [kontorBlocked]="{ target: { kind: 'case', id: selected.id }, reasons: completionBlockers() }"
         [kontorAction]="action('complete', 'Vorgang als erledigt markieren', selected.id + ': Status auf erledigt im Entwurf ändern', 'draft')"
         (invoked)="actions.execute('complete', $event)"
       >
-        {{ draft.status === 'done' ? 'Als erledigt markiert' : 'Als erledigt
-        markieren' }}
+        Als erledigt markieren
       </button>
       @for (blocker of completionBlockers(); track blocker.kind) {
       <p class="blocker">{{ blocker.message }}</p>
+      }
       }
     </div>
   </div>

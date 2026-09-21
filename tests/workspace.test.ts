@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { WorkspaceStore } from "../server/workspace-store.js";
-import { draftOf } from "../shared/domain.js";
+import { draftOf, saveSchema } from "../shared/domain.js";
 
 test("atomic save persists across restart, deduplicates before stale checks, and refuses payload reuse", () => {
   const dir = mkdtempSync(join(tmpdir(), "kontor-"));
@@ -126,5 +126,61 @@ test("reset persists seed data with increasing revisions and keeps historical sa
   } finally {
     store.close();
     rmSync(dir, { recursive: true });
+  }
+});
+
+test("strict saves persist priority, reopening and appointment removal while preserving work and human inspection", () => {
+  const store = new WorkspaceStore();
+  try {
+    const original = store.snapshot().cases.find((c) => c.id === "V-1039");
+    assert(original);
+    const closed = store.save({
+      operationId: randomUUID(),
+      revision: 0,
+      caseId: original.id,
+      actor: "manual",
+      draft: {
+        ...draftOf(original),
+        status: "done",
+        appointment: { start: "2026-09-25T10:00:00", minutes: 60 },
+        inspection: { note: "Schutzleiter vor Ort geprüft.", by: "user" },
+      },
+    });
+    const input = {
+      operationId: randomUUID(),
+      revision: closed.revision,
+      caseId: original.id,
+      actor: "jev" as const,
+      draft: {
+        ...draftOf(closed.saved),
+        status: "open" as const,
+        priority: "Normal" as const,
+        appointment: null,
+      },
+    };
+    const { priority, ...legacyDraft } = input.draft;
+    assert.equal(priority, "Normal");
+    assert.equal(
+      saveSchema.safeParse({ ...input, draft: legacyDraft }).success,
+      false,
+    );
+    const receipt = store.save(input);
+    assert.deepEqual(receipt.saved, {
+      ...closed.saved,
+      status: "open",
+      priority: "Normal",
+      appointment: null,
+    });
+    assert.deepEqual(
+      store.snapshot().cases.find((c) => c.id === original.id),
+      receipt.saved,
+    );
+    assert.deepEqual(store.save(input), receipt);
+    assert.throws(() =>
+      store.save({ ...input, draft: { ...input.draft, priority: "Hoch" } }),
+    );
+    assert.equal(store.snapshot().revision, 2);
+  } finally {
+    store.close();
   }
 });

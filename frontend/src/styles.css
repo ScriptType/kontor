@@ -330,6 +330,14 @@ kbd {
 .toolbar button {
   font-size: 12px;
 }
+.choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.choice-group button:disabled {
+  opacity: 1;
+}
 .menu-wrap {
   position: relative;
 }
@@ -575,6 +583,9 @@ tr.selected {
   font-size: 32px;
   font-weight: 600;
   margin-top: 10px;
+}
+.metric-link {
+  text-align: left;
 }
 .report-row {
   display: grid;

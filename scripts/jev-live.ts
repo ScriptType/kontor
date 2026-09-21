@@ -477,8 +477,10 @@ try {
           ).toContainText(scenario.customer);
         if (scenario.openOnly !== undefined)
           await expect(
-            page.locator('[data-action="filter:open"]'),
-          ).toHaveAttribute("aria-pressed", String(scenario.openOnly));
+            page.locator(
+              `[data-action="filter:${scenario.openOnly ? "open" : "all"}"]`,
+            ),
+          ).toHaveAttribute("aria-pressed", "true");
         if (scenario.search)
           await expect(page.getByRole("searchbox")).toHaveValue(
             scenario.search,

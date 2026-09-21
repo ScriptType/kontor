@@ -38,6 +38,7 @@ export const editableSchema = caseSchema.pick({
   appointment: true,
   status: true,
   inspection: true,
+  priority: true,
 });
 export type CaseDraft = z.infer<typeof editableSchema>;
 export function draftOf(value: ServiceCase): CaseDraft {
