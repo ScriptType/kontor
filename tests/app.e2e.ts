@@ -592,7 +592,7 @@ test("unavailable browser storage refuses sending a save instead of losing its r
     .getByRole("button", { name: "Wartung Standort Nord", exact: true })
     .click();
   await page
-    .getByRole("spinbutton", { name: "Geleistete Arbeitszeit in Minuten" })
+    .getByRole("spinbutton", { name: "Arbeitszeit in Minuten", exact: true })
     .fill("20");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.locator(".editor-footer")).toContainText(

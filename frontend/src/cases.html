@@ -208,7 +208,7 @@
         }
       </div>
       <label class="field-label" for="minutes"
-        >Geleistete Arbeitszeit in Minuten</label
+        >Arbeitszeit in Minuten</label
       ><input
         id="minutes"
         type="number"
@@ -216,7 +216,7 @@
         max="10000"
         [value]="draft.minutes"
         (input)="number($event)"
-        [kontorField]="field('minutes', 'Geleistete Arbeitszeit in Minuten', 'number', String(draft.minutes), 0, 10000)"
+        [kontorField]="field('minutes', 'Arbeitszeit in Minuten', 'number', String(draft.minutes), 0, 10000)"
       />
       <label class="field-label" for="appointment">Termin</label>
       <div class="inline-fields">
