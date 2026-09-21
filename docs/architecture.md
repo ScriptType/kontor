@@ -106,6 +106,8 @@ Buttons beschreiben ihre konkrete Wirkung. Eingabefelder beschreiben ihren Daten
 
 Ein passender Wert bleibt auch dann als Kandidat verfügbar, wenn er bereits im sichtbaren Feld steht. Gleiche numerische Werte werden vereinheitlicht. Eine erneute gleiche Zuweisung verwendet den normalen Handler, verändert aber weder den Entwurf noch dessen Eigentümer oder Statusmeldung. Manuelle Eingaben entwerten trotzdem ausstehende Entscheidungen. Bereits ausgewählte, deaktivierte Buttons werden dadurch nicht ausführbar.
 
+Eine alleinstehende Zahl im Auftrag bleibt auch dann ein Kandidat für Zahlenfelder, wenn sie zugleich eine vorhandene Kennung bezeichnen kann. Ihre Ziffern können der abschließenden Zifferngruppe einer Kennung aus Buchstaben, Bindestrich und Ziffern entsprechen. Dann nennt ihre Herkunftsangabe alle solchen Kennungen. Beispielsweise erhält `1042` bei vorhandenem `V-1042` diesen Hinweis. Titel und Namen lösen ihn nicht aus. Die Angabe erscheint in der Wirkungsbeschreibung der Aktion. Ob die Zahl ein Wert oder ein Verweis ist, beurteilt weiterhin Jev.
+
 Der Verlauf unterscheidet tatsächliche Änderungen von Schritten ohne Änderung. Er hält gespeicherten Vorgang, Entwurf und Änderungszustand getrennt fest. Diese Beobachtung bleibt auch nach einer Navigation verfügbar. Ältere Verlaufseinträge ohne solche Ergebnisangabe erhalten keine nachträglich erfundene Bewertung.
 
 Ein Lauf ist auf 40 ausgeführte Schritte begrenzt. Ein Zustand enthält höchstens 100 Aktionen und 30 Eingabefelder. Der Browser stoppt vor einer Anfrage über 180.000 Byte. Wiederholungen ohne Fortschritt werden ebenfalls beendet. Diese Grenzen schützen den lokalen Versuch; größere Tabellen benötigen eine passende sichtbare Auswahl oder Paginierung.
@@ -117,6 +119,8 @@ Eine neue Komponente registriert ihre Bedienelemente und beschreibt die beobacht
 Der gerenderte Seitentext allein enthält keine verlässliche räumliche Gliederung. Deshalb beschreiben benannte Bereiche zusätzlich Hauptnavigation, Filter, Tabelle, Detailformular und Übersichten. Die Komponenten benennen die Bereiche an ihren tatsächlichen DOM-Elementen. Reihenfolge, Verschachtelung, grobe Position im Browserfenster und zugehörige Aktions- und Feldkennungen werden daraus abgeleitet.
 
 Ein vorhandener Bereich kann oberhalb oder unterhalb des sichtbaren Ausschnitts liegen. Diese Angabe unterscheidet sich von einem ausgeblendeten oder nicht gerenderten Bereich. Eine im Arbeitsbereich erhaltene Auswahl bedeutet ebenfalls nicht, dass ihre Details auf der aktuellen Seite geöffnet sind.
+
+Die aktuellen Fakten beschreiben eine solche Auswahl deshalb getrennt als `retainedSelection`. Die Angabe `mounted` ist dort immer `false`. `retainedSelection` enthält den gespeicherten Vorgang. Ein Entwurf erscheint nur, wenn er vom gespeicherten Stand abweicht. `selected`, `draft`, `dirty`, `blockers` und `message` gehören weiterhin ausschließlich zu geöffneten Details. Die Modellfragen bezeichnen `retainedSelection` als aktuelle Daten und nicht als sichtbares Bedienelement. So erkennt Jev bereits gespeicherte Werte auch auf einer anderen Seite.
 
 Aktionen in nativen Tabellen erhalten zusätzlich den Tabellennamen und ihre aktuelle Zeilenposition in ihrer Beschreibung. Beispielsweise bezeichnet „Vorgangsliste, Zeile 5 von 5, letzte Zeile“ das tatsächlich gerenderte Bedienelement. Filter verändern diese Angabe mit der Tabelle. Die Ermittlung wertet keinen Nutzerauftrag aus.
 
@@ -137,6 +141,8 @@ Der Anbieter liefert Auswahl-Confidence und Optionswahrscheinlichkeiten als unte
 Eine gewählte Alternative wird nach dem tatsächlichen Schließen der Palette erneut gegen den vollständigen aktuellen Katalog geprüft. Sie erhält eine eigene Umfangsbewertung. Für Jevs ursprüngliche Auswahl gilt dagegen die Umfangsbewertung aus demselben geprüften Zustand weiter. Zusätzliche oder unklare Änderungen benötigen anschließend eine konkrete Freigabe; eine erneute Bewertung kann diese Freigabe nicht ersetzen. Ein verbotener Schritt bleibt unbestätigbar. Die Freigabe gilt ausschließlich für diese Wirkung im geprüften Zustand.
 
 Die Entscheidung `abstain` hält den Lauf an, wenn Jev keinen sinnvollen nächsten Schritt wählen kann. Sie öffnet die Auswahl mit den beiden Bewertungen und Möglichkeiten zum Überarbeiten oder Stoppen. Sie erzeugt keine fachliche Blockadeursache. Eine tatsächliche `blocked`-Entscheidung kann weiterhin eine unabhängig bewertete Ursache enthalten; deren Confidence ersetzt niemals die ursprüngliche Auswahl-Confidence.
+
+Eine `blocked`-Entscheidung unter der Sicherheitsschwelle beendet den Lauf nicht sofort. Sie öffnet wie eine unsichere Rückfrage die Auswahl mit den beiden Bewertungen. Eine angebotene Navigation oder ein anderer Schritt bleibt so erreichbar. Wählt der Nutzer dort die Blockade, gilt die Ursache aus derselben Jev-Antwort. Ab der Schwelle hält eine `blocked`-Entscheidung den Lauf weiterhin unmittelbar an.
 
 Die Auswahl einer niedriger bewerteten Abschlussoption startet eine neue Abschlussprüfung. Nur eine neue Jev-Auswahl von `done` kann deren Auswahl-Confidence liefern. Eine andere neue Auswahl erscheint zur Prüfung und wird dabei nicht unmittelbar ausgeführt. Optionswahrscheinlichkeit oder Nutzerklick ersetzen keine der Abschlussvoraussetzungen.
 
