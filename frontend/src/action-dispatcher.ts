@@ -1,8 +1,14 @@
 import { Injectable, inject } from "@angular/core";
 import { z } from "zod";
-import { defaultCaseFilters, WorkspaceUi } from "./workspace";
+import { WorkspaceUi } from "./workspace";
 import { CommandRunner } from "./command-runner";
 import type { Actor } from "./action-registry";
+import {
+  caseFiltersSchema,
+  caseSchema,
+  defaultCaseFilters,
+  pageSchema,
+} from "../../shared/domain";
 @Injectable({ providedIn: "root" })
 export class ActionDispatcher {
   readonly ui = inject(WorkspaceUi);
@@ -11,10 +17,7 @@ export class ActionDispatcher {
     const [kind, value] = id.split(":");
     switch (kind) {
       case "nav":
-        this.ui.navigate(
-          z.enum(["cases", "customers", "team", "reports"]).parse(value),
-          actor,
-        );
+        this.ui.navigate(pageSchema.parse(value), actor);
         break;
       case "menu":
         if (actor === "manual") this.ui.manual();
@@ -46,7 +49,7 @@ export class ActionDispatcher {
         this.ui.showCases(
           {
             ...defaultCaseFilters,
-            status: z.enum(["open", "done"]).parse(value),
+            status: caseSchema.shape.status.parse(value),
           },
           actor,
         );
@@ -75,7 +78,7 @@ export class ActionDispatcher {
             ? { ...defaultCaseFilters }
             : {
                 ...this.ui.filters(),
-                status: z.enum(["all", "open", "done"]).parse(value),
+                status: caseFiltersSchema.shape.status.parse(value),
               },
           actor,
         );

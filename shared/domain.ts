@@ -44,6 +44,21 @@ export type CaseDraft = z.infer<typeof editableSchema>;
 export function draftOf(value: ServiceCase): CaseDraft {
   return editableSchema.parse(value);
 }
+export const pageSchema = z.enum(["cases", "customers", "team", "reports"]);
+export type Page = z.infer<typeof pageSchema>;
+export const caseFiltersSchema = z.object({
+  customerId: z.string().nullable(),
+  technicianId: z.string().nullable(),
+  status: z.enum(["all", ...caseSchema.shape.status.options]),
+  search: z.string(),
+});
+export type CaseFilters = Readonly<z.infer<typeof caseFiltersSchema>>;
+export const defaultCaseFilters: CaseFilters = {
+  customerId: null,
+  technicianId: null,
+  status: "all",
+  search: "",
+};
 export const saveSchema = z.object({
   operationId: z.string().uuid(),
   revision: z.number().int(),

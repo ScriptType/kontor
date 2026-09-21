@@ -9,33 +9,22 @@ import { readBrowserState, writeBrowserState } from "./browser-state";
 import { ORPC } from "./api";
 import {
   blockers,
+  defaultCaseFilters,
   draftOf,
   editableSchema,
+  pageSchema,
   saveSchema,
   type CaseDraft,
+  type CaseFilters,
+  type Page,
   type Receipt,
   type Save,
-  type ServiceCase,
 } from "../../shared/domain";
 import type { Actor } from "./action-registry";
 const saveJournalSchema = saveSchema.extend({
   draft: editableSchema.partial({ priority: true }),
   runId: z.string().nullable().default(null),
 });
-const pageSchema = z.enum(["cases", "customers", "team", "reports"]);
-export type Page = z.infer<typeof pageSchema>;
-export interface CaseFilters {
-  readonly customerId: string | null;
-  readonly technicianId: string | null;
-  readonly status: ServiceCase["status"] | "all";
-  readonly search: string;
-}
-export const defaultCaseFilters: CaseFilters = {
-  customerId: null,
-  technicianId: null,
-  status: "all",
-  search: "",
-};
 @Injectable({ providedIn: "root" })
 export class WorkspaceUi {
   readonly api = inject(ORPC);
