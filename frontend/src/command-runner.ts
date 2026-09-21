@@ -497,9 +497,14 @@ export class CommandRunner {
           }
         : undefined,
       blockedControls,
-      retainedDraft:
-        !detailMounted && this.ui.dirty()
-          ? { caseId: this.ui.selectedId(), draft, mounted: false }
+      retainedSelection:
+        selected && !detailMounted
+          ? {
+              caseId: selected.id,
+              mounted: false,
+              saved: selected,
+              draft: this.ui.dirty() ? draft : undefined,
+            }
           : undefined,
       receipts: this.run()?.receipts,
       message: detailMounted ? this.ui.message() : undefined,
