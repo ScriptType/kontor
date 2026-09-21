@@ -25,6 +25,9 @@ type Scenario = {
   revisions?: number;
   order?: string[];
   detail?: string;
+  initialCase?: string;
+  initialCustomer?: string;
+  readOnlyFilter?: boolean;
 };
 const scenarios: Scenario[] = [
   {
@@ -68,6 +71,22 @@ const scenarios: Scenario[] = [
     customer: "Nordwerk GmbH",
     openOnly: false,
   },
+  ...[
+    { id: "filter-exact-clean" },
+    { id: "filter-exact-preselected", initialCase: "V-1039" },
+    {
+      id: "filter-exact-already-filtered",
+      initialCase: "V-1039",
+      initialCustomer: "nord",
+    },
+  ].map((initial) => ({
+    ...initial,
+    request: "zeige mir alle vorgänge von nordwerk",
+    rows: ["V-1042", "V-1039"],
+    customer: "Nordwerk GmbH",
+    openOnly: false,
+    readOnlyFilter: true,
+  })),
   {
     id: "filter-open",
     request: "Zeige mir nur offene Nordwerk-Vorgänge.",
@@ -225,6 +244,27 @@ const liveFetch: Fetch = async (url, init) => {
   });
   return response;
 };
+async function editorState(page: Page) {
+  return page.locator(".editor").evaluateAll((editors) =>
+    editors.map((editor) => ({
+      case: editor.querySelector(".eyebrow")?.textContent,
+      controls: Array.from(
+        editor.querySelectorAll("input, textarea, select"),
+      ).map((control) => ({
+        id: control.id,
+        value:
+          control instanceof HTMLInputElement ||
+          control instanceof HTMLTextAreaElement ||
+          control instanceof HTMLSelectElement
+            ? control.value
+            : null,
+      })),
+      technician: editor.querySelector('[data-action="menu:technician"]')
+        ?.textContent,
+      status: editor.querySelector('[data-action="complete"]')?.textContent,
+    })),
+  );
+}
 async function settled(page: Page) {
   await expect(page.locator(".activity-label")).not.toHaveText(
     /^(Bereit für deinen Auftrag|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/,
@@ -270,6 +310,24 @@ try {
             : scenario.detail === "last"
               ? rowIds.at(-1)
               : scenario.detail;
+        if (scenario.initialCase) {
+          await page
+            .locator(`[data-action="case:${scenario.initialCase}"]`)
+            .click();
+          await expect(page.locator(".editor .eyebrow")).toContainText(
+            scenario.initialCase,
+          );
+          await expect(page.locator(".editor h2")).toBeFocused();
+        }
+        if (scenario.initialCustomer) {
+          await page.locator('[data-action="menu:customer"]').click();
+          await page
+            .locator(`[data-action="customer:${scenario.initialCustomer}"]`)
+            .click();
+        }
+        const initialEditor = scenario.readOnlyFilter
+          ? await editorState(page)
+          : null;
         await page
           .getByRole("button", { name: /Jev · Befehl eingeben/ })
           .click();
@@ -279,6 +337,25 @@ try {
         await page.getByRole("button", { name: "Ausführen" }).click();
         await settled(page);
         const activity = await page.locator(".activity-label").innerText();
+        if (scenario.readOnlyFilter) {
+          await expect(page.locator(".blocked-control")).toHaveCount(0);
+          await expect(
+            page.getByRole("button", {
+              name: "Prüfbeleg erfassen",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          assert.deepEqual(
+            store.snapshot(),
+            before,
+            "Filter preserves the saved workspace",
+          );
+          assert.deepEqual(
+            await editorState(page),
+            initialEditor,
+            "Filter preserves the selected case and its draft",
+          );
+        }
         if (scenario.missing) {
           await expect(
             page.locator(".answer-panel input[type=number]"),

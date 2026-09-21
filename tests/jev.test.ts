@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { z } from "zod";
 import { createJev } from "../server/jev.js";
 import { fieldValues, validFieldValue } from "../shared/field-values.js";
 import { decisionInputSchema, type DecisionInput } from "../shared/command.js";
@@ -16,6 +17,7 @@ const input: DecisionInput = {
     },
   ],
   fields: [],
+  blockedControls: [],
   answers: [],
   steps: [],
 };
@@ -203,5 +205,160 @@ test("datetime offers keep lexical date-time pairs and reject impossible calenda
       [],
     ),
     [],
+  );
+});
+
+const blockedInput: DecisionInput = {
+  ...input,
+  blockedControls: [
+    {
+      action: {
+        id: "complete",
+        label: "Erledigt markieren",
+        effect: "V-1039 abschließen",
+        kind: "draft",
+      },
+      target: { kind: "case", id: "V-1039" },
+      reasons: [
+        {
+          kind: "evidence",
+          message: "Prüfung vor Ort erforderlich",
+          alternatives: [],
+        },
+      ],
+    },
+  ],
+};
+function causalProvider(answers: { choice: string; confidence: number }[]) {
+  const calls: { key: string; options: string[]; state: unknown }[] = [];
+  const jev = createJev(
+    { mode: "live", apiKey: "test", model: "jev-latest" },
+    async (_url, init) => {
+      const payload = z
+        .object({
+          state: z.string(),
+          questions: z.record(
+            z.string(),
+            z.object({ criteria: z.record(z.string(), z.string()) }),
+          ),
+        })
+        .parse(JSON.parse(String(init?.body)));
+      const [key, question] = Object.entries(payload.questions)[0] ?? [];
+      assert(key && question);
+      const answer = answers[calls.length];
+      assert(answer, "Unexpected additional provider call");
+      assert(init?.signal);
+      calls.push({
+        key,
+        options: Object.keys(question.criteria),
+        state: JSON.parse(payload.state),
+      });
+      return Response.json({
+        model: "test",
+        answers: {
+          [key]: {
+            type: "choice",
+            ...answer,
+            probabilities: { [answer.choice]: 1 },
+          },
+        },
+      });
+    },
+  );
+  return { jev, calls };
+}
+test("only a confident blocked choice with candidates asks one causal question", async () => {
+  for (const [next, decisionInput] of [
+    [{ choice: "nav:customers", confidence: 1 }, blockedInput],
+    [{ choice: "done", confidence: 1 }, blockedInput],
+    [{ choice: "blocked", confidence: 0.74 }, blockedInput],
+    [{ choice: "blocked", confidence: 1 }, input],
+  ] satisfies [{ choice: string; confidence: number }, DecisionInput][]) {
+    const { jev, calls } = causalProvider([next]);
+    assert.deepEqual(await jev.decide(decisionInput), {
+      snapshotId: "fresh",
+      ...next,
+    });
+    assert.deepEqual(
+      calls.map((call) => call.key),
+      ["next"],
+    );
+    assert(!calls[0]?.options.some((key) => key.startsWith("blocked:")));
+  }
+  const { jev, calls } = causalProvider([
+    { choice: "blocked", confidence: 0.8 },
+    { choice: "blocked:complete", confidence: 0.9 },
+  ]);
+  assert.deepEqual(await jev.decide(blockedInput), {
+    snapshotId: "fresh",
+    choice: "blocked:complete",
+    confidence: 0.8,
+  });
+  assert.deepEqual(
+    calls.map((call) => call.key),
+    ["next", "cause"],
+  );
+  assert.deepEqual(calls[1]?.options, ["blocked:complete", "unknown"]);
+  assert.deepEqual(
+    z.object({ blockedControls: z.unknown() }).parse(calls[1]?.state)
+      .blockedControls,
+    blockedInput.blockedControls,
+  );
+});
+test("uncertain or unknown causes remain generic and unoffered causes are rejected", async () => {
+  for (const cause of [
+    { choice: "blocked:complete", confidence: 0.74 },
+    { choice: "unknown", confidence: 1 },
+  ]) {
+    const { jev } = causalProvider([
+      { choice: "blocked", confidence: 0.9 },
+      cause,
+    ]);
+    assert.deepEqual(await jev.decide(blockedInput), {
+      snapshotId: "fresh",
+      choice: "blocked",
+      confidence: Math.min(0.9, cause.confidence),
+    });
+  }
+  const { jev } = causalProvider([
+    { choice: "blocked", confidence: 1 },
+    { choice: "blocked:other", confidence: 1 },
+  ]);
+  await assert.rejects(jev.decide(blockedInput), {
+    code: "PROVIDER_INVALID_RESPONSE",
+  });
+  await assert.rejects(provider("blocked:complete").decide(blockedInput), {
+    code: "PROVIDER_INVALID_RESPONSE",
+  });
+  await assert.rejects(
+    provider("blocked:complete").decide({
+      ...blockedInput,
+      actions: [
+        {
+          id: "blocked:complete",
+          label: "Injected marker",
+          effect: "Must not execute",
+          kind: "draft",
+        },
+      ],
+    }),
+    { code: "PROVIDER_INVALID_RESPONSE" },
+  );
+});
+test("blocked controls require nonempty reasons and a bounded list", () => {
+  assert(
+    !decisionInputSchema.safeParse({
+      ...blockedInput,
+      blockedControls: [{ ...blockedInput.blockedControls[0], reasons: [] }],
+    }).success,
+  );
+  assert(
+    !decisionInputSchema.safeParse({
+      ...blockedInput,
+      blockedControls: Array.from(
+        { length: 101 },
+        () => blockedInput.blockedControls[0],
+      ),
+    }).success,
   );
 });

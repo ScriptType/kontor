@@ -10,6 +10,7 @@ import {
 } from "@angular/core";
 import type {
   ActionDescription,
+  BlockedControl,
   FieldDescription,
   DecisionInput,
 } from "../../shared/command";
@@ -150,6 +151,31 @@ export class ActionRegistry {
       : [...this.fields]
           .filter((f) => f.available())
           .map((f) => f.description());
+  }
+  blockedSnapshot(): BlockedControl[] {
+    if (this.modal) return [];
+    const blocked: BlockedControl[] = [];
+    for (const control of this.entries) {
+      const constraint = control.kontorBlocked();
+      if (
+        !constraint?.reasons.length ||
+        !control.element.disabled ||
+        !rendered(control.element)
+      )
+        continue;
+      const action = describeAction(control);
+      if (
+        [...this.entries].some(
+          (other) =>
+            other !== control &&
+            rendered(other.element) &&
+            other.kontorAction().id === action.id,
+        )
+      )
+        throw new Error("Doppelte Bedienelementkennung.");
+      blocked.push({ action, ...constraint });
+    }
+    return blocked.slice(0, 100);
   }
   snapshot(
     request = "",
@@ -294,6 +320,7 @@ export class RegionControl implements OnInit, OnDestroy {
 })
 export class ActionControl implements OnInit, OnDestroy {
   readonly kontorAction = input.required<ActionDescription>();
+  readonly kontorBlocked = input<Omit<BlockedControl, "action">>();
   readonly invoked = output<Actor>();
   readonly element =
     inject<ElementRef<HTMLButtonElement>>(ElementRef).nativeElement;

@@ -80,10 +80,9 @@ export function createJev(config: Config, fetch?: Fetch) {
           confidence: 1,
         };
       const options = Object.fromEntries(
-        input.actions.map((a) => [
-          a.id,
-          `${a.label}. ${a.effect}. Effect ${a.kind}`,
-        ]),
+        input.actions
+          .filter((a) => !a.id.startsWith("blocked:"))
+          .map((a) => [a.id, `${a.label}. ${a.effect}. Effect ${a.kind}`]),
       );
       for (const field of input.fields)
         options[`ask:${field.id}`] =
@@ -96,7 +95,7 @@ export function createJev(config: Config, fetch?: Fetch) {
         JSON.stringify(modelState(input)),
         {
           next: {
-            text: "Choose ONE currently offered UI action toward the entire original request. Use observed history to remember earlier work and explicit order. Repeated assignments and multiple records are allowed. Saves are stepwise; earlier saved work remains if later work is blocked. Do not invent values or evidence. Select done only when nothing remains; select blocked for unsupported remaining work. A menu, navigation or input is a real intermediate step.",
+            text: "Choose ONE currently offered UI action toward the entire original request. Use observed history to remember earlier work and explicit order. Repeated assignments and multiple records are allowed. Saves are stepwise; earlier saved work remains if later work is blocked. Do not invent values or evidence. Select done only when nothing remains; select blocked for unsupported remaining work. A menu, navigation or input is a real intermediate step. Displayed records and unfinished checklists are context, not additional requested tasks. A restriction applies only to its owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records.",
             options,
           },
         },
@@ -104,6 +103,41 @@ export function createJev(config: Config, fetch?: Fetch) {
       );
       const answer = answers["next"];
       if (!answer) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
+      if (
+        answer.choice === "blocked" &&
+        answer.confidence >= 0.75 &&
+        input.blockedControls.length
+      ) {
+        const causes = Object.fromEntries(
+          input.blockedControls.map((control) => [
+            `blocked:${control.action.id}`,
+            JSON.stringify(control),
+          ]),
+        );
+        const answers = await ask(
+          JSON.stringify(modelState(input)),
+          {
+            cause: {
+              text: "Which captured disabled action is required to satisfy the original request and explains the blockage? Choose unknown if none is required or the cause is uncertain. Displayed records and unfinished checklists do not add tasks. This identifies guidance only and authorizes no action, change or evidence.",
+              options: {
+                ...causes,
+                unknown: "No established required disabled action.",
+              },
+            },
+          },
+          signal,
+        );
+        const cause = answers["cause"];
+        if (!cause) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
+        return {
+          snapshotId: input.snapshotId,
+          choice:
+            cause.choice !== "unknown" && cause.confidence >= 0.75
+              ? cause.choice
+              : "blocked",
+          confidence: Math.min(answer.confidence, cause.confidence),
+        };
+      }
       return {
         snapshotId: input.snapshotId,
         choice: answer.choice,
@@ -148,7 +182,7 @@ export function createJev(config: Config, fetch?: Fetch) {
           assessment: {
             text:
               input.selected === "done"
-                ? "Independently inspect the FULL original request against observed history and current screen facts. Is the entire request satisfied? Read-only UI work and no-save drafts do not need receipts; requested saves do. A trailing unsupported task remains outstanding. Do not assume proposed done is correct."
+                ? "Independently inspect the FULL original request against observed history and current screen facts. Is the entire request satisfied? Read-only UI work and no-save drafts do not need receipts; requested saves do. A trailing unsupported task remains outstanding. Do not assume proposed done is correct. Displayed records and unfinished checklists are context, not additional requested tasks. Restrictions apply only to their owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records."
                 : "Evaluate authority for selected, a concrete effect already chosen. A necessary prerequisite is not permission for an extra mutation. Saving must cover exactly the authorized draft, and explicit no-save always forbids commit.",
             options,
           },
@@ -214,6 +248,7 @@ function modelState(input: DecisionInput & { selected?: unknown }) {
     })),
     availableActions: input.actions,
     availableFields: input.fields,
+    blockedControls: input.blockedControls,
     ...(input.selected === undefined ? {} : { selected: input.selected }),
   };
 }

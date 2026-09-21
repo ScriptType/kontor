@@ -252,6 +252,7 @@
       }
       <button
         [disabled]="completionBlockers().length > 0 || draft.status === 'done'"
+        [kontorBlocked]="{ target: { kind: 'case', id: selected.id }, reasons: completionBlockers() }"
         [kontorAction]="action('complete', 'Vorgang als erledigt markieren', selected.id + ': Status auf erledigt im Entwurf ändern', 'draft')"
         (invoked)="actions.execute('complete', $event)"
       >

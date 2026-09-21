@@ -74,7 +74,8 @@
         </button>
         <button (click)="runner.stop()">Ablehnen und stoppen</button>
       </section>
-      } @if (state.kind === 'paused' || state.kind === 'blocked') {
+      } @if (state.kind === 'paused' || state.kind === 'blocked' ||
+      state.kind === 'completion_unconfirmed') {
       <section class="answer-panel">
         <p>{{ state.message }}</p>
         @if (runner.confirmedReceipts().length) {
@@ -90,17 +91,16 @@
             }
           </ul>
         </section>
-        } @if (state.kind === 'blocked' &&
-        runner.disabledCompletionReasons().length) {
+        } @if (state.kind === 'blocked' && state.cause.kind === 'control') {
         <details class="blocked-control" [open]="runner.evidenceGuidance()">
-          <summary>Hinweise zum offenen Vorgang</summary>
+          <summary>Hinweise zu {{ state.cause.control.target.id }}</summary>
           <p>
-            Die Schaltfläche „Als erledigt markieren“ ist im offenen Vorgang
-            deaktiviert.
+            Die Schaltfläche „{{ state.cause.control.action.label }}“ ist
+            für {{ state.cause.control.target.id }} deaktiviert.
           </p>
           <ul>
-            @for (reason of runner.disabledCompletionReasons(); track
-            reason.kind) {
+            @for (reason of state.cause.control.reasons; track reason.kind)
+            {
             <li>{{ reason.message }}</li>
             }
           </ul>

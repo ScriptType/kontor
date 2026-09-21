@@ -7,6 +7,8 @@ import {
   untracked,
   computed,
   afterRenderEffect,
+  afterNextRender,
+  Injector,
   viewChild,
   ElementRef,
 } from "@angular/core";
@@ -23,6 +25,7 @@ import { demos } from "../../shared/command";
 export class Palette {
   readonly runner = inject(CommandRunner);
   readonly demos = demos;
+  private readonly injector = inject(Injector);
   readonly attentionPanel =
     viewChild<ElementRef<HTMLElement>>("attentionPanel");
   private focusedAttention = 0;
@@ -32,7 +35,8 @@ export class Palette {
     const state = this.runner.state();
     return state.kind === "needs_input" ||
       state.kind === "needs_approval" ||
-      state.kind === "blocked"
+      state.kind === "blocked" ||
+      state.kind === "completion_unconfirmed"
       ? ".answer-panel input, .answer-panel button"
       : "textarea";
   });
@@ -54,12 +58,20 @@ export class Palette {
     });
   }
   editEvidence() {
-    const target = this.runner.targetCase();
-    if (!target || this.runner.ui.selectedId() !== target.id) return;
+    const control = this.runner.evidenceControl();
+    if (!control) return;
     this.closeThen(() => {
-      if (this.runner.ui.selectedId() !== target.id) return;
+      if (
+        this.runner.evidenceControl() !== control ||
+        !this.runner.registry
+          .blockedSnapshot()
+          .some(
+            (current) => JSON.stringify(current) === JSON.stringify(control),
+          )
+      )
+        return;
       this.runner.ui.navigate("cases", "manual");
-      this.runner.ui.evidenceFocus.set(target.id);
+      this.runner.ui.evidenceFocus.set(control.target.id);
     });
   }
   readonly open = signal(false);
@@ -92,7 +104,17 @@ export class Palette {
     this.pendingCloseAction = null;
     this.runner.registry.modal = false;
     if (pending) {
-      if (pending.state === this.runner.state()) pending.action();
+      afterNextRender(
+        () => {
+          if (
+            !this.open() &&
+            !this.runner.registry.modal &&
+            pending.state === this.runner.state()
+          )
+            pending.action();
+        },
+        { injector: this.injector },
+      );
     } else this.runner.modal(false);
   }
   submit(event: Event) {

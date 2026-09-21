@@ -1,9 +1,15 @@
 import { z } from "zod";
+import { blockerSchema } from "./domain.js";
 export const actionSchema = z.object({
   id: z.string(),
   label: z.string(),
   effect: z.string(),
   kind: z.enum(["view", "draft", "commit", "discard"]),
+});
+export const blockedControlSchema = z.object({
+  action: actionSchema,
+  target: z.object({ kind: z.literal("case"), id: z.string() }),
+  reasons: z.array(blockerSchema).min(1),
 });
 export const fieldSchema = z.object({
   id: z.string(),
@@ -33,6 +39,7 @@ export const decisionInputSchema = z.object({
   context: z.string().max(40000),
   actions: z.array(actionSchema).max(100),
   fields: z.array(fieldSchema).max(30),
+  blockedControls: z.array(blockedControlSchema).max(100),
   answers: z.array(answerSchema).max(100),
   steps: z.array(stepSchema).max(60),
 });
@@ -57,6 +64,7 @@ export const assessmentSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 export type ActionDescription = z.infer<typeof actionSchema>;
+export type BlockedControl = z.infer<typeof blockedControlSchema>;
 export type FieldDescription = z.infer<typeof fieldSchema>;
 export type DecisionInput = z.infer<typeof decisionInputSchema>;
 export const demos = [

@@ -27,6 +27,8 @@ async function withLive(
     forbidCommit?: boolean;
     outstanding?: boolean;
     receiptComplete?: boolean;
+    cause?: string;
+    causeConfidence?: number;
   } = {},
 ) {
   const held = barrier(),
@@ -50,7 +52,11 @@ async function withLive(
       const input = z
         .object({ observedSteps: z.array(z.unknown()) })
         .parse(JSON.parse(payload.state));
-      const key = payload.questions["next"] ? "next" : "assessment";
+      const key = payload.questions["next"]
+        ? "next"
+        : payload.questions["cause"]
+          ? "cause"
+          : "assessment";
       const facts = z
         .object({
           currentFacts: z.object({ receipts: z.array(z.unknown()).optional() }),
@@ -69,21 +75,27 @@ async function withLive(
       const choice =
         key === "next"
           ? next
-          : next === "done"
-            ? options.outstanding
-              ? "outstanding"
-              : "complete"
-            : options.forbidCommit && commit
-              ? "forbidden"
-              : (options.assessment ?? "authorized");
+          : key === "cause"
+            ? (options.cause ?? "unknown")
+            : next === "done"
+              ? options.outstanding
+                ? "outstanding"
+                : "complete"
+              : options.forbidCommit && commit
+                ? "forbidden"
+                : (options.assessment ?? "authorized");
       if (key === "next") {
         observations.push(JSON.parse(payload.state));
         snapshots.push(Object.keys(payload.questions["next"]?.criteria ?? {}));
-        if (next === options.hold && !heldOnce) {
-          heldOnce = true;
-          arrived.release();
-          await held.promise;
-        }
+      }
+      if (
+        ((key === "next" && next === options.hold) ||
+          (key === "cause" && options.hold === "cause")) &&
+        !heldOnce
+      ) {
+        heldOnce = true;
+        arrived.release();
+        await held.promise;
       }
       return Response.json({
         model: "scripted-test-fixture",
@@ -91,7 +103,12 @@ async function withLive(
           [key]: {
             type: "choice",
             choice,
-            confidence: next === options.low && key === "next" ? 0.4 : 1,
+            confidence:
+              key === "cause"
+                ? (options.causeConfidence ?? 1)
+                : next === options.low && key === "next"
+                  ? 0.4
+                  : 1,
             probabilities: { [choice]: 1 },
           },
         },
@@ -589,17 +606,10 @@ test("unsupported trailing work remains partial after an authorized earlier save
     await expect(page.locator(".activity-label")).toHaveText(
       "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.",
     );
-    await expect(page.locator(".blocked-control")).toContainText(
-      "Schaltfläche „Als erledigt markieren“",
-    );
-    await expect(page.locator(".blocked-control")).toContainText("Arbeitszeit");
-    await expect(page.locator(".blocked-control")).toHaveJSProperty(
-      "open",
-      false,
-    );
+    await expect(page.locator(".blocked-control")).toHaveCount(0);
     await expect(
-      page.locator(".blocked-control li").filter({ hasText: "Arbeitszeit" }),
-    ).toBeHidden();
+      page.getByRole("button", { name: "Prüfbeleg erfassen", exact: true }),
+    ).toHaveCount(0);
     await expect(page.locator(".confirmed-receipts li")).toHaveText(
       "V-1042 · Revision 1",
     );
@@ -636,7 +646,7 @@ test("independent outstanding verdict prevents an early done claim", async ({
     async (store) => {
       await start(page, "Kunden öffnen und danach Team");
       await expect(page.locator(".activity-label")).toContainText(
-        "nicht vollständig",
+        "vollständige Erfüllung noch nicht bestätigen",
       );
       expect(store.snapshot().revision).toBe(0);
     },
@@ -777,7 +787,7 @@ test("uncertain filter completion does not inherit the selected case's inspectio
   await withLive(
     page,
     [],
-    async (store) => {
+    async (store, _held, _arrived, _snapshots, observations) => {
       const before = store.snapshot();
       await page.locator('[data-action="case:V-1039"]').click();
       await page.locator('[data-action="menu:customer"]').click();
@@ -785,7 +795,7 @@ test("uncertain filter completion does not inherit the selected case's inspectio
       await start(page, "zeige mir alle vorgänge von nordwerk");
       await expect(page.locator(".answer-panel")).toBeVisible();
       await expect(page.locator(".answer-panel")).toContainText(
-        "Auftrag nicht vollständig bestätigt",
+        "vollständige Erfüllung noch nicht bestätigen",
       );
       await expect(page.locator("tbody tr")).toHaveCount(2);
       await expect(page.locator("tbody tr td:nth-child(3)")).toHaveText([
@@ -798,6 +808,15 @@ test("uncertain filter completion does not inherit the selected case's inspectio
       await expect(
         page.getByRole("button", { name: "Prüfbeleg erfassen", exact: true }),
       ).toHaveCount(0);
+      expect(observations).toHaveLength(1);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+      await expect(page.locator(".answer-panel")).toContainText(
+        "vollständige Erfüllung noch nicht bestätigen",
+      );
+      expect(observations).toHaveLength(1);
+      expect(store.snapshot()).toEqual(before);
     },
     { low: "done" },
   );
@@ -806,29 +825,204 @@ test("uncertain filter completion does not inherit the selected case's inspectio
 test("missing evidence stays a concrete handoff tied to the disabled completion control", async ({
   page,
 }) => {
-  await withLive(page, ["case:V-1039", "blocked"], async (store) => {
-    await page.addStyleTag({ content: slowPaletteClose });
-    await start(page, "Schließe V-1039 ab.");
-    await expect(page.locator(".blocked-control")).toContainText(
-      "Schaltfläche „Als erledigt markieren“",
-    );
-    await expect(page.locator(".blocked-control")).toContainText(
-      "Prüfung vor Ort",
-    );
-    await expect(page.locator(".blocked-control")).toHaveJSProperty(
-      "open",
-      true,
-    );
-    await expect(
-      page
-        .locator(".blocked-control li")
-        .filter({ hasText: "Prüfung vor Ort" }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Prüfbeleg erfassen", exact: true })
-      .click();
-    await expect(page.getByLabel("Tatsächlicher Prüfbeleg")).toBeFocused();
-    await expect(page.locator(".editor")).toContainText("V-1039");
-    expect(store.snapshot().revision).toBe(0);
-  });
+  await withLive(
+    page,
+    ["case:V-1039", "blocked"],
+    async (store, _held, _arrived, snapshots, observations) => {
+      await page.addStyleTag({ content: slowPaletteClose });
+      await start(page, "Schließe V-1039 ab.");
+      await expect(page.locator(".blocked-control")).toContainText(
+        "Schaltfläche „Vorgang als erledigt markieren“",
+      );
+      await expect(page.locator(".blocked-control")).toContainText(
+        "Prüfung vor Ort",
+      );
+      await expect(page.locator(".blocked-control")).toHaveJSProperty(
+        "open",
+        true,
+      );
+      await expect(
+        page
+          .locator(".blocked-control li")
+          .filter({ hasText: "Prüfung vor Ort" }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Prüfbeleg erfassen", exact: true })
+        .click();
+      await expect(page.getByLabel("Tatsächlicher Prüfbeleg")).toBeFocused();
+      await expect(page.locator(".editor")).toContainText("V-1039");
+      await expect(page.getByLabel("Tatsächlicher Prüfbeleg")).toHaveValue("");
+      expect(snapshots[1]).not.toContain("complete");
+      expect(snapshots[1]).not.toContain("blocked:complete");
+      expect(observations[1]).toMatchObject({
+        blockedControls: [
+          {
+            action: { id: "complete", kind: "draft" },
+            target: { kind: "case", id: "V-1039" },
+            reasons: [{ kind: "evidence" }],
+          },
+        ],
+        currentFacts: { blockedControls: [{ target: { id: "V-1039" } }] },
+      });
+      expect(observations[1]).not.toHaveProperty(
+        "currentFacts.completionBlockers",
+      );
+      expect(store.snapshot().revision).toBe(0);
+    },
+    { cause: "blocked:complete" },
+  );
 });
+
+for (const cause of ["unknown", "low", "wrong"]) {
+  test(`${cause} cause never offers unrelated evidence guidance`, async ({
+    page,
+  }) => {
+    await withLive(
+      page,
+      ["case:V-1039", "blocked"],
+      async (store) => {
+        const before = store.snapshot();
+        await start(page, "Schließe V-1039 ab.");
+        if (cause === "wrong") {
+          await expect(page.locator(".activity-label")).not.toHaveText(
+            /^(Bereit für deinen Auftrag|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt)$/,
+          );
+          await page
+            .getByRole("button", { name: /Jev · Befehl eingeben/ })
+            .click();
+        }
+        await expect(page.locator(".answer-panel")).toBeVisible();
+        await expect(page.locator(".blocked-control")).toHaveCount(0);
+        await expect(
+          page.getByRole("button", {
+            name: "Prüfbeleg erfassen",
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        expect(store.snapshot()).toEqual(before);
+      },
+      {
+        cause:
+          cause === "unknown"
+            ? "unknown"
+            : cause === "wrong"
+              ? "blocked:other"
+              : "blocked:complete",
+        causeConfidence: cause === "low" ? 0.7 : 1,
+      },
+    );
+  });
+}
+for (const hidden of ["hidden", "inert", "aria-hidden", "no-reasons"]) {
+  test(`${hidden} disabled controls never become causal choices`, async ({
+    page,
+  }) => {
+    await withLive(
+      page,
+      ["blocked"],
+      async (store, _held, _arrived, snapshots, observations) => {
+        const before = store.snapshot();
+        await page
+          .locator(
+            `[data-action="case:${hidden === "no-reasons" ? "V-1035" : "V-1039"}"]`,
+          )
+          .click();
+        if (hidden !== "no-reasons")
+          await page
+            .locator('[data-action="complete"]')
+            .evaluate(
+              (element, attribute) => element.setAttribute(attribute, "true"),
+              hidden,
+            );
+        await start(page, "Schließe den offenen Vorgang ab.");
+        await expect(page.locator(".answer-panel")).toBeVisible();
+        expect(observations[0]).toMatchObject({
+          blockedControls: [],
+          currentFacts: { blockedControls: [] },
+        });
+        expect(snapshots[0]).not.toContain("complete");
+        await expect(page.locator(".blocked-control")).toHaveCount(0);
+        expect(store.snapshot()).toEqual(before);
+      },
+      { cause: "blocked:complete" },
+    );
+  });
+}
+test("a control hidden during causal attribution cannot supply stale guidance", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["case:V-1039", "blocked"],
+    async (store, held, arrived) => {
+      const before = store.snapshot();
+      await start(page, "Schließe V-1039 ab.");
+      await arrived;
+      await page
+        .locator('[data-action="complete"]')
+        .evaluate((element) => element.setAttribute("hidden", ""));
+      held.release();
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Daten haben sich während der Entscheidung geändert",
+      );
+      await expect(page.locator(".blocked-control")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", {
+          name: "Prüfbeleg erfassen",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      expect(store.snapshot()).toEqual(before);
+    },
+    { cause: "blocked:complete", hold: "cause" },
+  );
+});
+for (const changed of ["stop", "target", "hidden"]) {
+  test(`${changed} during palette close cancels the captured evidence handoff`, async ({
+    page,
+  }) => {
+    await withLive(
+      page,
+      ["case:V-1039", "blocked"],
+      async (store) => {
+        const before = store.snapshot();
+        await page.addStyleTag({ content: slowPaletteClose });
+        await start(page, "Schließe V-1039 ab.");
+        const handoff = page.getByRole("button", {
+          name: "Prüfbeleg erfassen",
+          exact: true,
+        });
+        await expect(handoff).toBeVisible();
+        await handoff.evaluate((button, change) => {
+          if (!(button instanceof HTMLButtonElement))
+            throw new Error("Missing handoff");
+          button.click();
+          if (change === "hidden")
+            document
+              .querySelector('[data-action="complete"]')
+              ?.setAttribute("hidden", "");
+          else {
+            const control = document.querySelector(
+              change === "stop"
+                ? ".activity button.danger"
+                : '[data-action="case:V-1042"]',
+            );
+            if (!(control instanceof HTMLButtonElement))
+              throw new Error("Missing invalidation control");
+            control.click();
+          }
+        }, changed);
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(page.locator("#evidence:focus")).toHaveCount(0);
+        if (changed === "target")
+          await expect(page.locator(".editor")).toContainText("V-1042");
+        if (changed === "stop")
+          await expect(page.locator(".activity-label")).toContainText(
+            "Gestoppt",
+          );
+        expect(store.snapshot()).toEqual(before);
+      },
+      { cause: "blocked:complete" },
+    );
+  });
+}

@@ -13,6 +13,7 @@ import {
   answerSchema,
   stepSchema,
   type ActionDescription,
+  type BlockedControl,
   type DecisionInput,
   type FieldDescription,
 } from "../../shared/command";
@@ -35,7 +36,12 @@ export type RunState =
       reason: "modal" | "manual" | "reload" | "error";
       message: string;
     }
-  | { kind: "blocked"; message: string }
+  | { kind: "completion_unconfirmed"; message: string }
+  | {
+      kind: "blocked";
+      message: string;
+      cause: { kind: "unknown" } | { kind: "control"; control: BlockedControl };
+    }
   | { kind: "needs_input"; field: FieldDescription }
   | {
       kind: "needs_approval";
@@ -68,22 +74,31 @@ export class CommandRunner {
   private readonly injector = inject(Injector);
   readonly state = signal<RunState>({ kind: "idle" });
   readonly attention = signal(0);
-  readonly targetCase = this.ui.selected;
-  readonly disabledCompletionReasons = computed(() => {
-    const data = this.ui.data(),
+  readonly evidenceControl = computed(() => {
+    const state = this.state(),
       selected = this.ui.selected(),
-      draft = this.ui.draft();
-    return this.ui.page() === "cases" && data && selected && draft
-      ? blockers(data, { ...selected, ...draft, status: "done" })
-      : [];
-  });
-  readonly evidenceGuidance = computed(
-    () =>
-      this.state().kind === "blocked" &&
-      this.disabledCompletionReasons().some(
+      draft = this.ui.draft(),
+      data = this.ui.data();
+    if (
+      state.kind !== "blocked" ||
+      state.cause.kind !== "control" ||
+      state.cause.control.action.id !== "complete" ||
+      !state.cause.control.reasons.some(
         (reason) => reason.kind === "evidence",
-      ),
-  );
+      ) ||
+      this.ui.page() !== "cases" ||
+      !selected ||
+      !draft ||
+      !data ||
+      selected.id !== state.cause.control.target.id ||
+      !blockers(data, { ...selected, ...draft, status: "done" }).some(
+        (reason) => reason.kind === "evidence",
+      )
+    )
+      return null;
+    return state.cause.control;
+  });
+  readonly evidenceGuidance = computed(() => this.evidenceControl() !== null);
   readonly command = signal("");
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
@@ -168,6 +183,7 @@ export class CommandRunner {
         return "Konkreten Schritt bestätigen";
       case "paused":
       case "blocked":
+      case "completion_unconfirmed":
         return state.message;
       case "reconciling":
         return "Speicherergebnis wird geprüft";
@@ -321,7 +337,7 @@ export class CommandRunner {
       message: "Schritt bestätigt",
     });
   }
-  private facts() {
+  private facts(blockedControls = this.registry.blockedSnapshot()) {
     const screen = this.registry.observeScreen();
     const selected = this.ui.selected(),
       draft = this.ui.draft(),
@@ -342,11 +358,14 @@ export class CommandRunner {
       selected: detailMounted ? selected : undefined,
       draft: detailMounted ? draft : undefined,
       dirty: detailMounted ? this.ui.dirty() : undefined,
-      blockers: detailMounted ? this.ui.blocked() : undefined,
-      completionBlockers:
-        detailMounted && data && selected && draft
-          ? blockers(data, { ...selected, ...draft, status: "done" })
-          : undefined,
+      blockers: detailMounted
+        ? {
+            actionId: "save",
+            target: { kind: "case", id: selected.id },
+            reasons: this.ui.blocked(),
+          }
+        : undefined,
+      blockedControls,
       retainedDraft:
         !detailMounted && this.ui.dirty()
           ? { caseId: this.ui.selectedId(), draft, mounted: false }
@@ -382,10 +401,12 @@ export class CommandRunner {
       ...(data?.cases.flatMap((c) => [c.id, c.title]) ?? []),
       ...(data?.customers.map((c) => c.name) ?? []),
     ];
+    const blockedControls = this.registry.blockedSnapshot();
     return {
       request: run.request,
       snapshotId: crypto.randomUUID(),
-      context: this.facts(),
+      context: this.facts(blockedControls),
+      blockedControls,
       actions: this.registry.snapshot(run.request, run.answers, existing),
       fields: this.registry.fieldSnapshot(),
       answers: run.answers,
@@ -438,14 +459,28 @@ export class CommandRunner {
           decision.snapshotId !== input.snapshotId ||
           fingerprint !== this.facts()
         ) {
-          this.block(
-            "Daten haben sich während der Entscheidung geändert. Bitte fortsetzen.",
-          );
+          if (decision.choice === "done")
+            this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
+          else
+            this.block(
+              "Daten haben sich während der Entscheidung geändert. Bitte fortsetzen.",
+            );
           return;
         }
-        if (decision.choice === "blocked") {
+        if (
+          decision.choice === "blocked" ||
+          decision.choice.startsWith("blocked:")
+        ) {
+          const control =
+            decision.confidence >= 0.75
+              ? input.blockedControls.find(
+                  (candidate) =>
+                    `blocked:${candidate.action.id}` === decision.choice,
+                )
+              : undefined;
           this.block(
             "Auftrag teilweise oder nicht erledigt. Für verbleibende Arbeit fehlt ein ausführbarer Schritt.",
+            control ? { kind: "control", control } : { kind: "unknown" },
           );
           return;
         }
@@ -459,7 +494,7 @@ export class CommandRunner {
             assessment.snapshotId !== input.snapshotId ||
             fingerprint !== this.facts()
           ) {
-            this.block("Daten geändert. Abschluss erneut prüfen.");
+            this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
             return;
           }
           if (
@@ -475,8 +510,8 @@ export class CommandRunner {
                 ),
             )
           ) {
-            this.block(
-              "Auftrag nicht vollständig bestätigt. Bereits ausgeführte Schritte stehen im Verlauf.",
+            this.unconfirmed(
+              "Jev konnte die vollständige Erfüllung noch nicht bestätigen. Bereits ausgeführte Schritte stehen im Verlauf.",
             );
             return;
           }
@@ -582,8 +617,18 @@ export class CommandRunner {
       afterNextRender(() => resolve(), { injector: this.injector }),
     );
   }
-  private block(message: string) {
-    this.state.set({ kind: "blocked", message });
+  private unconfirmed(message: string) {
+    this.state.set({ kind: "completion_unconfirmed", message });
+    this.finish(message);
+    this.attention.update((n) => n + 1);
+  }
+  private block(
+    message: string,
+    cause: Extract<RunState, { kind: "blocked" }>["cause"] = {
+      kind: "unknown",
+    },
+  ) {
+    this.state.set({ kind: "blocked", message, cause });
     this.finish(message);
     this.attention.update((n) => n + 1);
   }
