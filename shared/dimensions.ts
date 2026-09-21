@@ -39,11 +39,7 @@ export type ValueDimension = Wording & {
   controls: Controls;
 };
 export type FlagDimension = Wording & { kind: "flag"; id: string };
-export type SetDimension = Wording & {
-  kind: "set";
-  id: string;
-  controls: Controls;
-};
+export type SetDimension = Wording & { kind: "set"; id: string };
 export type Dimension = ValueDimension | FlagDimension | SetDimension;
 
 export const dimensions = [
@@ -178,7 +174,6 @@ export const dimensions = [
   {
     kind: "set",
     id: "cases",
-    controls: { option: "case" },
     question: "Which cases does the request act on?",
     description:
       "Cases the request opens, edits, assigns, records time for, completes, reopens or saves. A bare number such as 1041 can name case V-1041. Filtering or searching the list is not acting on a case.",
@@ -220,7 +215,7 @@ export type CaseDimensionId = Extract<Catalog, { scope: "case" }>["id"];
 export type ListDimensionId = Extract<Catalog, { scope: "list" }>["id"];
 export type FlagDimensionId = Extract<Catalog, { kind: "flag" }>["id"];
 
-export const excludedFields = {
+const excludedFields = {
   editable: {
     inspection:
       "Inspection evidence is a user-only observation; Jev never sets it.",
@@ -241,7 +236,7 @@ export function dimension<const Id extends DimensionId>(
   return found;
 }
 
-export function sourceSchema(source: DimensionSource): z.ZodType {
+function sourceSchema(source: DimensionSource): z.ZodType {
   if (source.schema === "page") return pageSchema;
   if (source.schema === "filters") return caseFiltersSchema.shape[source.field];
   if (source.field === "appointment")
@@ -249,12 +244,12 @@ export function sourceSchema(source: DimensionSource): z.ZodType {
   return editableSchema.shape[source.field];
 }
 
-export type ValueDomain =
+type ValueDomain =
   | { kind: "enum"; options: readonly string[] }
   | { kind: "number"; min: number; max: number }
   | { kind: "datetime" }
   | { kind: "text" };
-export function valueDomain(schema: z.ZodType): ValueDomain {
+function valueDomain(schema: z.ZodType): ValueDomain {
   const inner = schema instanceof z.ZodNullable ? schema.unwrap() : schema;
   if (inner instanceof z.ZodEnum)
     return { kind: "enum", options: inner.options.map(String) };
@@ -383,20 +378,21 @@ export function withCaseValue(
   );
   return parsed.success ? { ...draft, [source.field]: parsed.data } : null;
 }
+const unsetValue = (entry: ValueDimension) => entry.unset?.value;
 export function filterValue(id: ListDimensionId, filters: CaseFilters) {
-  const entry: ValueDimension = dimension(id);
-  const value = filters[dimension(id).source.field];
-  return value === null ? (entry.unset?.value ?? "") : value;
+  const entry = dimension(id);
+  const value = filters[entry.source.field];
+  return value === null ? (unsetValue(entry) ?? "") : value;
 }
 export function withFilterValue(
   id: ListDimensionId,
   filters: CaseFilters,
   value: string,
 ): CaseFilters | null {
-  const entry: ValueDimension = dimension(id);
-  const field = dimension(id).source.field;
+  const entry = dimension(id);
+  const field = entry.source.field;
   const parsed = caseFiltersSchema.shape[field].safeParse(
-    value === entry.unset?.value ? null : value,
+    value === unsetValue(entry) ? null : value,
   );
   return parsed.success ? { ...filters, [field]: parsed.data } : null;
 }
@@ -413,7 +409,7 @@ const showFilters = (filters: CaseFilters): ActionEffect[] =>
   }));
 const showCases = (filters: CaseFilters | null): ActionEffect[] | null =>
   filters && [...showFilters(filters), { dimension: "page", value: "cases" }];
-export const explicitActions: Record<string, ActionEffect[]> = {
+const explicitActions: Record<string, ActionEffect[]> = {
   "filter:reset": showFilters(defaultCaseFilters),
   close: [],
   discard: [],
