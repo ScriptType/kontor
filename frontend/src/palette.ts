@@ -24,6 +24,7 @@ import { demos } from "../../shared/command";
 })
 export class Palette {
   readonly runner = inject(CommandRunner);
+  readonly confidenceInput = signal(String(this.runner.confidencePercent()));
   readonly demos = demos;
   private readonly injector = inject(Injector);
   readonly attentionPanel =
@@ -121,6 +122,10 @@ export class Palette {
     if (!this.runner.ui.source.data()) return;
     event.preventDefault();
     this.closeThen(() => void this.runner.start());
+  }
+  setConfidencePercent(raw: string) {
+    this.confidenceInput.set(raw);
+    this.runner.setConfidencePercent(raw);
   }
   enter(event: KeyboardEvent) {
     if (event.key === "Enter" && !event.shiftKey) this.submit(event);

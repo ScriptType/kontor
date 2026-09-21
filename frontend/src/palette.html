@@ -51,6 +51,41 @@
           </button>
         </div>
       </form>
+      <details class="jev-settings">
+        <summary>Jev-Einstellungen · {{ runner.confidencePercent() }} %</summary>
+        <label for="jev-confidence">Bestätigungsschwelle in Prozent</label>
+        <div class="confidence-controls">
+          <input
+            id="jev-confidence"
+            type="text"
+            inputmode="numeric"
+            [ngModel]="confidenceInput()"
+            (ngModelChange)="setConfidencePercent($event)"
+            [attr.aria-invalid]="runner.confidenceError() ? 'true' : null"
+            aria-describedby="jev-confidence-help jev-confidence-feedback"
+          />
+          <button type="button" (click)="setConfidencePercent('75')">
+            Standard 75 %
+          </button>
+        </div>
+        <p id="jev-confidence-help" class="muted">
+          Unter {{ runner.confidencePercent() }} % fragt Jev vor Aktionen nach
+          und bestätigt den Abschluss nicht. Ab diesem Wert gelten weiterhin
+          die Auftrags- und Prüfregeln. Änderungen pausieren den Auftrag bis
+          zum ausdrücklichen Fortsetzen.
+        </p>
+        <div id="jev-confidence-feedback" role="status">
+          @if (runner.confidenceError()) {
+          <p class="blocker">{{ runner.confidenceError() }}</p>
+          }
+          <p>Aktiver Wert: {{ runner.confidencePercent() }} %</p>
+          @if (!runner.confidenceStored()) {
+          <p class="blocker">
+            Nicht im Browser gespeichert. Der Wert gilt nur für diese Sitzung.
+          </p>
+          }
+        </div>
+      </details>
       @if (runner.state(); as state) { @if (state.kind === 'needs_input') {
       <section #attentionPanel class="answer-panel">
         <h3>Antwort ausstehend</h3>

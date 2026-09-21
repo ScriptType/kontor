@@ -67,6 +67,18 @@ const persistedSchema = z.object({
   history: z.array(historySchema),
   unfinished: z.boolean(),
 });
+const confidencePercentSchema = z.number().int().min(0).max(100);
+const confidenceInputSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+$/)
+  .transform(Number)
+  .pipe(confidencePercentSchema);
+const confidencePreferenceSchema = z.object({
+  version: z.literal(1),
+  percent: confidencePercentSchema,
+});
+const confidencePreferenceKey = "kontor-jev-confidence-v1";
 @Injectable({ providedIn: "root" })
 export class CommandRunner {
   readonly ui = inject(WorkspaceUi);
@@ -100,6 +112,12 @@ export class CommandRunner {
   });
   readonly evidenceGuidance = computed(() => this.evidenceControl() !== null);
   readonly command = signal("");
+  private readonly confidenceValue = signal(75);
+  readonly confidencePercent = this.confidenceValue.asReadonly();
+  private readonly confidenceValidation = signal("");
+  readonly confidenceError = this.confidenceValidation.asReadonly();
+  private readonly confidencePersistence = signal(true);
+  readonly confidenceStored = this.confidencePersistence.asReadonly();
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
   readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
@@ -109,6 +127,10 @@ export class CommandRunner {
   private approved: { action: ActionDescription; fingerprint: string } | null =
     null;
   constructor() {
+    const preference = confidencePreferenceSchema.safeParse(
+      readBrowserState(confidencePreferenceKey),
+    );
+    if (preference.success) this.confidenceValue.set(preference.data.percent);
     this.restore();
     this.ui.currentRunId = () => this.activeId;
     this.ui.beforeManual = () => this.pauseManual();
@@ -145,6 +167,26 @@ export class CommandRunner {
       return this.persist();
     };
     effect(() => this.persist());
+  }
+  setConfidencePercent(raw: string) {
+    const parsed = confidenceInputSchema.safeParse(raw);
+    if (!parsed.success) {
+      this.confidenceValidation.set(
+        "Bitte eine ganze Zahl von 0 bis 100 eingeben.",
+      );
+      return;
+    }
+    this.confidenceValidation.set("");
+    if (parsed.data !== this.confidenceValue()) {
+      this.pauseManual();
+      this.confidenceValue.set(parsed.data);
+    }
+    this.confidencePersistence.set(
+      writeBrowserState(confidencePreferenceKey, {
+        version: 1,
+        percent: parsed.data,
+      }),
+    );
   }
   private persist() {
     const stored = writeBrowserState("kontor-command-v1", {
@@ -499,8 +541,8 @@ export class CommandRunner {
           }
           if (
             assessment.verdict !== "complete" ||
-            assessment.confidence < 0.75 ||
-            decision.confidence < 0.75 ||
+            assessment.confidence < this.confidencePercent() / 100 ||
+            decision.confidence < this.confidencePercent() / 100 ||
             this.ui.busy() ||
             this.ui.unknownSave() ||
             this.run()?.operations.some(
@@ -531,7 +573,7 @@ export class CommandRunner {
         action = input.actions.find((a) => a.id === decision.choice);
         if (!action)
           throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
-        let needsApproval = decision.confidence < 0.75;
+        let needsApproval = decision.confidence < this.confidencePercent() / 100;
         if (action.kind !== "view") {
           const assessment = await this.ui.api.assess.call(
             { ...input, selected: action },
@@ -550,7 +592,8 @@ export class CommandRunner {
             return;
           }
           needsApproval ||=
-            assessment.verdict !== "authorized" || assessment.confidence < 0.75;
+            assessment.verdict !== "authorized" ||
+            assessment.confidence < this.confidencePercent() / 100;
         }
         if (needsApproval) {
           this.state.set({
