@@ -1,0 +1,169 @@
+import { test, expect, type Page } from "@playwright/test";
+import { once } from "node:events";
+import { createApp } from "../server/app.js";
+import { demos } from "../shared/command.js";
+import {
+  answerConfirmations,
+  applyStart,
+  readEnd,
+  runSample,
+  seededStore,
+} from "../scripts/jev-eval/harness.js";
+import { judge, type Stop } from "../scripts/jev-eval/judge.js";
+import {
+  regressionScenarios,
+  scenario,
+  type Scenario,
+} from "../scripts/jev-eval/scenarios.js";
+
+const done: Stop = {
+  kind: "done",
+  message: "Jev meldet den Auftrag als erledigt",
+};
+const byId = (id: string) => {
+  const found = regressionScenarios().find((s) => s.id === id);
+  if (!found) throw new Error(id);
+  return found;
+};
+async function withApp(
+  page: Page,
+  s: Scenario,
+  run: (store: ReturnType<typeof seededStore>) => Promise<void>,
+) {
+  const store = seededStore(s.start);
+  const app = createApp({ mode: "demo" }, undefined, store);
+  app.server.listen(0, "127.0.0.1");
+  await once(app.server, "listening");
+  const address = app.server.address();
+  if (!address || typeof address === "string") throw new Error("No address");
+  try {
+    await page.goto(`http://127.0.0.1:${address.port}`);
+    await expect(page.locator("tbody tr")).toHaveCount(5);
+    await run(store);
+  } finally {
+    await app.close();
+  }
+}
+
+test("a demo request runs through the real UI and is judged magic without provider calls", async ({
+  browser,
+}) => {
+  const result = await runSample({
+    browser,
+    config: { mode: "demo" },
+    scenario: scenario({
+      id: "demo-assign",
+      source: "use-case",
+      request: demos[2],
+      intent: {
+        cases: { "V-1042": { technician: "lea" } },
+        flags: { save: true },
+      },
+    }),
+    sample: 1,
+    variant: "test",
+    budget: { used: 0, limit: 0 },
+  });
+  expect(result.outcome).toBe("magic");
+  expect(result.calls).toBe(0);
+  expect(result.steps).toEqual([
+    "case:V-1042:changed",
+    "menu:technician:changed",
+    "technician:lea:changed",
+    "save:changed",
+  ]);
+  expect(result.observed?.receipts.map((r) => r.saved.technicianId)).toEqual([
+    "lea",
+  ]);
+});
+
+test("the repeat start state applies through the UI and reads back as its expected end", async ({
+  page,
+}) => {
+  const repeat = byId("user-repeat");
+  await withApp(page, repeat, async (store) => {
+    await applyStart(page, repeat.start);
+    const observed = await readEnd(
+      page,
+      store.snapshot(),
+      store.snapshot(),
+      store.receipts,
+      [done],
+    );
+    expect(observed.page).toBe("reports");
+    expect(observed.filters.customerId).toBe("nord");
+    expect(observed.draft).toMatchObject({ caseId: "V-1041", dirty: false });
+    expect(judge(repeat, observed)).toMatchObject({
+      outcome: "magic",
+      mismatches: [],
+    });
+  });
+});
+
+test("an unsaved draft is read from the editor after navigating away", async ({
+  page,
+}) => {
+  const draft = byId("use-10");
+  await withApp(page, draft, async (store) => {
+    await page.locator('[data-action="case:V-1042"]').click();
+    await page
+      .getByRole("spinbutton", { name: "Arbeitszeit in Minuten", exact: true })
+      .fill("25");
+    await page.locator('[data-action="nav:team"]').click();
+    const observed = await readEnd(
+      page,
+      store.snapshot(),
+      store.snapshot(),
+      store.receipts,
+      [done],
+    );
+    expect(observed.draft).toMatchObject({ caseId: "V-1042", dirty: true });
+    expect(judge(draft, { ...observed, page: "cases" })).toMatchObject({
+      outcome: "magic",
+      mismatches: [],
+    });
+    expect(judge(draft, observed).mismatches).toEqual([
+      "page team, expected cases",
+    ]);
+  });
+});
+
+test("confirmations are answered from the ground truth through data-confirm attributes", async ({
+  page,
+}) => {
+  await page.setContent(`
+    <section data-confirm-dimension="workedMinutes" data-confirm-case="V-1042">
+      <button data-confirm-value="45">45</button><button data-confirm-value="30">30</button>
+    </section>
+    <section data-confirm-dimension="cases">
+      <button data-confirm-value="V-1041">V-1041</button>
+      <button data-confirm-value="V-1042">V-1042</button>
+      <button data-confirm-submit>OK</button>
+    </section>
+    <section data-confirm-dimension="technician" data-confirm-case="V-1042">
+      <button data-confirm-value="lea">Lea</button>
+    </section>
+    <script>
+      window.clicked = [];
+      document.addEventListener("click", (event) => {
+        const button = event.target.closest("button");
+        const group = button.closest("[data-confirm-dimension]");
+        const value = button.dataset.confirmValue ?? "submit";
+        window.clicked.push(group.dataset.confirmDimension + "=" + value);
+        if (group.dataset.confirmDimension !== "cases" || value === "submit") group.remove();
+      });
+    </script>`);
+  const stops = await answerConfirmations(page, byId("use-13"));
+  expect(
+    stops.map(({ kind, dimension, value }) => ({ kind, dimension, value })),
+  ).toEqual([
+    { kind: "confirm", dimension: "workedMinutes", value: "30" },
+    { kind: "confirm", dimension: "cases", value: ["V-1042"] },
+    { kind: "unanswerable", dimension: "technician", value: "unstated" },
+  ]);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { clicked: string[] }).clicked,
+    ),
+  ).toEqual(["workedMinutes=30", "cases=V-1042", "cases=submit"]);
+});

@@ -16,7 +16,8 @@
     "test": "node --import tsx --test --test-timeout=10000 tests/*.test.ts",
     "test:e2e": "playwright test",
     "verify": "npm run typecheck && npm run build && npm test && npm run test:e2e",
-    "test:live": "npm run build && node --env-file-if-exists=.env --import tsx scripts/jev-live.ts"
+    "test:live": "npm run build && node --env-file-if-exists=.env --import tsx scripts/jev-live.ts",
+    "eval:jev": "npm run build && node --env-file-if-exists=.env --import tsx scripts/jev-eval/run.ts"
   },
   "dependencies": {
     "@angular/cdk": "22.1.2",
