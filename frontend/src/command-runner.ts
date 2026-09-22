@@ -29,6 +29,7 @@ import {
   choiceDescription,
   type DecisionCapture,
 } from "./decision-review";
+import { acts, gateKind, gateNames } from "./gate";
 export type RunState =
   | {
       kind:
@@ -88,6 +89,11 @@ const confidencePreferenceSchema = z.object({
   percent: confidencePercentSchema,
 });
 const confidencePreferenceKey = "kontor-jev-confidence-v1";
+const gatePreferenceSchema = z.object({
+  version: z.literal(1),
+  gate: z.enum(gateNames),
+});
+const gatePreferenceKey = "kontor-jev-gate-v1";
 @Injectable({ providedIn: "root" })
 export class CommandRunner {
   readonly ui = inject(WorkspaceUi);
@@ -127,6 +133,10 @@ export class CommandRunner {
   readonly confidenceError = this.confidenceValidation.asReadonly();
   private readonly confidencePersistence = signal(true);
   readonly confidenceStored = this.confidencePersistence.asReadonly();
+  private readonly gate = gatePreferenceSchema.catch({
+    version: 1,
+    gate: "threshold",
+  }).parse(readBrowserState(gatePreferenceKey)).gate;
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
   readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
@@ -641,8 +651,16 @@ export class CommandRunner {
     }
     return false;
   }
+  private acts({ input, decision }: DecisionCapture) {
+    return acts(
+      this.gate,
+      this.confidencePercent(),
+      decision,
+      gateKind(decision.choice, input),
+    );
+  }
   private async checkCompletion(capture: DecisionCapture) {
-    const { input, decision } = capture;
+    const { input } = capture;
     const assessment = await this.ui.api.assess.call(
       { ...input, selected: "done" },
       { signal: this.abort?.signal },
@@ -655,7 +673,7 @@ export class CommandRunner {
     if (
       assessment.verdict !== "complete" ||
       assessment.confidence < this.confidencePercent() / 100 ||
-      decision.confidence < this.confidencePercent() / 100 ||
+      !this.acts(capture) ||
       this.ui.busy() ||
       this.ui.unknownSave() ||
       this.run()?.operations.some(
@@ -708,7 +726,7 @@ export class CommandRunner {
         return;
       }
       if (decision.choice === "blocked" || decision.choice.startsWith("ask:")) {
-        if (decision.confidence < this.confidencePercent() / 100)
+        if (!this.acts(capture))
           this.review(
             capture,
             decision.choice === "blocked"
@@ -723,10 +741,9 @@ export class CommandRunner {
       );
       if (!action)
         throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
-      let reason =
-        decision.confidence < this.confidencePercent() / 100
-          ? "Auswahlkonfidenz unter der Bestätigungsschwelle. Vorschläge prüfen."
-          : "";
+      let reason = this.acts(capture)
+        ? ""
+        : "Auswahlkonfidenz unter der Bestätigungsschwelle. Vorschläge prüfen.";
       let assessed: { choice: string; assessment: Assessment } | undefined;
       if (action.kind !== "view") {
         const assessment = await this.ui.api.assess.call(

@@ -630,3 +630,46 @@ test("zero percent completion still requires a receipt for every operation", asy
     expect(store.snapshot().revision).toBe(0);
   });
 });
+
+for (const stored of [
+  null,
+  '{"version":1,"gate":"g1"}',
+  '{"version":1,"gate":"g2"}',
+])
+  test(`stored gate ${stored} decides whether a view choice at 72 percent acts`, async ({
+    page,
+  }) => {
+    if (stored)
+      await page.addInitScript(
+        (value) => localStorage.setItem("kontor-jev-gate-v1", value),
+        stored,
+      );
+    await withLive(
+      page,
+      [],
+      async () => {
+        await start(page, "Zeige Berichte.");
+        if (stored?.includes('"g1"')) {
+          await expect(page.locator(".activity-label")).toContainText(
+            "Jev meldet",
+          );
+          await expect(page).toHaveURL(/#reports$/);
+        } else {
+          await expect(
+            page.getByRole("region", { name: "Jev-Vorschläge prüfen" }),
+          ).toContainText("Auswahlkonfidenz 72 %");
+          await expect(page).not.toHaveURL(/#reports$/);
+        }
+      },
+      {
+        nextAnswer: (index) =>
+          index === 0
+            ? {
+                choice: "nav:reports",
+                confidence: 0.72,
+                probabilities: { "nav:reports": 0.72, "nav:team": 0.28 },
+              }
+            : { choice: "done", confidence: 1 },
+      },
+    );
+  });
