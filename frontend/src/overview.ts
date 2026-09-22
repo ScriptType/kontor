@@ -1,7 +1,11 @@
 import { Component, computed, inject } from "@angular/core";
 import { ActionControl, RegionControl } from "./action-registry";
-import { ActionDispatcher, action } from "./action-dispatcher";
-import type { Workspace } from "../../shared/domain";
+import { ActionDispatcher, action, filterReveals } from "./action-dispatcher";
+import {
+  defaultCaseFilters,
+  type CaseFilters,
+  type Workspace,
+} from "../../shared/domain";
 type Customer = Workspace["customers"][number];
 type Technician = Workspace["technicians"][number];
 @Component({
@@ -174,10 +178,13 @@ export class Overview {
       `customer-cases:${customer.id}`,
       `Vorgänge von ${customer.name} anzeigen`,
       {
-        does: `Show the cases of customer ${customer.name} in the case list`,
-        now: this.actions.currentPage(),
-        reveals:
-          "View only; changes no case data; opens the case list filtered to this customer",
+        does: `Go to the case list filtered to customer ${customer.name}`,
+        now: this.shownCases({
+          ...defaultCaseFilters,
+          customerId: customer.id,
+        }),
+        reveals: filterReveals,
+        notFor: `reaching one case of ${customer.name}; open that case itself`,
       },
     );
   }
@@ -186,10 +193,13 @@ export class Overview {
       `technician-cases:${t.id}`,
       `Offene Vorgänge von ${t.name} anzeigen`,
       {
-        does: `Show the open cases of ${t.name} in the case list`,
-        now: this.actions.currentPage(),
-        reveals:
-          "View only; changes no case data; opens the case list filtered to this technician",
+        does: `Go to the case list filtered to the open cases of ${t.name}`,
+        now: this.shownCases({
+          ...defaultCaseFilters,
+          technicianId: t.id,
+          status: "open",
+        }),
+        reveals: filterReveals,
         notFor: `assigning ${t.name} to a case`,
       },
     );
@@ -201,12 +211,15 @@ export class Overview {
         ? "Offene Vorgänge anzeigen"
         : "Erledigte Vorgänge anzeigen",
       {
-        does: `Show the ${status} cases in the case list`,
-        now: this.actions.currentPage(),
-        reveals:
-          "View only; changes no case data; opens the case list filtered by status",
+        does: `Go to the case list filtered to the ${status} cases`,
+        now: this.shownCases({ ...defaultCaseFilters, status }),
+        reveals: filterReveals,
+        notFor: "changing the status of a case",
       },
     );
+  }
+  shownCases(filters: CaseFilters) {
+    return `${this.actions.currentPage()}; ${this.actions.filterChange(filters)}`;
   }
   casesFor(id: string) {
     return this.ui.data()?.cases.filter((c) => c.customerId === id) ?? [];

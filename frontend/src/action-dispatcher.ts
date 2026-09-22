@@ -9,6 +9,7 @@ import {
   caseSchema,
   defaultCaseFilters,
   pageSchema,
+  type CaseFilters,
   type Page,
   type ServiceCase,
 } from "../../shared/domain";
@@ -32,6 +33,28 @@ export class ActionDispatcher {
   }
   currentPage() {
     return `current page is ${pageNames[this.ui.page()]}`;
+  }
+  filterChange(next: CaseFilters) {
+    const describe = (filters: CaseFilters) => ({
+      customer:
+        filters.customerId === null
+          ? "all customers"
+          : this.ui.customerName(filters.customerId),
+      technician:
+        filters.technicianId === null
+          ? "all"
+          : this.ui.technicianName(filters.technicianId),
+      status: filters.status,
+      search: `"${filters.search}"`,
+    });
+    const before = describe(this.ui.filters());
+    const after = describe(next);
+    const changes = (Object.keys(before) as (keyof typeof before)[])
+      .filter((key) => before[key] !== after[key])
+      .map((key) => `${key} filter ${before[key]} → ${after[key]}`);
+    return changes.length
+      ? changes.join("; ")
+      : "the case list filters already match; no change";
   }
   execute(id: string, actor: Actor) {
     const [kind, value] = id.split(":");
@@ -147,6 +170,8 @@ export function action(
 ): ActionDescription {
   return { id, label, effect, kind, jev };
 }
+export const filterReveals =
+  "Changes only the case list filters, not case data; the filters stay set after the request and are part of what the user sees";
 export const pageNames: Record<Page, string> = {
   cases: "the case list page",
   customers: "the customer overview page",

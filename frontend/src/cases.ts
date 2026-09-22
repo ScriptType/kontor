@@ -14,10 +14,12 @@ import {
   ActionDispatcher,
   action,
   appointmentText,
+  filterReveals,
 } from "./action-dispatcher";
 import type { FieldDescription } from "../../shared/command";
 import {
   blockers,
+  defaultCaseFilters,
   type CaseDraft,
   type CaseFilters,
   type ServiceCase,
@@ -155,8 +157,14 @@ export class Cases {
         does: customer
           ? `Filter the case list to customer ${customer.name}`
           : "Filter the case list to all customers (remove the customer filter)",
-        now: `customer filter is ${this.customerFilterText()}`,
-        notFor: "going to the customer overview page",
+        now: this.actions.filterChange({
+          ...this.ui.filters(),
+          customerId: customer?.id ?? null,
+        }),
+        reveals: filterReveals,
+        notFor: customer
+          ? `going to the customer overview page, or reaching one case of ${customer.name}; open that case itself`
+          : "going to the customer overview page",
       },
     );
   }
@@ -179,7 +187,11 @@ export class Cases {
         does: t
           ? `Filter the case list to cases assigned to ${t.name}`
           : "Filter the case list to all technicians (remove the technician filter)",
-        now: `technician filter is ${this.technicianFilterText()}`,
+        now: this.actions.filterChange({
+          ...this.ui.filters(),
+          technicianId: t?.id ?? null,
+        }),
+        reveals: filterReveals,
         notFor:
           "assigning a technician to a case (that is the assignee picker)",
       },
@@ -191,16 +203,20 @@ export class Cases {
       `${status.label} · Vorgangsstatus anzeigen`,
       {
         does: `Filter the case list by status: ${statusNames[status.value]}`,
-        now: `status filter is ${statusNames[this.ui.filters().status]}`,
+        now: this.actions.filterChange({
+          ...this.ui.filters(),
+          status: status.value,
+        }),
+        reveals: filterReveals,
         notFor: "changing the status of a case",
       },
     );
   }
   resetAction() {
-    const { status, search } = this.ui.filters();
     return action("filter:reset", "Filter zurücksetzen", {
       does: "Reset all case list filters (customer, technician, status, search)",
-      now: `customer ${this.customerFilterText()}, technician ${this.technicianFilterText()}, status ${status}, search "${search}"`,
+      now: this.actions.filterChange(defaultCaseFilters),
+      reveals: filterReveals,
     });
   }
   closeAction(c: ServiceCase, draft: CaseDraft) {
