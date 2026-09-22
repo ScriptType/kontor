@@ -25,9 +25,12 @@ const input = {
     offered("technician:lea", "draft"),
     offered("save", "commit"),
     offered("discard", "discard"),
-    offered("field:minutes:45", "draft"),
+    {
+      ...offered("field:minutes:45", "draft"),
+      value: { source: "number", bound: false },
+    },
   ],
-};
+} satisfies { actions: ActionDescription[] };
 const decision = (confidence: number, pmax: number) => ({
   confidence,
   ranked: [
@@ -43,9 +46,12 @@ test("g1 lets a view choice at pmax 0.72 act where the 75 % threshold does not",
   assert.equal(acts("threshold", 75, decision(0.72, 0.72), kind), false);
 });
 test("g1 holds a draft choice at pmax 0.80", () => {
-  for (const choice of ["technician:lea", "field:minutes:45"]) {
+  for (const [choice, expected] of [
+    ["technician:lea", "set"],
+    ["field:minutes:45", "draft"],
+  ] as const) {
     const kind = gateKind(choice, input);
-    assert.equal(kind, "draft");
+    assert.equal(kind, expected);
     assert.equal(acts("g1", 75, decision(0.8, 0.8), kind), false);
     assert.equal(acts("g1", 75, decision(0.85, 0.85), kind), true);
   }
@@ -150,7 +156,7 @@ test("a draft action whose value is a bound request candidate is its own kind", 
   assert.equal(gateKind("field:minutes:50", boundInput), "bound");
   assert.equal(gateKind("field:minutes:55", boundInput), "draft");
   assert.equal(gateKind("field:minutes:45", boundInput), "draft");
-  assert.equal(gateKind("technician:lea", boundInput), "draft");
+  assert.equal(gateKind("technician:lea", boundInput), "set");
 });
 test("threshold and g1 treat a bound draft exactly like a draft", () => {
   for (const gate of ["threshold", "g1"] as const) {
@@ -364,4 +370,110 @@ test("explore sends Jev the lean state, explore-nomem the full one", () => {
   assert.equal(gates["explore-nomem"].memory, false);
   for (const gate of gateNames)
     if (gate !== "explore") assert.equal(gates[gate].memory, false, gate);
+});
+
+test("a draft button without a value is set, a field candidate is draft or bound", () => {
+  assert.equal(gateKind("technician:lea", input), "set");
+  assert.equal(gateKind("field:minutes:45", input), "draft");
+  assert.equal(gateKind("field:minutes:50", boundInput), "bound");
+  assert.equal(gateKind("nav:reports", input), "view");
+});
+test("every gate before g3 treats set exactly like draft", () => {
+  const list = {
+    ...caseList,
+    actions: [...caseList.actions, ...input.actions],
+  };
+  assert.equal(gateKind("technician:lea", list), "set");
+  assert.equal(gateKind("field:minutes:45", list), "draft");
+  for (const gate of gateNames) {
+    if (gate === "g3") continue;
+    assert.equal(assesses(gate, "set"), assesses(gate, "draft"), gate);
+    for (const pmax of [0, 0.59, 0.6, 0.84, 0.85])
+      for (const percent of [60, 75])
+        assert.equal(
+          pick(
+            gate,
+            percent,
+            decided({ "technician:lea": pmax, "nav:team": 1 - pmax }),
+            list,
+          ).acts,
+          pick(
+            gate,
+            percent,
+            decided({ "field:minutes:45": pmax, "nav:team": 1 - pmax }),
+            list,
+          ).acts,
+          `${gate} ${pmax} ${percent}`,
+        );
+  }
+});
+test("g3 lets a button draft or a bound value act at 0.60 without an effect check", () => {
+  const list = {
+    ...caseList,
+    actions: [...caseList.actions, ...boundInput.actions],
+  };
+  for (const choice of ["technician:lea", "field:minutes:50"]) {
+    const at = pick(
+      "g3",
+      75,
+      decided({ [choice]: 0.6, "nav:team": 0.4 }),
+      list,
+    );
+    assert.equal(at.acts, true, choice);
+    assert.equal(assesses("g3", at.kind), false, choice);
+    assert.equal(
+      pick("g3", 75, decided({ [choice]: 0.59, "nav:team": 0.41 }), list).acts,
+      false,
+      choice,
+    );
+  }
+  const unbound = pick(
+    "g3",
+    75,
+    decided({ "field:minutes:55": 0.6, "nav:team": 0.4 }),
+    list,
+  );
+  assert.equal(unbound.kind, "draft");
+  assert.equal(unbound.acts, true);
+  assert.equal(assesses("g3", unbound.kind), true);
+});
+test("g3 holds a view at 0.31 that leads the next effect by only 0.09", () => {
+  const torn = decided({
+    "nav:reports": 0.31,
+    "nav:team": 0.22,
+    done: 0.22,
+    "ask:minutes": 0.22,
+    abstain: 0.03,
+  });
+  const held = pick("g3", 75, torn, caseList);
+  assert.equal(held.choice, "nav:reports");
+  assert.equal(held.margin.toFixed(2), "0.09");
+  assert.equal(held.acts, false);
+  const clear = decided({
+    "nav:reports": 0.32,
+    "nav:team": 0.22,
+    done: 0.22,
+    "ask:minutes": 0.22,
+    abstain: 0.02,
+  });
+  assert.equal(pick("g3", 75, clear, caseList).acts, true);
+});
+test("g3 keeps the save bar and check, offers no done before the first step and guards the run", () => {
+  const list = {
+    ...caseList,
+    actions: [...caseList.actions, ...input.actions],
+  };
+  assert.equal(
+    pick("g3", 75, decided({ save: 0.74, "nav:team": 0.26 }), list).acts,
+    false,
+  );
+  assert.equal(
+    pick("g3", 75, decided({ save: 0.75, "nav:team": 0.25 }), list).acts,
+    true,
+  );
+  assert.equal(assesses("g3", "commit"), true);
+  assert.equal(assesses("g3", "view"), false);
+  assert.equal(gates.g3.doneBeforeFirstStep, false);
+  assert.equal(gates.g3.guard, true);
+  assert.equal(gates.g3.memory, false);
 });

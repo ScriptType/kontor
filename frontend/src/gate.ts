@@ -5,8 +5,13 @@ import type {
 } from "../../shared/command.js";
 import { effectKey, noChangeKey } from "../../shared/dimensions.js";
 
+/**
+ * A draft is a field candidate; set is a button with a fixed effect; bound is
+ * a field candidate the request ties to that one field.
+ */
 export type GateKind =
   | "view"
+  | "set"
   | "draft"
   | "bound"
   | "commit"
@@ -38,6 +43,7 @@ export type GatePolicy = Read & {
 // Bars fitted on holdout-1 by the Jev bench (bench/gate-table.json).
 const g1Bars = {
   view: 0.7,
+  set: 0.85,
   draft: 0.85,
   bound: 0.85,
   commit: 0.75,
@@ -45,13 +51,19 @@ const g1Bars = {
 } as const satisfies Record<BarKind, number>;
 const effectBars = { ...g1Bars, view: 0.3, bound: 0.7 } as const;
 // Views and drafts are cheap to take back; the guard, not the bar, stops loops.
-const exploreBars = { ...g1Bars, view: 0, draft: 0.6, bound: 0.6 } as const;
+const exploreBars = {
+  ...g1Bars,
+  view: 0,
+  set: 0.6,
+  draft: 0.6,
+  bound: 0.6,
+} as const;
 
 export const gates = {
   threshold: {
     read: "confidence",
     bars: "percent",
-    assessed: ["draft", "bound", "commit"],
+    assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
     guard: false,
@@ -60,7 +72,7 @@ export const gates = {
   g1: {
     read: "pmax",
     bars: g1Bars,
-    assessed: ["draft", "bound", "commit"],
+    assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
     guard: false,
@@ -69,7 +81,7 @@ export const gates = {
   "g2-effect": {
     read: "pmax",
     bars: effectBars,
-    assessed: ["draft", "commit"],
+    assessed: ["set", "draft", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
     guard: false,
@@ -78,7 +90,7 @@ export const gates = {
   "g2-exits": {
     read: "pmax",
     bars: g1Bars,
-    assessed: ["draft", "bound", "commit"],
+    assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: false,
     memory: false,
     guard: false,
@@ -88,7 +100,7 @@ export const gates = {
     read: "pooled",
     margin: 0.1,
     bars: g1Bars,
-    assessed: ["draft", "bound", "commit"],
+    assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
     guard: false,
@@ -98,7 +110,7 @@ export const gates = {
     read: "pooled",
     margin: 0.1,
     bars: effectBars,
-    assessed: ["draft", "commit"],
+    assessed: ["set", "draft", "commit"],
     doneBeforeFirstStep: false,
     memory: false,
     guard: false,
@@ -122,6 +134,16 @@ export const gates = {
     guard: true,
     completion: "perKind",
   },
+  g3: {
+    read: "pooled",
+    margin: 0.1,
+    bars: { ...exploreBars, view: 0.3 },
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: false,
+    guard: true,
+    completion: "perKind",
+  },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
@@ -135,7 +157,9 @@ export function gateKind(
   if (choice.startsWith("ask:")) return "ask";
   const action = input.actions.find((action) => action.id === choice);
   if (action === undefined || action.kind === "discard") return "commit";
-  return action.kind === "draft" && action.value?.bound ? "bound" : action.kind;
+  if (action.kind !== "draft") return action.kind;
+  if (!action.value) return "set";
+  return action.value.bound ? "bound" : "draft";
 }
 
 export function bar(gate: GateName, percent: number, kind: GateKind) {
