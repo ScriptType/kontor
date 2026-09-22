@@ -30,6 +30,8 @@ export type GatePolicy = Read & {
   doneBeforeFirstStep: boolean;
   /** Lean state: a compact step log, and no options that change nothing. */
   memory: boolean;
+  /** Stop loops, repeated page visits and runs over their step budget. */
+  guard: boolean;
   completion: "verdict" | "perKind";
 };
 
@@ -50,6 +52,7 @@ export const gates = {
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
+    guard: false,
     completion: "verdict",
   },
   g1: {
@@ -58,6 +61,7 @@ export const gates = {
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
+    guard: false,
     completion: "perKind",
   },
   "g2-effect": {
@@ -66,6 +70,7 @@ export const gates = {
     assessed: ["draft", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
+    guard: false,
     completion: "perKind",
   },
   "g2-exits": {
@@ -74,6 +79,7 @@ export const gates = {
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: false,
     memory: false,
+    guard: false,
     completion: "perKind",
   },
   "g2-pool": {
@@ -83,6 +89,7 @@ export const gates = {
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
     memory: false,
+    guard: false,
     completion: "perKind",
   },
   g2: {
@@ -92,6 +99,7 @@ export const gates = {
     assessed: ["draft", "commit"],
     doneBeforeFirstStep: false,
     memory: false,
+    guard: false,
     completion: "perKind",
   },
 } as const satisfies Record<string, GatePolicy>;

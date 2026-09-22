@@ -22,6 +22,7 @@ import {
 } from "../../shared/command";
 import { validFieldValue } from "../../shared/field-values";
 import { changingActions } from "../../shared/dimensions";
+import { guardStop, type GuardStop } from "../../shared/run-guard";
 import { blockers, receiptSchema } from "../../shared/domain";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
@@ -102,6 +103,14 @@ const gatePreferenceSchema = z.object({
   gate: z.enum(gateNames),
 });
 const gatePreferenceKey = "kontor-jev-gate-v1";
+const guardMessages: Record<GuardStop, string> = {
+  repeat:
+    "Schritt zweimal ohne Wirkung ausgeführt. Bitte aktuellen Stand prüfen.",
+  revisit:
+    "Seite ohne Fortschritt erneut aufgerufen. Bitte aktuellen Stand prüfen.",
+  budget:
+    "Schrittbudget für diesen Auftrag erreicht. Ausgeführte Änderungen bleiben erhalten.",
+};
 @Injectable({ providedIn: "root" })
 export class CommandRunner {
   readonly ui = inject(WorkspaceUi);
@@ -797,6 +806,13 @@ export class CommandRunner {
   ) {
     if (epoch !== this.epoch || this.registry.modal || runId !== this.activeId)
       return false;
+    const stop = gates[this.gate].guard
+      ? guardStop(input, action, this.ui.page())
+      : null;
+    if (stop) {
+      this.block(guardMessages[stop]);
+      return false;
+    }
     const before = this.observed();
     const semanticBefore = this.observed(action.kind === "draft");
     if (

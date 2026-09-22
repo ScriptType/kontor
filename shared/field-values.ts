@@ -59,6 +59,12 @@ export const numberFieldCues = {
 } as const satisfies Record<string, RegExp>;
 const clauseBreak =
   /(?<!\b\d{1,2}\.\d{1,2})[.!?](?=\s|$)|[;\n]|\b(?:und|and|dann|danach|then)\b/giu;
+/** The request's clauses, split where number binding splits them. */
+export function requestClauses(request: string) {
+  return request
+    .split(clauseBreak)
+    .filter((clause) => /[\p{L}\p{N}]/u.test(clause));
+}
 // A number followed by a minute unit, glued or not, or standing alone. Digits
 // inside ids, dates, times and decimals ("V-1041", "28.9.", "9:30", "1,5")
 // are no number.
