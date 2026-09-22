@@ -316,7 +316,11 @@ async function serve(config: Config, store: WorkspaceStore, fetch?: Fetch) {
   return { url: `http://127.0.0.1:${address.port}`, close: () => app.close() };
 }
 
-export async function evalContext(browser: Browser, saveMode: SaveMode) {
+export async function evalContext(
+  browser: Browser,
+  saveMode: SaveMode,
+  threshold = confidencePercent,
+) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
   });
@@ -331,7 +335,7 @@ export async function evalContext(browser: Browser, saveMode: SaveMode) {
         JSON.stringify({ version: 1, mode }),
       );
     },
-    { percent: confidencePercent, mode: saveMode },
+    { percent: threshold, mode: saveMode },
   );
   return context;
 }
@@ -350,6 +354,7 @@ export async function runSample(options: {
   sample: number;
   variant: string;
   saveMode: SaveMode;
+  threshold?: number;
   budget: Budget;
   maxCalls?: number;
   timeoutMs?: number;
@@ -408,7 +413,11 @@ export async function runSample(options: {
     return response;
   };
   const app = await serve(config, store, fetch);
-  const context = await evalContext(browser, options.saveMode);
+  const context = await evalContext(
+    browser,
+    options.saveMode,
+    options.threshold,
+  );
   const page = await context.newPage();
   const stops: Stop[] = [];
   let observed: (Observed & Run) | null = null;

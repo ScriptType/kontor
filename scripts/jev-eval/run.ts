@@ -34,6 +34,7 @@ const { values } = parseArgs({
     "max-calls": { type: "string", default: "600" },
     scenarios: { type: "string" },
     "save-mode": { type: "string", default: "auto" },
+    threshold: { type: "string" },
   },
 });
 const whole = z.coerce.number().int();
@@ -46,6 +47,9 @@ const count = whole.min(0).parse(values.count);
 const samples = whole.min(1).max(10).parse(values.samples);
 const concurrency = whole.min(1).max(8).parse(values.concurrency);
 const saveMode = z.enum(saveModes).parse(values["save-mode"]);
+const threshold = values.threshold
+  ? whole.min(0).max(100).parse(values.threshold)
+  : confidencePercent;
 const budget: Budget = {
   used: 0,
   limit: whole.min(1).parse(values["max-calls"]),
@@ -94,7 +98,7 @@ const meta = {
   "scenarios sha256": scenariosSha256,
   samples,
   concurrency,
-  "confidence threshold": `${confidencePercent} %`,
+  "confidence threshold": `${threshold} %`,
   "save mode": saveMode,
   started: new Date().toISOString(),
 };
@@ -132,6 +136,7 @@ try {
           config,
           variant,
           saveMode,
+          threshold,
           budget,
           ...job,
         });
@@ -164,7 +169,7 @@ try {
     ["count", scenarios.length],
     ["samples", results.length],
     ["save mode", saveMode],
-    ["threshold", confidencePercent],
+    ["threshold", threshold],
     ["out dir", resolve(out)],
     ["provider calls", budget.used],
     ["magic", all.magic],
