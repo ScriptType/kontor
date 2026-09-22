@@ -27,19 +27,22 @@ const answerSchema = z.object({
   ),
 });
 type Answer = z.infer<typeof answerSchema>["answers"][string];
+export function createClient(
+  config: Extract<Config, { mode: "live" }>,
+  fetch?: Fetch,
+) {
+  return new TypeSafeClient({
+    apiKey: config.apiKey,
+    defaultModel: config.model,
+    baseURL: "https://api.typesafe.ai",
+    retry: { maxRetries: 0 },
+    timeout: 10000,
+    logLevel: "off",
+    fetch,
+  });
+}
 export function createJev(config: Config, fetch?: Fetch) {
-  const client =
-    config.mode === "live"
-      ? new TypeSafeClient({
-          apiKey: config.apiKey,
-          defaultModel: config.model,
-          baseURL: "https://api.typesafe.ai",
-          retry: { maxRetries: 0 },
-          timeout: 10000,
-          logLevel: "off",
-          fetch,
-        })
-      : null;
+  const client = config.mode === "live" ? createClient(config, fetch) : null;
   async function ask(
     state: string,
     questions: Record<
