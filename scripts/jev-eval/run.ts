@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "@playwright/test";
 import { z } from "zod";
@@ -12,7 +12,13 @@ import {
   saveModes,
   type Budget,
 } from "./harness.js";
-import { markdown, summaries, type SampleResult } from "./report.js";
+import {
+  appendTsv,
+  markdown,
+  summaries,
+  summarize,
+  type SampleResult,
+} from "./report.js";
 import { readScenarios, scenarioProblems } from "./scenario-files.js";
 import { allScenarios } from "./scenarios.js";
 
@@ -69,17 +75,23 @@ const jobs = scenarios.flatMap((scenario) =>
     sample: i + 1,
   })),
 );
+const scenariosSha256 =
+  file?.sha256 ?? createHash("sha256").update(scenariosJson).digest("hex");
 const config = readConfig({ ...process.env, TYPESAFE_MODE: "live" });
+const git = (...args: string[]) => execFileSync("git", args).toString().trim();
+const commit = `${git("rev-parse", "--short", "HEAD")}${git("status", "--porcelain", "--untracked-files=no") ? "-dirty" : ""}`;
+const runIndex = join(
+  dirname(git("rev-parse", "--path-format=absolute", "--git-common-dir")),
+  "live-results",
+  "jev-eval-runs.tsv",
+);
 const meta = {
   variant,
-  commit: execFileSync("git", ["rev-parse", "--short", "HEAD"])
-    .toString()
-    .trim(),
+  commit,
   model: config.mode === "live" ? config.model : "demo",
   ...(values.scenarios ? { scenarios: values.scenarios } : { seed, count }),
   ...(only ? { only: only.join(",") } : {}),
-  "scenarios sha256":
-    file?.sha256 ?? createHash("sha256").update(scenariosJson).digest("hex"),
+  "scenarios sha256": scenariosSha256,
   samples,
   concurrency,
   "confidence threshold": `${confidencePercent} %`,
@@ -142,5 +154,21 @@ try {
 } finally {
   await browser.close();
   await write();
+  const all = summarize(results);
+  await appendTsv(runIndex, [
+    ["ts", meta.started],
+    ["variant", variant],
+    ["branch", git("rev-parse", "--abbrev-ref", "HEAD")],
+    ["commit", commit],
+    ["scenarios sha256", scenariosSha256],
+    ["count", scenarios.length],
+    ["samples", results.length],
+    ["save mode", saveMode],
+    ["threshold", confidencePercent],
+    ["out dir", resolve(out)],
+    ["provider calls", budget.used],
+    ["magic", all.magic],
+    ["silent-wrong", all.silentWrong],
+  ]);
 }
-process.stdout.write(`${join(out, "report.md")}\n`);
+process.stdout.write(`${join(out, "report.md")}\n${runIndex}\n`);

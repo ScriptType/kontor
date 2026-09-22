@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { appendTsv } from "../scripts/jev-eval/report.js";
 import { readScenarios } from "../scripts/jev-eval/scenario-files.js";
 import { allScenarios } from "../scripts/jev-eval/scenarios.js";
 
@@ -45,4 +46,24 @@ test("a scenario file with a misspelled dimension, a stale expectation or a twic
     readScenarios(await file([fresh, { ...repeat, id: fresh.id }])),
     /user-fresh: the id is used twice/,
   );
+});
+test("the run index writes its header once and one tab-separated line per run", async () => {
+  const path = join(
+    await mkdtemp(join(tmpdir(), "jev-eval-")),
+    "live-results",
+    "runs.tsv",
+  );
+  await Promise.all([
+    appendTsv(path, [
+      ["variant", "a"],
+      ["magic", 3],
+    ]),
+    appendTsv(path, [
+      ["variant", "b\tc"],
+      ["magic", 0],
+    ]),
+  ]);
+  const lines = (await readFile(path, "utf8")).split("\n");
+  assert.equal(lines[0], "variant\tmagic");
+  assert.deepEqual(lines.slice(1).sort(), ["", "a\t3", "b c\t0"]);
 });

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { appendFile, link, mkdir, unlink, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { SaveMode } from "./harness.js";
 import type { Outcome, Stop, Verdict } from "./judge.js";
 import type { Scenario } from "./scenarios.js";
@@ -106,4 +109,24 @@ export function markdown(
     ...samples,
     "",
   ].join("\n");
+}
+
+export async function appendTsv(
+  path: string,
+  row: [header: string, value: string | number][],
+) {
+  const line = (cells: (string | number)[]) =>
+    `${cells.map((c) => String(c).replace(/[\t\r\n]+/g, " ")).join("\t")}\n`;
+  const entry = line(row.map(([, value]) => value));
+  await mkdir(dirname(path), { recursive: true });
+  const fresh = `${path}.${randomUUID()}`;
+  await writeFile(fresh, line(row.map(([header]) => header)) + entry);
+  try {
+    await link(fresh, path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    await appendFile(path, entry);
+  } finally {
+    await unlink(fresh);
+  }
 }

@@ -103,6 +103,8 @@ Dazu kommen die Fragen als Mittelwert je Lauf und als Anteil der Läufe mit mind
 
 Das Ausgabeverzeichnis enthält `report.md`, `results.json`, `scenarios.json` und je Lauf eine Datei unter `samples/`. Eine Lauf-Datei enthält Halte, Schritte, beobachteten Endzustand, Abweichungen und die Anbieterantworten mit Auswahl und Confidence. Trägt der Eintrag des Laufs im Jev-Verlauf `coverageProbability` oder `checklist`, übernimmt der Lauf beide in den beobachteten Endzustand. `coverageProbability` steht zusätzlich im Ergebnis und in der Spalte coverage des Berichts. Fehlt ein Feld, steht dort `null`. `live-results/` bleibt außerhalb von Git.
 
+Jeder Aufruf hängt nach dem letzten Lauf eine Zeile an `live-results/jev-eval-runs.tsv` im Hauptverzeichnis des Repositorys an, auch aus einem Worktree. Die Datei beginnt mit der Kopfzeile `ts`, `variant`, `branch`, `commit`, `scenarios sha256`, `count`, `samples`, `save mode`, `threshold`, `out dir`, `provider calls`, `magic`, `silent-wrong`. `count` ist die Zahl der Szenarien und `samples` die Zahl der abgeschlossenen Läufe. `magic` und `silent-wrong` sind Anzahlen dieser Läufe. `commit` endet auf `-dirty`, wenn versionierte Dateien geändert sind. Parallele Aufrufe schreiben jede Zeile vollständig und die Kopfzeile genau einmal.
+
 ## Nicht gemessen
 
 - Verständlichkeit und Qualität der Rückfragen. Der Lauf zählt sie nur.
