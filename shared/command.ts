@@ -69,17 +69,19 @@ export type Decision = z.infer<typeof decisionSchema>;
 export const assessmentInputSchema = decisionInputSchema.extend({
   selected: z.union([actionSchema, z.literal("done")]),
 });
+const verdictSchema = z.enum([
+  "authorized",
+  "additional",
+  "forbidden",
+  "complete",
+  "outstanding",
+  "unclear",
+]);
 export const assessmentSchema = z.object({
   snapshotId: z.string(),
-  verdict: z.enum([
-    "authorized",
-    "additional",
-    "forbidden",
-    "complete",
-    "outstanding",
-    "unclear",
-  ]),
+  verdict: verdictSchema,
   confidence: z.number().min(0).max(1),
+  probabilities: z.partialRecord(verdictSchema, z.number().min(0).max(1)),
 });
 export type Assessment = z.infer<typeof assessmentSchema>;
 export type ActionDescription = z.infer<typeof actionSchema>;

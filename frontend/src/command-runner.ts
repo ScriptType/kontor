@@ -29,7 +29,7 @@ import {
   choiceDescription,
   type DecisionCapture,
 } from "./decision-review";
-import { acts, gateKind, gateNames } from "./gate";
+import { acts, completes, gateKind, gateNames, workKind } from "./gate";
 export type RunState =
   | {
       kind:
@@ -671,8 +671,12 @@ export class CommandRunner {
       return;
     }
     if (
-      assessment.verdict !== "complete" ||
-      assessment.confidence < this.confidencePercent() / 100 ||
+      !completes(
+        this.gate,
+        this.confidencePercent(),
+        assessment,
+        workKind(input.steps),
+      ) ||
       !this.acts(capture) ||
       this.ui.busy() ||
       this.ui.unknownSave() ||

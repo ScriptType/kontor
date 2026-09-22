@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acts, gateKind } from "../frontend/src/gate.js";
+import { acts, completes, gateKind, workKind } from "../frontend/src/gate.js";
 import type { ActionDescription } from "../shared/command.js";
 
 const offered = (id: string, kind: ActionDescription["kind"]) => ({
@@ -68,4 +68,57 @@ test("the threshold gate reads confidence, not pmax", () => {
 test("g1 reads pmax, not confidence", () => {
   assert.equal(acts("g1", 75, decision(0.2, 0.9), "draft"), true);
   assert.equal(acts("g1", 75, decision(0.99, 0.6), "view"), false);
+});
+
+const step = (kind: ActionDescription["kind"]) => ({
+  action: offered(kind, kind),
+});
+const assessed = (
+  complete: number,
+  verdict: "complete" | "outstanding" = complete >= 0.5
+    ? "complete"
+    : "outstanding",
+) => ({
+  verdict,
+  confidence: Math.max(complete, 1 - complete),
+  probabilities: { complete, outstanding: 1 - complete, unclear: 0 },
+});
+
+test("the kind of work is saved once any step committed, else draft once any step drafted", () => {
+  assert.equal(workKind([]), "view");
+  assert.equal(workKind([step("view"), step("discard")]), "view");
+  assert.equal(workKind([step("view"), step("draft")]), "draft");
+  assert.equal(workKind([step("draft"), step("discard")]), "draft");
+  assert.equal(
+    workKind([step("draft"), step("commit"), step("draft")]),
+    "saved",
+  );
+  assert.equal(workKind([step("commit"), step("view")]), "saved");
+});
+test("g1 confirms done when P(complete) reaches the bar of the kind of work", () => {
+  for (const [kind, bar] of [
+    ["view", 0.6],
+    ["draft", 0.85],
+    ["saved", 0.8],
+  ] as const) {
+    assert.equal(completes("g1", 75, assessed(bar), kind), true, kind);
+    assert.equal(completes("g1", 75, assessed(bar - 0.01), kind), false, kind);
+  }
+});
+test("g1 reads P(complete), not the verdict confidence or the configured threshold", () => {
+  const sure = { ...assessed(0.7), confidence: 0.99 };
+  assert.equal(completes("g1", 75, sure, "saved"), false);
+  assert.equal(completes("g1", 100, assessed(0.62), "view"), true);
+  assert.equal(completes("g1", 0, assessed(0.84), "draft"), false);
+});
+test("the threshold gate keeps the verdict and its confidence for every kind of work", () => {
+  for (const kind of ["view", "draft", "saved"] as const) {
+    assert.equal(completes("threshold", 75, assessed(0.75), kind), true);
+    assert.equal(completes("threshold", 75, assessed(0.74), kind), false);
+    assert.equal(completes("threshold", 60, assessed(0.62), kind), true);
+    assert.equal(
+      completes("threshold", 0, assessed(0.2, "outstanding"), kind),
+      false,
+    );
+  }
 });

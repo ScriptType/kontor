@@ -673,3 +673,42 @@ for (const stored of [
       },
     );
   });
+
+for (const run of [
+  {
+    work: "view-only",
+    request: "Zeige Berichte.",
+    sequence: ["nav:reports"],
+    complete: 0.62,
+    finishes: { g1: true, threshold: false },
+  },
+  {
+    work: "saved",
+    request: "Weise V-1042 Lea Sommer zu und speichere.",
+    sequence: ["case:V-1042", "menu:technician", "technician:lea", "save"],
+    complete: 0.78,
+    finishes: { g1: false, threshold: true },
+  },
+] as const)
+  for (const gate of ["g1", "threshold"] as const)
+    test(`${gate} completion of a ${run.work} run at P(complete) ${run.complete}`, async ({
+      page,
+    }) => {
+      await page.addInitScript(
+        (value) => localStorage.setItem("kontor-jev-gate-v1", value),
+        JSON.stringify({ version: 1, gate }),
+      );
+      await withLive(
+        page,
+        [...run.sequence],
+        async () => {
+          await start(page, run.request);
+          await expect(page.locator(".activity-label")).toContainText(
+            run.finishes[gate]
+              ? "Jev meldet"
+              : "vollständige Erfüllung noch nicht bestätigen",
+          );
+        },
+        { completeProbability: run.complete },
+      );
+    });

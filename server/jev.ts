@@ -10,6 +10,7 @@ import {
   renderJev,
   type Decision,
   type DecisionInput,
+  assessmentSchema,
   type assessmentInputSchema,
 } from "../shared/command.js";
 import type { Config } from "./config.js";
@@ -182,15 +183,18 @@ export function createJev(config: Config, fetch?: Fetch) {
       input: z.infer<typeof assessmentInputSchema>,
       signal?: AbortSignal,
     ) {
-      if (!client)
+      if (!client) {
+        const verdict =
+          input.selected === "done"
+            ? ("complete" as const)
+            : ("authorized" as const);
         return {
           snapshotId: input.snapshotId,
-          verdict:
-            input.selected === "done"
-              ? ("complete" as const)
-              : ("authorized" as const),
+          verdict,
           confidence: 1,
+          probabilities: { [verdict]: 1 },
         };
+      }
       const options: Record<string, string> =
         input.selected === "done"
           ? {
@@ -225,20 +229,12 @@ export function createJev(config: Config, fetch?: Fetch) {
       );
       const answer = answers["assessment"];
       if (!answer) throw new ORPCError("PROVIDER_INVALID_RESPONSE");
-      return {
+      return assessmentSchema.parse({
         snapshotId: input.snapshotId,
-        verdict: z
-          .enum([
-            "authorized",
-            "additional",
-            "forbidden",
-            "complete",
-            "outstanding",
-            "unclear",
-          ])
-          .parse(answer.choice),
+        verdict: answer.choice,
         confidence: answer.confidence,
-      };
+        probabilities: answer.probabilities,
+      });
     },
   };
 }

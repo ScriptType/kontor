@@ -27,6 +27,7 @@ export async function withLive(
     assessment?: string;
     assessmentConfidence?: number;
     completionVerdict?: "complete" | "outstanding" | "unclear";
+    completeProbability?: number;
     holdAssessment?: string;
     forbidCommit?: boolean;
     outstanding?: boolean;
@@ -92,7 +93,24 @@ export async function withLive(
         key === "assessment" && selected !== "done"
           ? options.effectAnswer?.(selected)
           : undefined;
+      const complete =
+        key === "assessment" && selected === "done"
+          ? options.completeProbability
+          : undefined;
+      const completion =
+        complete === undefined
+          ? undefined
+          : {
+              choice: complete >= 0.5 ? "complete" : "outstanding",
+              confidence: Math.max(complete, 1 - complete),
+              probabilities: {
+                complete,
+                outstanding: 1 - complete,
+                unclear: 0,
+              } as Record<string, number>,
+            };
       const choice =
+        completion?.choice ??
         effectAnswer?.choice ??
         (key === "next"
           ? next
@@ -126,6 +144,7 @@ export async function withLive(
             type: "choice",
             choice,
             confidence:
+              completion?.confidence ??
               nextAnswer?.confidence ??
               effectAnswer?.confidence ??
               (key === "cause"
@@ -139,11 +158,13 @@ export async function withLive(
               Object.keys(payload.questions[key]?.criteria ?? {}).map(
                 (option) => [
                   option,
-                  nextAnswer?.probabilities
-                    ? (nextAnswer.probabilities[option] ?? 0)
-                    : option === choice
-                      ? 1
-                      : 0,
+                  completion
+                    ? (completion.probabilities[option] ?? 0)
+                    : nextAnswer?.probabilities
+                      ? (nextAnswer.probabilities[option] ?? 0)
+                      : option === choice
+                        ? 1
+                        : 0,
                 ],
               ),
             ),
