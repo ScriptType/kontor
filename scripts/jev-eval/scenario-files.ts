@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
   caseFiltersSchema,
+  defaultCaseFilters,
   editableSchema,
   pageSchema,
 } from "../../shared/domain.js";
@@ -12,6 +13,7 @@ import {
   expectEnd,
   flagDimensions,
   listDimensions,
+  scenario,
   validateScenario,
   type Scenario,
 } from "./scenarios.js";
@@ -37,7 +39,9 @@ const ambiguousSchema = z.union([
 const scenarioId = z.string().regex(/^[\w.-]+$/);
 export const scenarioSchema: z.ZodType<Scenario> = z.strictObject({
   id: scenarioId,
-  source: z.enum(["regression", "use-case", "generated"]),
+  source: z.enum(["regression", "use-case", "generated", "authored"]),
+  persona: z.string().optional(),
+  rationale: z.string().optional(),
   request: z.string().min(1),
   noise: z.array(z.string()),
   minSamples: z.number().int().min(1),
@@ -90,4 +94,61 @@ export async function readScenarios(path: string) {
     scenarios: parsed.data,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
+}
+
+export const draftSchema = z.strictObject({
+  id: scenarioId,
+  persona: z.string().min(1),
+  request: z.string().min(1),
+  start: startSchema
+    .extend({ filters: caseFiltersSchema.partial().strict() })
+    .partial()
+    .default({}),
+  intent: intentSchema
+    .extend({
+      flags: z.partialRecord(z.enum(flagDimensions), z.boolean()),
+    })
+    .partial(),
+  ambiguous: z.array(ambiguousSchema).default([]),
+  tags: z.array(z.string()).default([]),
+  rationale: z.string().min(1),
+});
+export type Draft = z.input<typeof draftSchema>;
+
+export function scenarioFromDraft(input: unknown): Scenario {
+  const parsed = draftSchema.safeParse(input);
+  if (!parsed.success) throw new Error(z.prettifyError(parsed.error));
+  const draft = parsed.data;
+  const { cases = {}, sequence = {}, pages = [], flags = {} } = draft.intent;
+  const changes = Object.values(cases).some(
+    (values) => Object.keys(values).length,
+  );
+  const built: Scenario = {
+    ...scenario({
+      id: draft.id,
+      source: "authored",
+      request: draft.request,
+      noise: draft.tags,
+      start: {
+        ...draft.start,
+        filters: { ...defaultCaseFilters, ...draft.start.filters },
+      },
+      intent: {
+        ...draft.intent,
+        flags: {
+          ...flags,
+          save: flags.save ?? (changes && !flags.noSave),
+          sequence:
+            flags.sequence ??
+            (pages.length > 1 || Object.keys(sequence).length > 0),
+        },
+      },
+      ambiguous: draft.ambiguous,
+    }),
+    persona: draft.persona,
+    rationale: draft.rationale,
+  };
+  const problems = scenarioProblems([built]);
+  if (problems.length) throw new Error(problems.join("\n"));
+  return built;
 }

@@ -68,11 +68,19 @@ export function summarize(results: SampleResult[]): Summary {
 export function summaries(results: SampleResult[]) {
   const groups: [string, SampleResult[]][] = [
     ["all", results],
-    ["regression", results.filter((r) => r.source !== "generated")],
+    [
+      "regression",
+      results.filter(
+        (r) => r.source === "regression" || r.source === "use-case",
+      ),
+    ],
     ["generated", results.filter((r) => r.source === "generated")],
+    ["authored", results.filter((r) => r.source === "authored")],
   ];
   return Object.fromEntries(
-    groups.map(([name, group]) => [name, summarize(group)]),
+    groups
+      .filter(([name, group]) => name === "all" || group.length)
+      .map(([name, group]) => [name, summarize(group)]),
   );
 }
 

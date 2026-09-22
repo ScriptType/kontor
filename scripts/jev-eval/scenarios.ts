@@ -50,7 +50,9 @@ export type ExpectedEnd = {
 };
 export type Scenario = {
   id: string;
-  source: "regression" | "use-case" | "generated";
+  source: "regression" | "use-case" | "generated" | "authored";
+  persona?: string;
+  rationale?: string;
   request: string;
   noise: string[];
   minSamples: number;

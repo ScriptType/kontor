@@ -50,6 +50,50 @@ Der Validator verwirft Szenarien, deren erwartete Werte die Oberfläche nicht er
 
 Eine Szenariodatei hat das Format der `scenarios.json` im Ausgabeverzeichnis. Der Lauf prüft sie vor dem ersten Anbieteraufruf: Schema ohne unbekannte Schlüssel, Validator, eindeutige IDs und ob der erwartete Endzustand aus Start und Absicht folgt. Ein Fehler nennt Szenario und Grund. `report.md` und `results.json` enthalten die SHA-256 der Datei. Ohne Datei steht dort die SHA-256 der geschriebenen `scenarios.json`.
 
+## Szenarioentwürfe
+
+`scripts/jev-eval/draft.ts` macht aus Entwürfen vollständige Szenarien. Der Befehl ruft keinen Anbieter auf:
+
+```sh
+node --import tsx scripts/jev-eval/draft.ts --in <entwurf.json> --out <szenarien.json>
+```
+
+`--in` enthält einen Entwurf oder ein Array von Entwürfen. `--out` erhält immer ein Array und passt direkt zu `--scenarios` von Lauf und Nachspielen. Der Befehl berechnet den erwarteten Endzustand mit `expectEnd`, prüft jedes Szenario wie eine Szenariodatei und gibt je Szenario eine Zeile mit Seite, Filtern, Speicherungen, Entwurf und Übergabe aus. Bei einem Fehler nennt er Entwurf und Grund, schreibt nichts und endet mit Status 1. Im Code heißt die Funktion `scenarioFromDraft`.
+
+Start und Absicht haben dieselbe Form wie in den festen Szenarien in `scenarios.ts`. Unbekannte Schlüssel sind Fehler.
+
+| Feld | Pflicht | Inhalt |
+| --- | --- | --- |
+| `id` | ja | Buchstaben, Ziffern, `_`, `.` und `-`. Eindeutig in der Datei. |
+| `persona` | ja | Wer den Auftrag schreibt. Steht im Szenario. |
+| `request` | ja | Der Auftrag an Jev. Minuten, Termine und Suchtexte müssen wörtlich darin stehen oder in `ambiguous` genannt sein. |
+| `start` | nein | `page` (`cases`, `customers`, `team`, `reports`, Standard `cases`), `filters` (beliebige Teilmenge von `customerId`, `technicianId`, `status` mit `all`, `open` oder `done` und `search`), `selectedCase` (Vorgang, der vor dem Auftrag offen ist, Standard `null`), `saved` (bereits gespeicherte Werte je Vorgang in der Form von `intent.cases`). |
+| `intent` | ja | `cases` (je Vorgang die Werte der Fall-Dimensionen, `{}` heißt nur öffnen), `sequence` (geordnete Zwischenstände je Vorgang, jeder wird gespeichert), `filters` (Listen-Dimensionen), `pages` (Seiten in Reihenfolge, die letzte ist das Ende), `flags` (`save`, `noSave`, `unsupported`, `sequence`). |
+| `ambiguous` | nein | Werte ohne wörtlichen Kandidaten, etwa `{"dimension":"workedMinutes","caseId":"V-1042"}` für „ne Stunde“ oder `{"dimension":"search"}`. |
+| `tags` | nein | Störungen im Auftrag. Sie werden zu `noise`. |
+| `rationale` | ja | Warum das Szenario zählt. |
+
+Fall-Dimensionen und Werte: `technician` (`lea`, `jonas`, `mara`), `workedMinutes` (`"60"`), `appointmentStart` (`"2026-09-25T10:00"` oder `"none"`), `appointmentDuration` (`"45"`), `status` (`open`, `done`), `priority` (`Hoch`, `Normal`). Listen-Dimensionen: `customerFilter` (`nord`, `hafen`, `linden`, `all`), `technicianFilter` (Personen-ID oder `all`), `statusFilter` (`all`, `open`, `done`), `search` (Text). Alle Werte sind Zeichenketten.
+
+Fehlt `flags.save`, gilt `true`, sobald ein Vorgang Werte erhält und `noSave` fehlt. Fehlt `flags.sequence`, gilt `true` bei mehr als einer Seite oder bei `sequence`. `unsupported` markiert eine Zusatzaufgabe außerhalb der App und erwartet eine Übergabe.
+
+```json
+{
+  "id": "ctl-01",
+  "persona": "Disponentin am Handy, tippt schnell",
+  "request": "1041 an marla, 60 min, dann nordweg filter u berichte",
+  "start": { "page": "cases", "selectedCase": "V-1041", "filters": { "status": "open" } },
+  "intent": {
+    "cases": { "V-1041": { "technician": "mara", "workedMinutes": "60" } },
+    "filters": { "customerFilter": "nord" },
+    "pages": ["reports"]
+  },
+  "ambiguous": [],
+  "tags": ["bare-id-number", "typo-name", "typo-customer", "abbreviation"],
+  "rationale": "Kurzform des Nutzerauftrags. Prüft die bloße Zahl als Vorgang und zwei Tippfehler."
+}
+```
+
 ## Ablauf eines Laufs
 
 Jeder Lauf startet den echten Server mit einer Datenbank im Arbeitsspeicher und öffnet Chrome. Gespeicherte Startwerte schreibt der Lauf direkt in die Datenbank. Seite, Vorgang und Filter stellt er über die Oberfläche ein. Die Bestätigungsschwelle ist 75 Prozent.
