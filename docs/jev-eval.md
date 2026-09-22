@@ -79,15 +79,21 @@ Der Lauf liest den Endzustand ohne Prüfhaken im Produktcode:
 
 Der Vergleich verlangt jeden Datensatz exakt. Gespeicherte Zwischenzustände müssen in der erwarteten Reihenfolge vorkommen. Eine Speicherung an einem Vorgang ohne erwartete Änderung ist eine unerwartete Speicherung. Ein ungespeicherter Entwurf ist nur bei „nicht speichern“ richtig. Verlangt ein Auftrag etwas Unmögliches, darf Jev den Auftrag nicht als erledigt melden. Eine abschließende Blockade nach der erreichbaren Arbeit gilt dann als erwartete Übergabe und nicht als Frage.
 
-| Kennzahl | Bedeutung |
+Jeder Lauf erhält genau eine Kategorie. Ein Fehler geht vor, danach der Halt an einer unbeantworteten Frage, danach der Endzustand.
+
+| Kategorie | Bedeutung |
 | --- | --- |
-| magic | Endzustand richtig und keine Frage. |
-| Fragen | Mittelwert je Lauf und Anteil der Läufe mit mindestens einer Frage. |
+| magic | Endzustand richtig, keine Frage und keine Übergabe. |
+| handoff | Endzustand richtig, und der Lauf hält korrekt für die erwartete Übergabe an einen Menschen an. Das ist nicht magic, auch nicht nach beantworteten Chips. |
+| correct-after-chips | Endzustand richtig, und jede Frage war ein Chip, den der Lauf beantwortet hat. |
+| stopped-unanswered | Der Lauf endet an einer Frage ohne Chip-Antwort: Auswahlprüfung, fehlender Wert, Freigabe, Blockade ohne erwartete Übergabe oder unbeantwortbarer Chip. Der Bericht zählt in Klammern, wie oft der Endzustand in diesem Moment schon stimmte. |
+| asked-wrong | Chips beantwortet, Endzustand trotzdem falsch. |
 | silent-wrong | Endzustand falsch oder unerwartete Speicherung, ohne Frage. |
-| correct after questions | Endzustand richtig nach mindestens einer Frage. |
-| asked, still wrong | Frage gestellt, Endzustand trotzdem falsch. |
-| errors | Anbieter- oder Harnessfehler, etwa Zeitüberschreitung. |
-| Aufrufe, Zeit | Anbieteraufrufe und Laufzeit vom Absenden bis zum letzten Halt. |
+| error | Anbieter- oder Harnessfehler, etwa Zeitüberschreitung. |
+
+Dazu kommen die Fragen als Mittelwert je Lauf und als Anteil der Läufe mit mindestens einer Frage, die Anbieteraufrufe und die Laufzeit vom Absenden bis zum letzten Halt.
+
+Ältere Berichte kennen `correct-after-questions` statt `correct-after-chips` und zählen eine erwartete Übergabe als magic. Läufe, die an einer unbeantworteten Frage endeten, stehen dort unter `correct-after-questions` oder `asked-wrong`. magic und silent-wrong bleiben vergleichbar: Ein älterer magic-Wert entspricht magic plus handoff ohne Chips, silent-wrong ist unverändert.
 
 ## Ausgabe
 

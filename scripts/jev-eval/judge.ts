@@ -37,7 +37,9 @@ export type Observed = {
 };
 export type Outcome =
   | "magic"
-  | "correct-after-questions"
+  | "handoff"
+  | "correct-after-chips"
+  | "stopped-unanswered"
   | "asked-wrong"
   | "silent-wrong"
   | "error";
@@ -119,24 +121,31 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
       `reported done although the request needs a handoff (${expected.handoff})`,
     );
   const endCorrect = !mismatches.length && !unexpectedSaves.length;
-  const handoff =
-    endCorrect && expected.handoff !== null && final?.kind === "blocked"
-      ? 1
-      : 0;
+  const handedOff =
+    endCorrect && expected.handoff !== null && final?.kind === "blocked";
   const questions =
     observed.stops.filter((stop) => questionKinds.has(stop.kind)).length -
-    handoff;
+    (handedOff ? 1 : 0);
+  const unanswered =
+    !handedOff &&
+    final !== undefined &&
+    final.kind !== "confirm" &&
+    questionKinds.has(final.kind);
   const outcome: Outcome = observed.stops.some(
     (stop) => stop.kind === "error" || stop.kind === "timeout",
   )
     ? "error"
-    : endCorrect
-      ? questions
-        ? "correct-after-questions"
-        : "magic"
-      : questions
-        ? "asked-wrong"
-        : "silent-wrong";
+    : unanswered
+      ? "stopped-unanswered"
+      : endCorrect
+        ? handedOff
+          ? "handoff"
+          : questions
+            ? "correct-after-chips"
+            : "magic"
+        : questions
+          ? "asked-wrong"
+          : "silent-wrong";
   return { outcome, endCorrect, questions, mismatches, unexpectedSaves };
 }
 

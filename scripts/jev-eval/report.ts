@@ -17,7 +17,10 @@ export type SampleResult = Verdict & {
 export type Summary = {
   samples: number;
   magic: number;
-  correctAfterQuestions: number;
+  handoff: number;
+  correctAfterChips: number;
+  stoppedUnanswered: number;
+  stoppedUnansweredEndCorrect: number;
   askedWrong: number;
   silentWrong: number;
   errors: number;
@@ -37,7 +40,12 @@ export function summarize(results: SampleResult[]): Summary {
   return {
     samples: results.length,
     magic: count(results, "magic"),
-    correctAfterQuestions: count(results, "correct-after-questions"),
+    handoff: count(results, "handoff"),
+    correctAfterChips: count(results, "correct-after-chips"),
+    stoppedUnanswered: count(results, "stopped-unanswered"),
+    stoppedUnansweredEndCorrect: results.filter(
+      (r) => r.outcome === "stopped-unanswered" && r.endCorrect,
+    ).length,
     askedWrong: count(results, "asked-wrong"),
     silentWrong: count(results, "silent-wrong"),
     errors: count(results, "error"),
@@ -71,25 +79,25 @@ export function markdown(
 ) {
   const rows = Object.entries(summaries(results)).map(
     ([group, s]) =>
-      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${share(s.silentWrong, s.samples)} | ${share(s.correctAfterQuestions, s.samples)} | ${share(s.askedWrong, s.samples)} | ${s.errors} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
+      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterChips, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
   );
   const samples = results.map(
     (r) =>
-      `| ${r.scenarioId} #${r.sample} | ${r.outcome} | ${r.questions} | ${cell(r.stops.map((s) => `${s.kind}${s.dimension ? `:${s.dimension}` : ""}`).join(", "))} | ${cell([...r.mismatches, ...r.unexpectedSaves.map((s) => `unexpected save: ${s}`), ...(r.error ? [`error: ${r.error}`] : [])].join("; "))} | ${r.calls} | ${(r.wallMs / 1000).toFixed(1)} |`,
+      `| ${r.scenarioId} #${r.sample} | ${r.outcome} | ${r.endCorrect ? "yes" : "no"} | ${r.questions} | ${cell(r.stops.map((s) => `${s.kind}${s.dimension ? `:${s.dimension}` : ""}`).join(", "))} | ${cell([...r.mismatches, ...r.unexpectedSaves.map((s) => `unexpected save: ${s}`), ...(r.error ? [`error: ${r.error}`] : [])].join("; "))} | ${r.calls} | ${(r.wallMs / 1000).toFixed(1)} |`,
   );
   return [
     `# Jev eval · ${variant}`,
     "",
     ...Object.entries(meta).map(([key, value]) => `- ${key}: ${value}`),
     "",
-    "Magic: end state correct and no question. Silent-wrong: end state wrong or an unexpected save, and no question. Rates count every sample; errors are provider or harness failures.",
+    "Magic: end state correct, no question and no handoff. Handoff: end state correct and the run stopped for the expected human handoff. Correct after chips: end state correct and every question was a chip the harness answered. Stopped unanswered: the run ended at a question the harness cannot answer; the number in brackets ended there with a correct state. Asked, still wrong: chips answered, end state wrong. Silent-wrong: end state wrong or an unexpected save, and no question. Rates count every sample; errors are provider or harness failures.",
     "",
-    "| group | samples | magic | questions mean | ≥1 question | silent-wrong | correct after questions | asked, still wrong | errors | calls mean (total) | wall mean |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| group | samples | magic | handoff | correct after chips | stopped unanswered (end correct) | asked, still wrong | silent-wrong | errors | questions mean | ≥1 question | calls mean (total) | wall mean |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...rows,
     "",
-    "| sample | outcome | questions | stops | mismatches | calls | wall s |",
-    "| --- | --- | --- | --- | --- | --- | --- |",
+    "| sample | outcome | end correct | questions | stops | mismatches | calls | wall s |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ...samples,
     "",
   ].join("\n");

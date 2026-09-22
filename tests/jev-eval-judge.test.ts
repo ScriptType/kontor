@@ -77,27 +77,62 @@ test("a save over already matching values is an unexpected save", () => {
   assert.equal(verdict.outcome, "silent-wrong");
   assert.deepEqual(verdict.unexpectedSaves, ["V-1041 saved 1x"]);
 });
-test("questions separate correct-after-questions from asked-but-wrong", () => {
+const chip: Stop = {
+  kind: "confirm",
+  message: "Wie viele Minuten?",
+  dimension: "workedMinutes",
+  caseId: "V-1042",
+  value: "35",
+};
+test("answered chips separate correct-after-chips from asked-wrong", () => {
   const s = byId("use-09");
-  assert.equal(
-    judge(s, asExpected(s, [review])).outcome,
-    "correct-after-questions",
-  );
-  const observed = { ...asExpected(s, [review]), page: "cases" as const };
-  const verdict = judge(s, observed);
-  assert.equal(verdict.outcome, "asked-wrong");
-  assert.equal(verdict.questions, 1);
+  assert.deepEqual(judge(s, asExpected(s, [chip, done])), {
+    outcome: "correct-after-chips",
+    endCorrect: true,
+    questions: 1,
+    mismatches: [],
+    unexpectedSaves: [],
+  });
+  const wrong = { ...asExpected(s, [chip, done]), page: "cases" as const };
+  assert.deepEqual(judge(s, wrong), {
+    outcome: "asked-wrong",
+    endCorrect: false,
+    questions: 1,
+    mismatches: ["page cases, expected reports"],
+    unexpectedSaves: [],
+  });
 });
-test("a final blocked handoff after the reachable work is not a question, done is wrong", () => {
+test("a run that ends at a question the harness cannot answer is stopped-unanswered and keeps whether the end was right", () => {
+  const s = byId("use-09");
+  const right = judge(s, asExpected(s, [chip, review]));
+  assert.equal(right.outcome, "stopped-unanswered");
+  assert.equal(right.endCorrect, true);
+  const wrong = judge(s, {
+    ...asExpected(s, [review]),
+    page: "cases",
+  });
+  assert.equal(wrong.outcome, "stopped-unanswered");
+  assert.equal(wrong.endCorrect, false);
+  assert.equal(
+    judge(s, asExpected(s, [{ ...chip, kind: "unanswerable" }])).outcome,
+    "stopped-unanswered",
+  );
+  assert.equal(
+    judge(s, asExpected(s, [blocked])).outcome,
+    "stopped-unanswered",
+  );
+});
+test("a final blocked handoff after the reachable work is a handoff, not magic and not a question, done is wrong", () => {
   const s = byId("use-15");
   const handed = judge(s, asExpected(s, [blocked]));
-  assert.equal(handed.outcome, "magic");
+  assert.equal(handed.outcome, "handoff");
   assert.equal(handed.questions, 0);
   const claimed = judge(s, asExpected(s, [done]));
   assert.equal(claimed.outcome, "silent-wrong");
   assert.match(claimed.mismatches.join(), /reported done/);
-  const early = { ...asExpected(s, [blocked]), receipts: [] };
-  assert.equal(judge(s, early).outcome, "asked-wrong");
+  const early = judge(s, { ...asExpected(s, [blocked]), receipts: [] });
+  assert.equal(early.outcome, "stopped-unanswered");
+  assert.equal(early.endCorrect, false);
 });
 test("ordered intermediate states are checked, not only the end", () => {
   const sequence = byId("use-11");
@@ -183,7 +218,7 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     calls: number,
   ): SampleResult => ({
     outcome,
-    endCorrect: outcome === "magic" || outcome === "correct-after-questions",
+    endCorrect: ["magic", "handoff", "correct-after-chips"].includes(outcome),
     questions,
     mismatches: [],
     unexpectedSaves: [],
@@ -202,15 +237,23 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
   const summary = summarize([
     sample("magic", 0, 4),
     sample("silent-wrong", 0, 6),
-    sample("correct-after-questions", 2, 8),
+    sample("correct-after-chips", 2, 8),
     sample("asked-wrong", 1, 2),
+    sample("handoff", 0, 3),
+    { ...sample("stopped-unanswered", 1, 3), endCorrect: true },
+    sample("stopped-unanswered", 1, 2),
+    sample("error", 0, 0),
   ]);
   assert.deepEqual(
     {
       magic: summary.magic,
+      handoff: summary.handoff,
+      correctAfterChips: summary.correctAfterChips,
+      stoppedUnanswered: summary.stoppedUnanswered,
+      stoppedUnansweredEndCorrect: summary.stoppedUnansweredEndCorrect,
       silentWrong: summary.silentWrong,
-      correctAfterQuestions: summary.correctAfterQuestions,
       askedWrong: summary.askedWrong,
+      errors: summary.errors,
       questionsMean: summary.questionsMean,
       withQuestions: summary.withQuestions,
       callsMean: summary.callsMean,
@@ -219,14 +262,18 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     },
     {
       magic: 1,
+      handoff: 1,
+      correctAfterChips: 1,
+      stoppedUnanswered: 2,
+      stoppedUnansweredEndCorrect: 1,
       silentWrong: 1,
-      correctAfterQuestions: 1,
       askedWrong: 1,
-      questionsMean: 0.75,
-      withQuestions: 2,
-      callsMean: 5,
-      callsTotal: 20,
-      wallMeanMs: 5000,
+      errors: 1,
+      questionsMean: 0.625,
+      withQuestions: 4,
+      callsMean: 3.5,
+      callsTotal: 28,
+      wallMeanMs: 3500,
     },
   );
 });
