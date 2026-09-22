@@ -298,3 +298,38 @@ test("unpooled gates follow Jev's own choice", () => {
       "status-cases:open",
     );
 });
+test("g2 reads pooled totals against the g2-effect bars and offers no done before the first step", () => {
+  const views = decided({
+    "filter:open": 0.2,
+    "status-cases:open": 0.16,
+    "nav:team": 0.22,
+    "nav:reports": 0.2,
+    done: 0.22,
+  });
+  assert.equal(pick("g2", 75, views, caseList).choice, "filter:open");
+  assert.equal(pick("g2", 75, views, caseList).acts, true);
+  assert.equal(pick("g2-pool", 75, views, caseList).acts, false);
+  assert.equal(pick("g2-effect", 75, views, caseList).acts, false);
+  const close = decided({
+    "filter:open": 0.2,
+    "status-cases:open": 0.16,
+    "nav:team": 0.3,
+    "nav:reports": 0.34,
+  });
+  assert.equal(pick("g2", 75, close, caseList).acts, false);
+  const draftList = {
+    ...caseList,
+    actions: [...caseList.actions, ...boundInput.actions],
+  };
+  const bound = decided({ "field:minutes:50": 0.72, "nav:team": 0.28 });
+  assert.equal(pick("g2", 75, bound, draftList).kind, "bound");
+  assert.equal(pick("g2", 75, bound, draftList).acts, true);
+  assert.equal(pick("g2-pool", 75, bound, draftList).acts, false);
+  const plain = decided({ "field:minutes:55": 0.8, "nav:team": 0.2 });
+  assert.equal(pick("g2", 75, plain, draftList).acts, false);
+  assert.equal(assesses("g2", "bound"), false);
+  assert.equal(assesses("g2", "view"), false);
+  assert.equal(assesses("g2", "draft"), true);
+  assert.equal(assesses("g2", "commit"), true);
+  assert.equal(gates.g2.doneBeforeFirstStep, false);
+});

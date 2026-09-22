@@ -39,6 +39,7 @@ const g1Bars = {
   commit: 0.75,
   terminal: 0.65,
 } as const satisfies Record<BarKind, number>;
+const effectBars = { ...g1Bars, view: 0.3, bound: 0.7 } as const;
 
 export const gates = {
   threshold: {
@@ -57,7 +58,7 @@ export const gates = {
   },
   "g2-effect": {
     read: "pmax",
-    bars: { ...g1Bars, view: 0.3, bound: 0.7 },
+    bars: effectBars,
     assessed: ["draft", "commit"],
     doneBeforeFirstStep: true,
     completion: "perKind",
@@ -75,6 +76,14 @@ export const gates = {
     bars: g1Bars,
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
+    completion: "perKind",
+  },
+  g2: {
+    read: "pooled",
+    margin: 0.1,
+    bars: effectBars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
     completion: "perKind",
   },
 } as const satisfies Record<string, GatePolicy>;

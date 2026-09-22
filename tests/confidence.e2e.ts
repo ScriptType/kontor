@@ -634,7 +634,7 @@ test("zero percent completion still requires a receipt for every operation", asy
 for (const stored of [
   null,
   '{"version":1,"gate":"g1"}',
-  '{"version":1,"gate":"g2"}',
+  '{"version":1,"gate":"g9"}',
 ])
   test(`stored gate ${stored} decides whether a view choice at 72 percent acts`, async ({
     page,
