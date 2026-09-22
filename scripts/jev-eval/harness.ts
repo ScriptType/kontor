@@ -351,6 +351,7 @@ export type CallRecord = {
   question: string;
   choice: string | null;
   confidence: number | null;
+  probabilities: Record<string, number> | null;
   ms: number;
 };
 export async function runSample(options: {
@@ -385,6 +386,7 @@ export async function runSample(options: {
       question: "",
       choice: null,
       confidence: null,
+      probabilities: null,
       ms: 0,
     };
     callLog.push(record);
@@ -399,7 +401,11 @@ export async function runSample(options: {
         answers: z
           .record(
             z.string(),
-            z.object({ choice: z.string(), confidence: z.number() }),
+            z.object({
+              choice: z.string(),
+              confidence: z.number(),
+              probabilities: z.record(z.string(), z.number()).optional(),
+            }),
           )
           .optional(),
       })
@@ -415,6 +421,7 @@ export async function runSample(options: {
     Object.assign(record, {
       choice: first?.choice ?? null,
       confidence: first?.confidence ?? null,
+      probabilities: first?.probabilities ?? null,
       ms: Date.now() - began,
     });
     return response;
