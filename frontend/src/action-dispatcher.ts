@@ -3,16 +3,36 @@ import { z } from "zod";
 import { WorkspaceUi } from "./workspace";
 import { CommandRunner } from "./command-runner";
 import type { Actor } from "./action-registry";
+import type { ActionDescription, JevText } from "../../shared/command";
 import {
   caseFiltersSchema,
   caseSchema,
   defaultCaseFilters,
   pageSchema,
+  type Page,
+  type ServiceCase,
 } from "../../shared/domain";
 @Injectable({ providedIn: "root" })
 export class ActionDispatcher {
   readonly ui = inject(WorkspaceUi);
   readonly runner = inject(CommandRunner);
+  caseAction(c: ServiceCase) {
+    const open = this.ui.page() === "cases" && this.ui.selectedId() === c.id;
+    return action(
+      `case:${c.id}`,
+      `Details von ${c.id} öffnen`,
+      {
+        does: `Open the detail editor of case ${c.id} "${c.title}"`,
+        now: `${open ? "its detail is already open; " : ""}status ${c.status}, assignee ${this.ui.technicianName(c.technicianId)}, worked ${c.minutes} min, appointment ${appointmentText(c.appointment)}, priority ${c.priority}`,
+        reveals:
+          "Shows its editor with its fields and actions; view only; changes no case data",
+      },
+      `Details von ${c.id} auf der Vorgangsseite unterhalb der Tabelle öffnen und in den sichtbaren Bereich bringen`,
+    );
+  }
+  currentPage() {
+    return `current page is ${pageNames[this.ui.page()]}`;
+  }
   execute(id: string, actor: Actor) {
     const [kind, value] = id.split(":");
     switch (kind) {
@@ -121,15 +141,20 @@ export class ActionDispatcher {
 export function action(
   id: string,
   label: string,
+  jev: JevText,
   effect = label,
-  kind: "view" | "draft" | "commit" | "discard" = "view",
-) {
-  return { id, label, effect, kind };
+  kind: ActionDescription["kind"] = "view",
+): ActionDescription {
+  return { id, label, effect, kind, jev };
 }
-export function caseAction(id: string) {
-  return action(
-    `case:${id}`,
-    `Details von ${id} öffnen`,
-    `Details von ${id} auf der Vorgangsseite unterhalb der Tabelle öffnen und in den sichtbaren Bereich bringen`,
-  );
+export const pageNames: Record<Page, string> = {
+  cases: "the case list page",
+  customers: "the customer overview page",
+  team: "the team and capacity page",
+  reports: "the reports page",
+};
+export function appointmentText(value: ServiceCase["appointment"]) {
+  return value
+    ? `${value.start.replace("T", " ").slice(0, 16)} for ${value.minutes} min`
+    : "none";
 }

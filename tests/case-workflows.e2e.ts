@@ -61,19 +61,15 @@ test("Jev uses visible draft controls for priority, appointment removal and reop
         availableActions: expect.arrayContaining([
           expect.objectContaining({
             id: "save",
-            effect: expect.stringContaining(
-              "Priorität von Normal auf Hoch",
-            ),
+            effect: expect.stringContaining("priority Normal → Hoch"),
           }),
           expect.objectContaining({
             id: "discard",
-            effect: expect.stringContaining(
-              "Priorität von Normal auf Hoch",
-            ),
+            effect: expect.stringContaining("priority Normal → Hoch"),
           }),
           expect.objectContaining({
             id: "save",
-            effect: expect.stringContaining("auf kein Termin"),
+            effect: expect.stringMatching(/appointment [^;]+ → none/),
           }),
         ]),
       });
@@ -86,9 +82,7 @@ test("Jev uses visible draft controls for priority, appointment removal and reop
         availableActions: expect.arrayContaining([
           expect.objectContaining({
             id: "save",
-            effect: expect.stringContaining(
-              "Status von erledigt auf offen",
-            ),
+            effect: expect.stringContaining("status done → open"),
           }),
         ]),
       });

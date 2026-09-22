@@ -3,6 +3,11 @@ import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import {
   demos,
+  jevAction,
+  jevBlockedControl,
+  jevFieldName,
+  jevText,
+  renderJev,
   type Decision,
   type DecisionInput,
   type assessmentInputSchema,
@@ -89,11 +94,17 @@ export function createJev(config: Config, fetch?: Fetch) {
       const options = Object.fromEntries(
         input.actions
           .filter((a) => !a.id.startsWith("blocked:"))
-          .map((a) => [a.id, `${a.label}. ${a.effect}. Effect ${a.kind}`]),
+          .map((a) => [
+            a.id,
+            `${jevText(a)}. UI "${a.label}", kind ${a.kind}`,
+          ]),
       );
       for (const field of input.fields)
-        options[`ask:${field.id}`] =
-          `Ask the user for a missing ${field.label} value (${field.type}), only if the request and previous answers do not supply it.`;
+        options[`ask:${field.id}`] = renderJev({
+          does: `Ask the user for a missing value of ${jevFieldName(field)}, only if the request and previous answers do not supply it`,
+          now: `UI "${field.label}", current value ${field.current === "" ? "empty" : field.current}`,
+          notFor: field.jev.notFor,
+        });
       options["done"] =
         "Every part of the original request is satisfied, in its requested order. Drafts are not saved changes.";
       if (input.steps.length > 0 || input.blockedControls.length > 0)
@@ -141,7 +152,7 @@ export function createJev(config: Config, fetch?: Fetch) {
         const causes = Object.fromEntries(
           input.blockedControls.map((control) => [
             `blocked:${control.action.id}`,
-            JSON.stringify(control),
+            JSON.stringify(jevBlockedControl(control)),
           ]),
         );
         const answers = await ask(
@@ -257,23 +268,32 @@ function fixture(input: DecisionInput): string {
     : "blocked";
 }
 
-function modelState(input: DecisionInput & { selected?: unknown }) {
+function modelState(
+  input: DecisionInput & {
+    selected?: z.infer<typeof assessmentInputSchema>["selected"];
+  },
+) {
   return {
     snapshotId: input.snapshotId,
     originalRequest: input.request,
     explicitAnswers: input.answers,
     currentFacts: JSON.parse(input.context),
     observedSteps: input.steps.map((step) => ({
-      action: step.action,
+      action: jevAction(step.action),
       authorizedBy: step.authorizedBy,
       outcome: step.outcome,
       before: JSON.parse(step.before),
       after: JSON.parse(step.after),
     })),
-    availableActions: input.actions,
-    availableFields: input.fields,
-    blockedControls: input.blockedControls,
-    ...(input.selected === undefined ? {} : { selected: input.selected }),
+    availableActions: input.actions.map(jevAction),
+    availableFields: input.fields.map(({ jev: _, ...field }) => field),
+    blockedControls: input.blockedControls.map(jevBlockedControl),
+    ...(input.selected === undefined
+      ? {}
+      : {
+          selected:
+            input.selected === "done" ? "done" : jevAction(input.selected),
+        }),
   };
 }
 

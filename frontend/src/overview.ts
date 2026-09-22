@@ -1,6 +1,9 @@
 import { Component, computed, inject } from "@angular/core";
 import { ActionControl, RegionControl } from "./action-registry";
-import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
+import { ActionDispatcher, action } from "./action-dispatcher";
+import type { Workspace } from "../../shared/domain";
+type Customer = Workspace["customers"][number];
+type Technician = Workspace["technicians"][number];
 @Component({
   selector: "kontor-overview",
   imports: [ActionControl, RegionControl],
@@ -25,12 +28,7 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
               {{ minutesFor(customer.id) }} Minuten erfasst
             </p>
             <button
-              [kontorAction]="
-                action(
-                  'customer-cases:' + customer.id,
-                  'Vorgänge von ' + customer.name + ' anzeigen'
-                )
-              "
+              [kontorAction]="customerCasesAction(customer)"
               (invoked)="
                 actions.execute('customer-cases:' + customer.id, $event)
               "
@@ -40,7 +38,7 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
             <div class="linked-list">
               @for (c of casesFor(customer.id); track c.id) {
                 <button
-                  [kontorAction]="caseAction(c.id)"
+                  [kontorAction]="actions.caseAction(c)"
                   (invoked)="actions.execute('case:' + c.id, $event)"
                 >
                   <span
@@ -76,13 +74,13 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
             <p class="muted">{{ t.skills.join(" · ") }}</p>
             <p>{{ assigned(t.id).length }} offene Vorgänge</p>
             <button
-              [kontorAction]="action('technician-cases:' + t.id, 'Offene Vorgänge von ' + t.name + ' anzeigen')"
+              [kontorAction]="technicianCasesAction(t)"
               (invoked)="actions.execute('technician-cases:' + t.id, $event)"
             >Offene Vorgänge anzeigen</button>
             <div class="linked-list">
               @for (c of assigned(t.id); track c.id) {
                 <button
-                  [kontorAction]="caseAction(c.id)"
+                  [kontorAction]="actions.caseAction(c)"
                   (invoked)="actions.execute('case:' + c.id, $event)"
                 >
                   <span
@@ -120,13 +118,13 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
       </div>
       <div class="metrics">
         <button class="card metric-link"
-          [kontorAction]="action('status-cases:open', 'Offene Vorgänge anzeigen')"
+          [kontorAction]="statusCasesAction('open')"
           (invoked)="actions.execute('status-cases:open', $event)">
           <span class="muted">Offene Vorgänge</span
           ><strong>{{ openCount() }} ↗</strong>
         </button>
         <button class="card metric-link"
-          [kontorAction]="action('status-cases:done', 'Erledigte Vorgänge anzeigen')"
+          [kontorAction]="statusCasesAction('done')"
           (invoked)="actions.execute('status-cases:done', $event)">
           <span class="muted">Abgeschlossen</span
           ><strong>{{ doneCount() }} ↗</strong>
@@ -141,12 +139,7 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
         @for (c of ui.data()?.customers; track c.id) {
           <button
             class="report-row"
-            [kontorAction]="
-              action(
-                'customer-cases:' + c.id,
-                'Vorgänge von ' + c.name + ' anzeigen'
-              )
-            "
+            [kontorAction]="customerCasesAction(c)"
             (invoked)="actions.execute('customer-cases:' + c.id, $event)"
           >
             <span>{{ c.name }}</span
@@ -167,8 +160,6 @@ import { ActionDispatcher, action, caseAction } from "./action-dispatcher";
 export class Overview {
   readonly actions = inject(ActionDispatcher);
   readonly ui = this.actions.ui;
-  readonly action = action;
-  readonly caseAction = caseAction;
   readonly openCount = computed(
     () => this.ui.data()?.cases.filter((c) => c.status === "open").length ?? 0,
   );
@@ -178,6 +169,45 @@ export class Overview {
   readonly totalMinutes = computed(
     () => this.ui.data()?.cases.reduce((sum, c) => sum + c.minutes, 0) ?? 0,
   );
+  customerCasesAction(customer: Customer) {
+    return action(
+      `customer-cases:${customer.id}`,
+      `Vorgänge von ${customer.name} anzeigen`,
+      {
+        does: `Show the cases of customer ${customer.name} in the case list`,
+        now: this.actions.currentPage(),
+        reveals:
+          "View only; changes no case data; opens the case list filtered to this customer",
+      },
+    );
+  }
+  technicianCasesAction(t: Technician) {
+    return action(
+      `technician-cases:${t.id}`,
+      `Offene Vorgänge von ${t.name} anzeigen`,
+      {
+        does: `Show the open cases of ${t.name} in the case list`,
+        now: this.actions.currentPage(),
+        reveals:
+          "View only; changes no case data; opens the case list filtered to this technician",
+        notFor: `assigning ${t.name} to a case`,
+      },
+    );
+  }
+  statusCasesAction(status: "open" | "done") {
+    return action(
+      `status-cases:${status}`,
+      status === "open"
+        ? "Offene Vorgänge anzeigen"
+        : "Erledigte Vorgänge anzeigen",
+      {
+        does: `Show the ${status} cases in the case list`,
+        now: this.actions.currentPage(),
+        reveals:
+          "View only; changes no case data; opens the case list filtered by status",
+      },
+    );
+  }
   casesFor(id: string) {
     return this.ui.data()?.cases.filter((c) => c.customerId === id) ?? [];
   }

@@ -24,7 +24,7 @@
   />
   <div class="menu-wrap">
     <button
-      [kontorAction]="action('menu:customer', 'Kundenfilter öffnen')"
+      [kontorAction]="customerMenuAction()"
       (invoked)="actions.execute('menu:customer', $event)"
       [attr.aria-expanded]="ui.menu() === 'customer'"
     >
@@ -35,7 +35,7 @@
     <div class="popover" aria-label="Kundenfilter">
       <button
         [disabled]="ui.filters().customerId === null"
-        [kontorAction]="action('customer:all', 'Alle Kunden anzeigen')"
+        [kontorAction]="customerAction(null)"
         (invoked)="actions.execute('customer:all', $event)"
       >
         Alle Kunden
@@ -43,7 +43,7 @@
       @for (c of ui.data()?.customers; track c.id) {
       <button
         [disabled]="ui.filters().customerId === c.id"
-        [kontorAction]="action('customer:' + c.id, c.name + ' anzeigen')"
+        [kontorAction]="customerAction(c)"
         (invoked)="actions.execute('customer:' + c.id, $event)"
       >
         {{ c.name }}
@@ -54,7 +54,7 @@
   </div>
   <div class="menu-wrap">
     <button
-      [kontorAction]="action('menu:filter-technician', 'Zuständigkeitsfilter öffnen')"
+      [kontorAction]="technicianFilterMenuAction()"
       (invoked)="actions.execute('menu:filter-technician', $event)"
       [attr.aria-expanded]="ui.menu() === 'filter-technician'"
     >
@@ -64,13 +64,13 @@
     <div class="popover" aria-label="Zuständigkeitsfilter">
       <button
         [disabled]="ui.filters().technicianId === null"
-        [kontorAction]="action('filter-technician:all', 'Alle Zuständigen anzeigen')"
+        [kontorAction]="technicianFilterAction(null)"
         (invoked)="actions.execute('filter-technician:all', $event)"
       >Alle Zuständigen</button>
       @for (t of ui.data()?.technicians; track t.id) {
       <button
         [disabled]="ui.filters().technicianId === t.id"
-        [kontorAction]="action('filter-technician:' + t.id, 'Vorgänge mit Zuständigkeit ' + t.name + ' anzeigen')"
+        [kontorAction]="technicianFilterAction(t)"
         (invoked)="actions.execute('filter-technician:' + t.id, $event)"
       >{{ t.name }}</button>
       }
@@ -83,14 +83,14 @@
       [class.active-filter]="ui.filters().status === status.value"
       [attr.aria-pressed]="ui.filters().status === status.value"
       [disabled]="ui.filters().status === status.value"
-      [kontorAction]="action('filter:' + status.value, status.label + ' · Vorgangsstatus anzeigen')"
+      [kontorAction]="statusFilterAction(status)"
       (invoked)="actions.execute('filter:' + status.value, $event)"
     >{{ status.label }}</button>
     }
   </div>
   <button
     class="text-button"
-    [kontorAction]="action('filter:reset', 'Filter zurücksetzen')"
+    [kontorAction]="resetAction()"
     (invoked)="actions.execute('filter:reset', $event)"
   >
     Zurücksetzen
@@ -117,7 +117,7 @@
         <td>
           <button
             class="row-link"
-            [kontorAction]="caseAction(c.id)"
+            [kontorAction]="actions.caseAction(c)"
             (invoked)="actions.execute('case:' + c.id, $event)"
           >
             {{ c.title }}</button
@@ -163,7 +163,7 @@
     <button
       aria-label="Vorgang schließen"
       [disabled]="ui.dirty()"
-      [kontorAction]="action('close', selected.id + ' schließen')"
+      [kontorAction]="closeAction(selected, draft)"
       (invoked)="actions.execute('close', $event)"
     >
       ✕
@@ -178,7 +178,7 @@
           [class.active-filter]="draft.priority === priority"
           [attr.aria-pressed]="draft.priority === priority"
           [disabled]="draft.priority === priority"
-          [kontorAction]="action('priority:' + priority, 'Priorität ' + priority + ' setzen', selected.id + ': Priorität von ' + draft.priority + ' auf ' + priority + ' im Entwurf ändern', 'draft')"
+          [kontorAction]="priorityAction(priority, selected, draft)"
           (invoked)="actions.execute('priority:' + priority, $event)"
         >{{ priority }}</button>
         }
@@ -187,7 +187,7 @@
       <div class="menu-wrap">
         <button
           class="field-control"
-          [kontorAction]="action('menu:technician', 'Zuständigkeit öffnen')"
+          [kontorAction]="technicianMenuAction(selected, draft)"
           (invoked)="actions.execute('menu:technician', $event)"
           [attr.aria-expanded]="ui.menu() === 'technician'"
         >
@@ -198,7 +198,7 @@
           @for (t of ui.data()?.technicians; track t.id) {
           <button
             [disabled]="!t.skills.includes(selected.skill)"
-            [kontorAction]="action('technician:' + t.id, t.name + ' zuweisen', selected.id + (draft.technicianId === t.id ? ': Zuständigkeit ist bereits ' + t.name : ': Zuständigkeit von ' + ui.technicianName(draft.technicianId) + ' auf ' + t.name + ' im Entwurf ändern'), 'draft')"
+            [kontorAction]="technicianAction(t, selected, draft)"
             (invoked)="actions.execute('technician:' + t.id, $event)"
           >
             {{ t.name }} <small>{{ t.skills.join(', ') }}</small>
@@ -244,7 +244,7 @@
       @if (draft.appointment) {
       <button
         class="text-button"
-        [kontorAction]="action('remove-appointment', 'Termin entfernen', selected.id + ': Bestehenden Termin im Entwurf entfernen', 'draft')"
+        [kontorAction]="removeAppointmentAction(selected, draft)"
         (invoked)="actions.execute('remove-appointment', $event)"
       >Termin entfernen</button>
       }
@@ -301,14 +301,14 @@
       }
       @if (draft.status === 'done') {
       <button
-        [kontorAction]="action('reopen', 'Vorgang wieder öffnen', selected.id + ': Status auf offen im Entwurf ändern', 'draft')"
+        [kontorAction]="reopenAction(selected, draft)"
         (invoked)="actions.execute('reopen', $event)"
       >Wieder öffnen</button>
       } @else {
       <button
         [disabled]="completionBlockers().length > 0"
         [kontorBlocked]="{ target: { kind: 'case', id: selected.id }, reasons: completionBlockers() }"
-        [kontorAction]="action('complete', 'Vorgang als erledigt markieren', selected.id + ': Status auf erledigt im Entwurf ändern', 'draft')"
+        [kontorAction]="completeAction(selected, draft)"
         (invoked)="actions.execute('complete', $event)"
       >
         Als erledigt markieren
@@ -325,14 +325,14 @@
       'Ungespeicherter Entwurf' : 'Gespeicherter Stand') }}</span
     ><button
       [disabled]="ui.busy() || !ui.dirty()"
-      [kontorAction]="action('discard', 'Entwurf verwerfen', discardEffect(), 'discard')"
+      [kontorAction]="discardAction(selected)"
       (invoked)="actions.execute('discard', $event)"
     >
       Entwurf verwerfen</button
     ><button
       class="primary"
       [disabled]="ui.busy() || !ui.dirty() || ui.blocked().length > 0 || !!ui.unknownSave()"
-      [kontorAction]="action('save', 'Änderungen speichern', saveEffect(), 'commit')"
+      [kontorAction]="saveAction(selected)"
       (invoked)="actions.execute('save', $event)"
     >
       Speichern

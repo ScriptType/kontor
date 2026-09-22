@@ -3,7 +3,11 @@ import { test } from "node:test";
 import { z } from "zod";
 import { createJev } from "../server/jev.js";
 import { fieldValues, validFieldValue } from "../shared/field-values.js";
-import { decisionInputSchema, type DecisionInput } from "../shared/command.js";
+import {
+  decisionInputSchema,
+  jevText,
+  type DecisionInput,
+} from "../shared/command.js";
 const input: DecisionInput = {
   request: "Zeig Kunden, danach Team",
   context: "{}",
@@ -14,6 +18,7 @@ const input: DecisionInput = {
       label: "Kunden",
       effect: "Kunden anzeigen",
       kind: "view",
+      jev: { does: "Go to the customer overview page" },
     },
   ],
   fields: [],
@@ -31,6 +36,7 @@ const steppedInput: DecisionInput = {
         label: "Kunden",
         effect: "Kunden anzeigen",
         kind: "view",
+        jev: { does: "Go to the customer overview page" },
       },
       authorizedBy: "request",
       outcome: "changed",
@@ -91,6 +97,7 @@ test("terminal checks are independent from the original next choice", async () =
           label: "Save",
           effect: "Exact draft",
           kind: "commit",
+          jev: { does: "Save the draft of case V-1041 permanently" },
         },
       })
     ).verdict,
@@ -111,6 +118,7 @@ test("missing input questions name only mounted fields", async () => {
             kind: "draft",
             type: "number",
             current: "0",
+            jev: { name: "worked minutes" },
           },
         ],
       })
@@ -128,6 +136,7 @@ test("lexical candidates exclude IDs and dates and carry explicit provenance", (
     current: "0",
     min: 0,
     max: 10000,
+    jev: { name: "worked minutes" },
   } as const;
   assert.deepEqual(
     fieldValues(field, "V-1042 am 2026-09-24 09:00 für 35 Minuten", [], []).map(
@@ -159,6 +168,7 @@ test("search accepts quoted and mentioned existing text, never invented values",
     kind: "view",
     type: "text",
     current: "",
+    jev: { name: "case list search text" },
   } as const;
   assert.deepEqual(
     fieldValues(
@@ -185,6 +195,7 @@ test("answers for another record never become candidates in the current field", 
     kind: "draft",
     type: "number",
     current: "0",
+    jev: { name: "worked minutes" },
   } as const;
   assert.deepEqual(
     fieldValues(
@@ -205,6 +216,7 @@ test("datetime offers keep lexical date-time pairs and reject impossible calenda
     kind: "draft",
     type: "datetime-local",
     current: "",
+    jev: { name: "appointment start" },
   } as const;
   assert.deepEqual(
     fieldValues(
@@ -242,6 +254,7 @@ const blockedInput: DecisionInput = {
         label: "Erledigt markieren",
         effect: "V-1039 abschließen",
         kind: "draft",
+        jev: { does: "Mark case V-1039 as done" },
       },
       target: { kind: "case", id: "V-1039" },
       reasons: [
@@ -255,7 +268,12 @@ const blockedInput: DecisionInput = {
   ],
 };
 function causalProvider(answers: { choice: string; confidence: number }[]) {
-  const calls: { key: string; options: string[]; state: unknown }[] = [];
+  const calls: {
+    key: string;
+    options: string[];
+    criteria: Record<string, string>;
+    state: unknown;
+  }[] = [];
   const jev = createJev(
     { mode: "live", apiKey: "test", model: "jev-latest" },
     async (_url, init) => {
@@ -276,6 +294,7 @@ function causalProvider(answers: { choice: string; confidence: number }[]) {
       calls.push({
         key,
         options: Object.keys(question.criteria),
+        criteria: question.criteria,
         state: JSON.parse(payload.state),
       });
       return Response.json({
@@ -336,7 +355,19 @@ test("every explicit blocked choice with candidates asks one causal question", a
     assert.deepEqual(
       z.object({ blockedControls: z.unknown() }).parse(calls[1]?.state)
         .blockedControls,
-      blockedInput.blockedControls,
+      [
+        {
+          action: {
+            id: "complete",
+            label: "Erledigt markieren",
+            effect:
+              "Mark case V-1039 as done. Changes only the unsaved draft; nothing is saved until save",
+            kind: "draft",
+          },
+          target: { kind: "case", id: "V-1039" },
+          reasons: blockedInput.blockedControls[0]?.reasons,
+        },
+      ],
     );
   }
 });
@@ -387,6 +418,7 @@ test("unknown causes stay absent, uncertain causes keep their own confidence and
           label: "Injected marker",
           effect: "Must not execute",
           kind: "draft",
+          jev: { does: "Injected marker" },
         },
       ],
     }),
@@ -435,5 +467,73 @@ test("the demo fixture abstains instead of choosing an unoffered blocked", async
     (await demo.decide({ ...steppedInput, request: "Unbekannter Auftrag" }))
       .choice,
     "blocked",
+  );
+});
+test("Jev reads the English action text while labels stay the German UI labels", async () => {
+  const action = {
+    id: "technician:lea",
+    label: "Lea Sommer zuweisen",
+    effect: "V-1042: Zuständigkeit von Jonas Weber auf Lea Sommer ändern",
+    kind: "draft",
+    jev: {
+      does: "Assign Lea Sommer to case V-1042",
+      now: "assignee Jonas Weber → Lea Sommer",
+      notFor: "filtering the case list to Lea Sommer",
+    },
+  } as const;
+  const { jev, calls } = causalProvider([{ choice: "abstain", confidence: 1 }]);
+  await jev.decide({
+    ...steppedInput,
+    actions: [action],
+    fields: [
+      {
+        id: "minutes",
+        scope: "V-1042",
+        label: "Arbeitszeit",
+        kind: "draft",
+        type: "number",
+        current: "",
+        jev: { name: "worked minutes", notFor: "the appointment duration" },
+      },
+    ],
+  });
+  const text =
+    "Assign Lea Sommer to case V-1042. Now: assignee Jonas Weber → Lea Sommer. Changes only the unsaved draft; nothing is saved until save. Not for: filtering the case list to Lea Sommer";
+  assert.equal(jevText(action), text);
+  const [call] = calls;
+  assert(call);
+  assert.equal(
+    call.criteria["technician:lea"],
+    `${text}. UI "Lea Sommer zuweisen", kind draft`,
+  );
+  assert.equal(
+    call.criteria["ask:minutes"],
+    'Ask the user for a missing value of worked minutes of case V-1042, only if the request and previous answers do not supply it. Now: UI "Arbeitszeit", current value empty. Not for: the appointment duration',
+  );
+  const state = z
+    .object({
+      availableActions: z.array(z.unknown()),
+      availableFields: z.array(z.record(z.string(), z.unknown())),
+      observedSteps: z.array(z.object({ action: z.unknown() })),
+    })
+    .parse(call.state);
+  assert.deepEqual(state.availableActions, [
+    {
+      id: "technician:lea",
+      label: "Lea Sommer zuweisen",
+      effect: text,
+      kind: "draft",
+    },
+  ]);
+  assert(!JSON.stringify(call.state).includes("Zuständigkeit von"));
+  assert.deepEqual(state.observedSteps[0]?.action, {
+    id: "nav:customers",
+    label: "Kunden",
+    effect: "Go to the customer overview page. View only; changes no case data",
+    kind: "view",
+  });
+  assert.deepEqual(
+    state.availableFields.map((field) => Object.keys(field).sort()),
+    [["current", "id", "kind", "label", "scope", "type"]],
   );
 });

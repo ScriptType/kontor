@@ -14,6 +14,7 @@ const input: DecisionInput = {
       label: "Kunden",
       effect: "Kunden anzeigen",
       kind: "view",
+      jev: { does: "Go to the customer overview page" },
     },
   ],
   fields: [
@@ -24,6 +25,7 @@ const input: DecisionInput = {
       type: "text",
       kind: "view",
       current: "",
+      jev: { name: "case list search text" },
     },
   ],
   blockedControls: [],
@@ -36,6 +38,7 @@ const input: DecisionInput = {
         label: "Kunden",
         effect: "Kunden anzeigen",
         kind: "view",
+        jev: { does: "Go to the customer overview page" },
       },
       authorizedBy: "request",
       outcome: "changed",
@@ -127,6 +130,7 @@ test("abstention never asks a blocked-cause question", async () => {
           label: "Speichern",
           effect: "Speichern",
           kind: "commit",
+          jev: { does: "Save the draft of case V-1041 permanently" },
         },
         target: { kind: "case", id: "V-1041" },
         reasons: [

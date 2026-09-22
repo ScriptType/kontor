@@ -8,11 +8,12 @@ import {
   output,
   inject,
 } from "@angular/core";
-import type {
-  ActionDescription,
-  BlockedControl,
-  FieldDescription,
-  DecisionInput,
+import {
+  jevFieldName,
+  type ActionDescription,
+  type BlockedControl,
+  type FieldDescription,
+  type DecisionInput,
 } from "../../shared/command";
 import { fieldValues, valueSources } from "../../shared/field-values";
 export type Actor = "manual" | "jev";
@@ -222,6 +223,15 @@ export class ActionRegistry {
                   ? `${field.label} ist bereits ${value}; ${valueSources[source].de}`
                   : `${field.label}: ${field.current || "leer"} → ${value}; ${valueSources[source].de}`,
               kind: field.kind,
+              jev: {
+                does: `Set ${jevFieldName(field)} to ${value}`,
+                now: `${
+                  field.current === value
+                    ? `value is already ${value}; no change`
+                    : `current value ${field.current || "empty"} → ${value}`
+                }. Value source: ${valueSources[source].en}`,
+                notFor: field.jev.notFor,
+              },
             },
             control,
             () => {

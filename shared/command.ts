@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { blockerSchema } from "./domain.js";
+export const jevTextSchema = z.object({
+  does: z.string().min(1),
+  now: z.string().optional(),
+  reveals: z.string().optional(),
+  notFor: z.string().optional(),
+});
 export const actionSchema = z.object({
   id: z.string(),
   label: z.string(),
   effect: z.string(),
   kind: z.enum(["view", "draft", "commit", "discard"]),
+  jev: jevTextSchema,
 });
 export const blockedControlSchema = z.object({
   action: actionSchema,
@@ -20,6 +27,7 @@ export const fieldSchema = z.object({
   current: z.string(),
   min: z.number().optional(),
   max: z.number().optional(),
+  jev: z.object({ name: z.string().min(1), notFor: z.string().optional() }),
 });
 export const answerSchema = z.object({
   fieldId: z.string(),
@@ -75,6 +83,36 @@ export const assessmentSchema = z.object({
 });
 export type Assessment = z.infer<typeof assessmentSchema>;
 export type ActionDescription = z.infer<typeof actionSchema>;
+export type JevText = z.infer<typeof jevTextSchema>;
+const defaultReveals: Partial<Record<ActionDescription["kind"], string>> = {
+  view: "View only; changes no case data",
+  draft: "Changes only the unsaved draft; nothing is saved until save",
+};
+export function renderJev({ does, now, reveals, notFor }: JevText) {
+  return [does, now && `Now: ${now}`, reveals, notFor && `Not for: ${notFor}`]
+    .filter(Boolean)
+    .join(". ");
+}
+export function jevText(action: Pick<ActionDescription, "kind" | "jev">) {
+  return renderJev({
+    ...action.jev,
+    reveals: action.jev.reveals ?? defaultReveals[action.kind],
+  });
+}
+export function jevAction(action: ActionDescription) {
+  return {
+    id: action.id,
+    label: action.label,
+    effect: jevText(action),
+    kind: action.kind,
+  };
+}
+export function jevBlockedControl(control: BlockedControl) {
+  return { ...control, action: jevAction(control.action) };
+}
+export function jevFieldName(field: FieldDescription) {
+  return `${field.jev.name}${field.kind === "draft" ? ` of case ${field.scope}` : ""}`;
+}
 export type BlockedControl = z.infer<typeof blockedControlSchema>;
 export type FieldDescription = z.infer<typeof fieldSchema>;
 export type DecisionInput = z.infer<typeof decisionInputSchema>;

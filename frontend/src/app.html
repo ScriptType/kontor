@@ -9,7 +9,7 @@
     <button
       [class.active]="ui.page() === page.id"
       [attr.aria-label]="page.label"
-      [kontorAction]="action('nav:' + page.id, page.label + ' öffnen')"
+      [kontorAction]="navAction(page)"
       (invoked)="actions.execute('nav:' + page.id, $event)"
     >
       <span class="nav-icon">{{ page.icon }}</span><span>{{ page.label }}</span>

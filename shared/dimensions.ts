@@ -292,6 +292,7 @@ export function literalField(
           : "text",
     current: "",
     ...(domain.kind === "number" ? { min: domain.min, max: domain.max } : {}),
+    jev: { name: entry.description },
   };
 }
 export function dimensionOptions(

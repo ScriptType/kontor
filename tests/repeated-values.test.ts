@@ -12,6 +12,7 @@ const minutes: FieldDescription = {
   current: "60",
   min: 0,
   max: 10000,
+  jev: { name: "worked minutes" },
 };
 test("grounded repeated minutes remain available alongside a legitimate bare 1041", () => {
   assert.deepEqual(

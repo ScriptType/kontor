@@ -104,6 +104,8 @@ Angezeigte Vorgänge und unerledigte Checklisten erweitern den Nutzerauftrag nic
 
 Buttons beschreiben ihre konkrete Wirkung. Eingabefelder beschreiben ihren Datentyp, ihren aktuellen Wert und zulässige Wertkandidaten. Werte stammen aus wörtlichen Angaben im Auftrag, vorhandenen Daten oder ausdrücklichen Antworten. Jev wählt einen solchen Kandidaten. Die Registrierung verbindet ihn mit dem sichtbaren Feld und dessen normalem Handler. Es gibt keinen versteckten Zielentwurf, aus dem ein Handler nachträglich seinen Wert liest.
 
+Jede registrierte Aktion trägt neben ihrer deutschen Wirkung einen englischen Text für Jev. Die deutsche Wirkung erscheint weiterhin in Freigaben, Verlauf und Auswahl. Der Jev-Text nennt zuerst die Wirkung und danach den aktuellen Wert aus dem Anwendungszustand. Er sagt außerdem, was die Aktion verändert, und grenzt sie von einer naheliegenden Verwechslung ab. Beispielsweise filtert das Zuweisen einer Person nicht die Vorgangsliste. Die Registrierungsstelle schreibt diesen Text. Der Server ergänzt nur die sichtbare Beschriftung und die Art der Aktion. Eingabefelder tragen einen englischen Namen und eine Abgrenzung. Wertkandidaten nennen ihre Herkunft in beiden Sprachen. Jev erhält verfügbare Aktionen, beobachtete Schritte und deaktivierte Bedienelemente ausschließlich in der englischen Form.
+
 Ein passender Wert bleibt auch dann als Kandidat verfügbar, wenn er bereits im sichtbaren Feld steht. Gleiche numerische Werte werden vereinheitlicht. Eine erneute gleiche Zuweisung verwendet den normalen Handler, verändert aber weder den Entwurf noch dessen Eigentümer oder Statusmeldung. Manuelle Eingaben entwerten trotzdem ausstehende Entscheidungen. Bereits ausgewählte, deaktivierte Buttons werden dadurch nicht ausführbar.
 
 Eine alleinstehende Zahl im Auftrag wird kein Kandidat für Zahlenfelder, wenn sie eine vorhandene Kennung bezeichnen kann. Das gilt, wenn ihre Ziffern der abschließenden Zifferngruppe einer Kennung aus Buchstaben, Bindestrich und Ziffern entsprechen. Beispielsweise bietet `1042` bei vorhandenem `V-1042` keine Feldaktion an. Titel und Namen lösen diese Regel nicht aus. Andere Zahlen aus dem Auftrag bleiben Kandidaten. Eine ausdrückliche Antwort mit denselben Ziffern bleibt ebenfalls ein Kandidat.
@@ -112,7 +114,7 @@ Der Verlauf unterscheidet tatsächliche Änderungen von Schritten ohne Änderung
 
 Ein Lauf ist auf 40 ausgeführte Schritte begrenzt. Ein Zustand enthält höchstens 100 Aktionen und 30 Eingabefelder. Der Browser stoppt vor einer Anfrage über 180.000 Byte. Wiederholungen ohne Fortschritt werden ebenfalls beendet. Diese Grenzen schützen den lokalen Versuch; größere Tabellen benötigen eine passende sichtbare Auswahl oder Paginierung.
 
-Eine neue Komponente registriert ihre Bedienelemente und beschreibt die beobachtbaren Wirkungen. Der Entscheidungszyklus benötigt dafür keine neue Aufgabenart und keine festgelegte Klickfolge. Die Fachfunktion selbst benötigt weiterhin manuelle Bedienung, Validierung und einen prüfbaren Effekt.
+Eine neue Komponente registriert ihre Bedienelemente und beschreibt die beobachtbaren Wirkungen auf Deutsch für Nutzer und auf Englisch für Jev. Der Entscheidungszyklus benötigt dafür keine neue Aufgabenart und keine festgelegte Klickfolge. Die Fachfunktion selbst benötigt weiterhin manuelle Bedienung, Validierung und einen prüfbaren Effekt.
 
 ## Bildschirmkontext
 

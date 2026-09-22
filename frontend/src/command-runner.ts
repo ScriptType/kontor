@@ -11,6 +11,7 @@ import { z } from "zod";
 import { readBrowserState, writeBrowserState } from "./browser-state";
 import {
   answerSchema,
+  jevBlockedControl,
   stepSchema,
   type ActionDescription,
   type BlockedControl,
@@ -496,7 +497,7 @@ export class CommandRunner {
             reasons: this.ui.blocked(),
           }
         : undefined,
-      blockedControls,
+      blockedControls: blockedControls.map(jevBlockedControl),
       retainedSelection:
         selected && !detailMounted
           ? {

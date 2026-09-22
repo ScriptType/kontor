@@ -746,6 +746,60 @@ test("legacy history remains readable without restoring execution authority", as
   expect(workspace.snapshot().revision).toBe(0);
 });
 
+test("a stored history whose steps lack Jev texts starts empty and idle", async ({
+  page,
+  address,
+  workspace,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "kontor-command-v1",
+      JSON.stringify({
+        version: 3,
+        command: "Früherer Auftrag",
+        unfinished: true,
+        history: [
+          {
+            id: "before-jev-texts",
+            request: "Früherer Auftrag",
+            entries: ["Kunden anzeigen"],
+            operations: [],
+            savedOperations: [],
+            receipts: [],
+            answers: [],
+            steps: [
+              {
+                snapshotId: "earlier",
+                action: {
+                  id: "nav:customers",
+                  label: "Kunden öffnen",
+                  effect: "Kunden öffnen",
+                  kind: "view",
+                },
+                authorizedBy: "request",
+                outcome: "changed",
+                before: "{}",
+                after: "{}",
+              },
+            ],
+            createdAt: "2026-09-01T12:00:00Z",
+            outcome: "Pausiert",
+          },
+        ],
+      }),
+    ),
+  );
+  await page.goto(address);
+  await expect(page.locator(".activity-label")).toHaveText(
+    "Bereit für deinen Auftrag",
+  );
+  await page.locator('[data-action="nav:customers"]').click();
+  await expect(page).toHaveURL(/#customers$/);
+  await page.getByRole("button", { name: "Verlauf", exact: true }).click();
+  await expect(page.getByText("Früherer Auftrag")).toHaveCount(0);
+  expect(workspace.snapshot().revision).toBe(0);
+});
+
 test("a done case still shows save blockers beside the reopen workflow", async ({
   page,
   address,
