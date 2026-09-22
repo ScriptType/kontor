@@ -106,8 +106,9 @@ export function createJev(config: Config, fetch?: Fetch) {
           now: `UI "${field.label}", current value ${field.current === "" ? "empty" : field.current}`,
           notFor: field.jev.notFor,
         });
-      options["done"] =
-        "Every part of the original request is satisfied, in its requested order. Drafts are not saved changes.";
+      if (input.doneBeforeFirstStep || input.steps.length > 0)
+        options["done"] =
+          "Every part of the original request is satisfied, in its requested order. Drafts are not saved changes.";
       if (input.steps.length > 0 || input.blockedControls.length > 0)
         options["blocked"] =
           "Outstanding request work cannot proceed with available controls or needs human evidence. Never silently omit a trailing task.";

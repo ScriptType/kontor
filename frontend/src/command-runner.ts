@@ -35,6 +35,7 @@ import {
   completes,
   gateKind,
   gateNames,
+  gates,
   workKind,
 } from "./gate";
 export type RunState =
@@ -569,6 +570,7 @@ export class CommandRunner {
       fields: this.registry.fieldSnapshot(),
       answers: run.answers,
       steps: run.steps,
+      doneBeforeFirstStep: gates[this.gate].doneBeforeFirstStep,
     };
   }
   private capture(input: DecisionInput, decision: Decision): DecisionCapture {

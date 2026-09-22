@@ -5,10 +5,12 @@ import { createJev } from "../server/jev.js";
 import { fieldValues, validFieldValue } from "../shared/field-values.js";
 import {
   decisionInputSchema,
+  demos,
   jevText,
   type DecisionInput,
 } from "../shared/command.js";
 const input: DecisionInput = {
+  doneBeforeFirstStep: true,
   request: "Zeig Kunden, danach Team",
   context: "{}",
   snapshotId: "fresh",
@@ -456,6 +458,49 @@ test("blocked is offered only after a step or with a blocked control", async () 
   await assert.rejects(provider("blocked").decide(input), {
     code: "PROVIDER_INVALID_RESPONSE",
   });
+});
+test("done is offered before the first step only when the input allows it", async () => {
+  const offered = async (decisionInput: DecisionInput) => {
+    const { jev, calls } = causalProvider([
+      { choice: "abstain", confidence: 1 },
+    ]);
+    await jev.decide(decisionInput);
+    return calls[0];
+  };
+  const early = await offered({ ...input, doneBeforeFirstStep: false });
+  assert.deepEqual(early?.options, ["nav:customers", "abstain"]);
+  assert(!JSON.stringify(early?.state).includes("doneBeforeFirstStep"));
+  assert((await offered(input))?.options.includes("done"));
+  assert(
+    (
+      await offered({ ...steppedInput, doneBeforeFirstStep: false })
+    )?.options.includes("done"),
+  );
+  const { doneBeforeFirstStep: _, ...unset } = input;
+  assert.equal(decisionInputSchema.parse(unset).doneBeforeFirstStep, true);
+  await assert.rejects(
+    provider("done").decide({ ...input, doneBeforeFirstStep: false }),
+    { code: "PROVIDER_INVALID_RESPONSE" },
+  );
+});
+test("the demo fixture still runs its sequence when done waits for a first step", async () => {
+  const demo = createJev({ mode: "demo" });
+  const request = demos[0];
+  assert.equal(
+    (await demo.decide({ ...input, request, doneBeforeFirstStep: false }))
+      .choice,
+    "nav:customers",
+  );
+  assert.equal(
+    (
+      await demo.decide({
+        ...steppedInput,
+        request,
+        doneBeforeFirstStep: false,
+      })
+    ).choice,
+    "done",
+  );
 });
 test("the demo fixture abstains instead of choosing an unoffered blocked", async () => {
   const demo = createJev({ mode: "demo" });

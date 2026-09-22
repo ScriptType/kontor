@@ -19,6 +19,8 @@ export type GatePolicy = {
   bars: "percent" | Record<BarKind, number>;
   /** Kinds of action that pay the separate effect check before they run. */
   assessed: readonly GateKind[];
+  /** Whether Jev may choose done before any step ran. */
+  doneBeforeFirstStep: boolean;
   completion: "verdict" | "perKind";
 };
 
@@ -36,18 +38,28 @@ export const gates = {
     read: "confidence",
     bars: "percent",
     assessed: ["draft", "bound", "commit"],
+    doneBeforeFirstStep: true,
     completion: "verdict",
   },
   g1: {
     read: "pmax",
     bars: g1Bars,
     assessed: ["draft", "bound", "commit"],
+    doneBeforeFirstStep: true,
     completion: "perKind",
   },
   "g2-effect": {
     read: "pmax",
     bars: { ...g1Bars, view: 0.3, bound: 0.7 },
     assessed: ["draft", "commit"],
+    doneBeforeFirstStep: true,
+    completion: "perKind",
+  },
+  "g2-exits": {
+    read: "pmax",
+    bars: g1Bars,
+    assessed: ["draft", "bound", "commit"],
+    doneBeforeFirstStep: false,
     completion: "perKind",
   },
 } as const satisfies Record<string, GatePolicy>;

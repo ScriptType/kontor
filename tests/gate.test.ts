@@ -5,6 +5,7 @@ import {
   assesses,
   completes,
   gateKind,
+  gates,
   workKind,
 } from "../frontend/src/gate.js";
 import type { ActionDescription } from "../shared/command.js";
@@ -193,4 +194,18 @@ test("g2-effect checks the effect of drafts and saves but not of views or bound 
   assert.equal(assesses("g2-effect", "commit"), true);
   assert.equal(assesses("g2-effect", "bound"), false);
   assert.equal(assesses("g2-effect", "view"), false);
+});
+test("g2-exits keeps the g1 bars and effect checks and offers no done before the first step", () => {
+  for (const kind of ["view", "draft", "bound", "commit", "terminal"] as const)
+    for (const pmax of [0.64, 0.65, 0.7, 0.74, 0.75, 0.84, 0.85])
+      assert.equal(
+        acts("g2-exits", 75, decision(pmax, pmax), kind),
+        acts("g1", 75, decision(pmax, pmax), kind),
+        `${kind} ${pmax}`,
+      );
+  for (const kind of ["view", "draft", "bound", "commit"] as const)
+    assert.equal(assesses("g2-exits", kind), assesses("g1", kind));
+  assert.equal(gates["g2-exits"].doneBeforeFirstStep, false);
+  assert.equal(gates.g1.doneBeforeFirstStep, true);
+  assert.equal(gates.threshold.doneBeforeFirstStep, true);
 });

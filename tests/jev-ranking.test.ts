@@ -5,6 +5,7 @@ import { createJev } from "../server/jev.js";
 import { stepSchema, type DecisionInput } from "../shared/command.js";
 
 const input: DecisionInput = {
+  doneBeforeFirstStep: true,
   snapshotId: "capture",
   request: "Zeige Kunden",
   context: "{}",

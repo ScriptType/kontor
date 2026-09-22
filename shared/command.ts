@@ -54,6 +54,8 @@ export const decisionInputSchema = z.object({
   blockedControls: z.array(blockedControlSchema).max(100),
   answers: z.array(answerSchema).max(100),
   steps: z.array(stepSchema).max(60),
+  /** Gate setting filled by the runner; never part of the model context. */
+  doneBeforeFirstStep: z.boolean().default(true),
 });
 export const decisionSchema = z.object({
   snapshotId: z.string(),
