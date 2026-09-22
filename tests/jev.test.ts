@@ -579,6 +579,42 @@ test("a lean decide state carries a step log and no duplicate options, snapshots
     blockedControls: ["copy"],
   });
 });
+test("leanDecide sends the lean state to decide and the full state to both checks", async () => {
+  const states = async (decisionInput: DecisionInput) => {
+    const { jev, calls } = causalProvider([
+      { choice: "abstain", confidence: 1 },
+      { choice: "authorized", confidence: 1 },
+      { choice: "complete", confidence: 1 },
+    ]);
+    const [selected] = decisionInput.actions;
+    assert(selected);
+    await jev.decide(decisionInput);
+    await jev.assess({ ...decisionInput, selected });
+    await jev.assess({ ...decisionInput, selected: "done" });
+    return calls.map((call) => call.state);
+  };
+  const stepped: DecisionInput = {
+    ...steppedInput,
+    steps: steppedInput.steps.map((step) => ({
+      ...step,
+      before: JSON.stringify({ page: "cases" }),
+      after: JSON.stringify({ page: "customers" }),
+    })),
+  };
+  const [decide, effect, completion] = await states({
+    ...stepped,
+    state: "leanDecide",
+  });
+  const [leanDecide] = await states({ ...stepped, state: "lean" });
+  const [fullDecide, fullEffect, fullCompletion] = await states(stepped);
+  assert.deepEqual(decide, leanDecide);
+  assert.notDeepEqual(decide, fullDecide);
+  assert.deepEqual(effect, fullEffect);
+  assert.deepEqual(completion, fullCompletion);
+  assert(JSON.stringify(effect).includes('"before"'));
+  assert(!JSON.stringify(decide).includes('"before"'));
+  assert(!JSON.stringify([decide, effect, completion]).includes("leanDecide"));
+});
 test("the demo fixture abstains instead of choosing an unoffered blocked", async () => {
   const demo = createJev({ mode: "demo" });
   assert.equal(

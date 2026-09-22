@@ -96,3 +96,24 @@ test("explore-nomem keeps the full state and every option", async ({
     },
   );
 });
+test("g3-mem sends the lean state to decide and drops options that change nothing", async ({
+  page,
+}) => {
+  await storeGate(page, "g3-mem");
+  await withLive(
+    page,
+    ["nav:reports"],
+    async (_store, _held, _arrived, snapshots, observations) => {
+      await start(page, "Zeige Berichte.");
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      expect(snapshots[0]).not.toContain("nav:cases");
+      const [, second] = observations;
+      expect(second).not.toHaveProperty("availableActions");
+      expect(leanState.parse(second).observedSteps[0]?.changes).toContainEqual({
+        path: "page",
+        from: "cases",
+        to: "reports",
+      });
+    },
+  );
+});

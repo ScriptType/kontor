@@ -366,10 +366,11 @@ for (const gate of ["explore-nomem", "explore"] as const) {
   });
 }
 test("explore sends Jev the lean state, explore-nomem the full one", () => {
-  assert.equal(gates.explore.memory, true);
-  assert.equal(gates["explore-nomem"].memory, false);
+  assert.equal(gates.explore.memory, "all");
+  assert.equal(gates["explore-nomem"].memory, "off");
   for (const gate of gateNames)
-    if (gate !== "explore") assert.equal(gates[gate].memory, false, gate);
+    if (gate !== "explore" && gate !== "g3-mem")
+      assert.equal(gates[gate].memory, "off", gate);
 });
 
 test("a draft button without a value is set, a field candidate is draft or bound", () => {
@@ -386,7 +387,7 @@ test("every gate before g3 treats set exactly like draft", () => {
   assert.equal(gateKind("technician:lea", list), "set");
   assert.equal(gateKind("field:minutes:45", list), "draft");
   for (const gate of gateNames) {
-    if (gate === "g3") continue;
+    if (gate.startsWith("g3")) continue;
     assert.equal(assesses(gate, "set"), assesses(gate, "draft"), gate);
     for (const pmax of [0, 0.59, 0.6, 0.84, 0.85])
       for (const percent of [60, 75])
@@ -475,5 +476,12 @@ test("g3 keeps the save bar and check, offers no done before the first step and 
   assert.equal(assesses("g3", "view"), false);
   assert.equal(gates.g3.doneBeforeFirstStep, false);
   assert.equal(gates.g3.guard, true);
-  assert.equal(gates.g3.memory, false);
+  assert.equal(gates.g3.memory, "off");
+});
+test("g3-mem is g3 with the lean state for decide only", () => {
+  const { memory, ...rest } = gates["g3-mem"];
+  const { memory: g3Memory, ...g3 } = gates.g3;
+  assert.deepEqual(rest, g3);
+  assert.equal(memory, "decide");
+  assert.equal(g3Memory, "off");
 });

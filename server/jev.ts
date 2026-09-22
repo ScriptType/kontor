@@ -276,7 +276,10 @@ function modelState(
             input.selected === "done" ? "done" : jevAction(input.selected),
         };
   const facts = JSON.parse(input.context);
-  if (input.state === "lean") {
+  if (
+    input.state === "lean" ||
+    (input.state === "leanDecide" && input.selected === undefined)
+  ) {
     // The decide options already carry every action text; blocked controls
     // appear once at the top level.
     const { blockedControls: _blocked, ...currentFacts } = facts;

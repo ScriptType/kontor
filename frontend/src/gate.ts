@@ -33,8 +33,12 @@ export type GatePolicy = Read & {
   assessed: readonly GateKind[];
   /** Whether Jev may choose done before any step ran. */
   doneBeforeFirstStep: boolean;
-  /** Lean state: a compact step log, and no options that change nothing. */
-  memory: boolean;
+  /**
+   * Where Jev gets the lean state (a compact step log) instead of snapshots:
+   * nowhere, only for decide, or also for the effect and completion checks.
+   * Any lean state also drops options that change nothing.
+   */
+  memory: "off" | "decide" | "all";
   /** Stop loops, repeated page visits and runs over their step budget. */
   guard: boolean;
   completion: "verdict" | "perKind";
@@ -58,6 +62,7 @@ const exploreBars = {
   draft: 0.6,
   bound: 0.6,
 } as const;
+const g3Bars = { ...exploreBars, view: 0.3 } as const;
 
 export const gates = {
   threshold: {
@@ -65,7 +70,7 @@ export const gates = {
     bars: "percent",
     assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: true,
-    memory: false,
+    memory: "off",
     guard: false,
     completion: "verdict",
   },
@@ -74,7 +79,7 @@ export const gates = {
     bars: g1Bars,
     assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: true,
-    memory: false,
+    memory: "off",
     guard: false,
     completion: "perKind",
   },
@@ -83,7 +88,7 @@ export const gates = {
     bars: effectBars,
     assessed: ["set", "draft", "commit"],
     doneBeforeFirstStep: true,
-    memory: false,
+    memory: "off",
     guard: false,
     completion: "perKind",
   },
@@ -92,7 +97,7 @@ export const gates = {
     bars: g1Bars,
     assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: false,
-    memory: false,
+    memory: "off",
     guard: false,
     completion: "perKind",
   },
@@ -102,7 +107,7 @@ export const gates = {
     bars: g1Bars,
     assessed: ["set", "draft", "bound", "commit"],
     doneBeforeFirstStep: true,
-    memory: false,
+    memory: "off",
     guard: false,
     completion: "perKind",
   },
@@ -112,7 +117,7 @@ export const gates = {
     bars: effectBars,
     assessed: ["set", "draft", "commit"],
     doneBeforeFirstStep: false,
-    memory: false,
+    memory: "off",
     guard: false,
     completion: "perKind",
   },
@@ -121,7 +126,7 @@ export const gates = {
     bars: exploreBars,
     assessed: ["commit"],
     doneBeforeFirstStep: false,
-    memory: false,
+    memory: "off",
     guard: true,
     completion: "perKind",
   },
@@ -130,17 +135,27 @@ export const gates = {
     bars: exploreBars,
     assessed: ["commit"],
     doneBeforeFirstStep: false,
-    memory: true,
+    memory: "all",
     guard: true,
     completion: "perKind",
   },
   g3: {
     read: "pooled",
     margin: 0.1,
-    bars: { ...exploreBars, view: 0.3 },
+    bars: g3Bars,
     assessed: ["draft", "commit"],
     doneBeforeFirstStep: false,
-    memory: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+  },
+  "g3-mem": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "decide",
     guard: true,
     completion: "perKind",
   },

@@ -38,6 +38,7 @@ import {
   gates,
   pick,
   workKind,
+  type GatePolicy,
 } from "./gate";
 export type RunState =
   | {
@@ -103,6 +104,11 @@ const gatePreferenceSchema = z.object({
   gate: z.enum(gateNames),
 });
 const gatePreferenceKey = "kontor-jev-gate-v1";
+const leanStates = {
+  off: "full",
+  decide: "leanDecide",
+  all: "lean",
+} as const satisfies Record<GatePolicy["memory"], DecisionInput["state"]>;
 const guardMessages: Record<GuardStop, string> = {
   repeat:
     "Schritt zweimal ohne Wirkung ausgeführt. Bitte aktuellen Stand prüfen.",
@@ -578,12 +584,15 @@ export class CommandRunner {
       snapshotId: crypto.randomUUID(),
       context,
       blockedControls,
-      actions: policy.memory ? changingActions({ actions, context }) : actions,
+      actions:
+        policy.memory === "off"
+          ? actions
+          : changingActions({ actions, context }),
       fields: this.registry.fieldSnapshot(),
       answers: run.answers,
       steps: run.steps,
       doneBeforeFirstStep: policy.doneBeforeFirstStep,
-      state: policy.memory ? "lean" : "full",
+      state: leanStates[policy.memory],
     };
   }
   private capture(input: DecisionInput, decision: Decision): DecisionCapture {
