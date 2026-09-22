@@ -33,16 +33,16 @@ test("an appointment length is never offered as worked minutes", () => {
     assert.deepEqual(offered(field("duration", "V-1042"), request), ["45"]);
   }
 });
-test("a number without a field word is worked time, never an appointment length", () => {
+test("a number without a field word stays offered to every number field", () => {
   const request = "1041 auf lea mit 75 min dann teamansicht";
   assert.deepEqual(offered(field("minutes"), request), ["75"]);
-  assert.deepEqual(offered(field("duration"), request), []);
+  assert.deepEqual(offered(field("duration"), request), ["75"]);
 });
-test("the nearest field word in a clause decides, and und starts a new clause", () => {
+test("the nearest preceding field word in a clause decides, and und starts a new clause", () => {
   const both = "Termin 60 min, Arbeitszeit 30 min";
   assert.deepEqual(offered(field("duration"), both), ["60"]);
   assert.deepEqual(offered(field("minutes"), both), ["30"]);
-  const split = "bei 1041 die Termin remove und 75 Minuten eintragen";
+  const split = "bei 1041 die Termin remove und 75 Minuten Arbeitszeit";
   assert.deepEqual(offered(field("minutes"), split), ["75"]);
   assert.deepEqual(offered(field("duration"), split), []);
 });
@@ -73,4 +73,11 @@ test("every number field of a dimension has words that bind request numbers to i
   });
   assert.deepEqual(numberFields.sort(), ["duration", "minutes"]);
   for (const id of numberFields) assert(id in numberFieldCues, id);
+});
+
+test("an identifier spoken in two parts is no value and names its case", () => {
+  const request = "Fau 10 41, der Termin vom Zugang, 90 min draus";
+  assert.deepEqual(offered(field("duration"), request), ["90"]);
+  assert.deepEqual(offered(field("minutes"), request), []);
+  assert.deepEqual(offered(field("duration", "V-1042"), request), []);
 });

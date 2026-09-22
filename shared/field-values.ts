@@ -25,71 +25,106 @@ export const valueSources = {
 export type ValueSource = keyof typeof valueSources;
 
 /**
- * Words that tie a number in the request to one number field, keyed by field
- * id. A number belongs to the field whose word stands nearest to it in the
- * same clause, and to the cases that clause names. A number in a clause that
- * names no field is worked time: an appointment length always comes with the
- * appointment. The duration field only exists once an appointment has a
- * start, so without this binding a duration number would be offered to
- * worked minutes, the only number field on screen.
+ * Field words that tie a number in the request to one number field, keyed by
+ * field id. Units (Minuten, Stunden, h, std) and verbs such as "dauert" are
+ * not field words: worked time and appointment length share them. A number
+ * belongs to the field whose word precedes it most closely in its clause, else
+ * to the one that follows it most closely, and only to the cases that clause
+ * names. A clause without a field word leaves the number to every number
+ * field. The duration field only exists once an appointment has a start, so
+ * without this binding "termin 45 min" would be offered to worked minutes, the
+ * only number field on screen.
  */
 export const numberFieldCues = {
   minutes: /arbeit|\bdran\b|geleistet|aufwand|\bwork/giu,
-  duration:
-    /termin|\bdauer\b|\bstunden?\b|\blang(?:e|en)?\b|länge|appointment|duration|\blong\b/giu,
+  duration: /termin|\bdauer\b|länge|appointment|\bduration\b/giu,
 } as const satisfies Record<string, RegExp>;
-const bareNumberField: keyof typeof numberFieldCues = "minutes";
 const clauseBreak =
-  /(?<!\d)[.!?](?=\s|$)|[;\n]|\b(?:und|and|dann|danach|then)\b/giu;
+  /(?<!\b\d{1,2}\.\d{1,2})[.!?](?=\s|$)|[;\n]|\b(?:und|and|dann|danach|then)\b/giu;
+// A number followed by a minute unit, glued or not, or standing alone. Digits
+// inside ids, dates, times and decimals ("V-1041", "28.9.", "9:30", "1,5")
+// are no number.
+const quantity =
+  /(?<![\p{L}\p{N}_.,:/+\-])(\d{1,5})(?=\s?(?:minuten|minutes|minute|mins|min)\b|(?![\p{L}\p{N}_:/+\-]|[.,]\d))/giu;
+// Hours are not a minute value, and a clock time is no quantity at all.
+const notMinutes = /^\s?(?:h|std|stunden?|hours?|hrs?|uhr)\b/iu;
+const clockBefore = /(?:\bum|\bgegen|\bhalb|\bviertel)\s$/iu;
+const minuteUnit = /^\s?(?:minuten|minutes|minute|mins|min)\b/iu;
 
 const identifierDigits = (value: string) => /^\p{L}+-(\d+)$/u.exec(value)?.[1];
 
 /**
- * Every literal number in the request with the number fields it belongs to and
- * the identifiers its clause names (empty when it names none).
+ * Every literal minute quantity in the request that is not an identifier's
+ * digits, with the number fields it belongs to and the identifiers its clause
+ * names (empty when it names none).
  */
 export function requestNumbers(request: string, identifiers: string[] = []) {
+  // "1041" or, spoken in two parts, "10 41" names case V-1041.
   const named = identifiers.flatMap((id) => {
     const digits = identifierDigits(id);
-    return digits
-      ? [{ id, pattern: new RegExp(`(?<!\\d)${digits}(?!\\d)`) }]
-      : [];
+    if (!digits) return [];
+    const spellings = [
+      digits,
+      ...Array.from(
+        { length: digits.length - 1 },
+        (_, k) => `${digits.slice(0, k + 1)}\\s${digits.slice(k + 1)}`,
+      ),
+    ];
+    return [
+      {
+        id,
+        pattern: new RegExp(`(?<!\\d)(?:${spellings.join("|")})(?!\\d)`, "g"),
+      },
+    ];
   });
+  const idSpans = named.flatMap(({ pattern }) =>
+    [...request.matchAll(pattern)].map((m) => ({
+      from: m.index,
+      to: m.index + m[0].length,
+    })),
+  );
   const breaks = [0, request.length];
   for (const match of request.matchAll(clauseBreak))
     breaks.push(match.index, match.index + match[0].length);
   breaks.sort((a, b) => a - b);
-  return [
-    ...request.matchAll(
-      /(?<![\p{L}\p{N}_.,:/+\-])(\d{1,5})(?![\p{L}\p{N}_.,:/+\-])/gu,
-    ),
-  ].map((match) => {
+  return [...request.matchAll(quantity)].flatMap((match) => {
     const at = match.index;
+    const after = request.slice(at + match[0].length);
+    const before = request.slice(Math.max(0, at - 12), at);
+    if (
+      idSpans.some((span) => at >= span.from && at < span.to) ||
+      notMinutes.test(after) ||
+      (clockBefore.test(before) && !minuteUnit.test(after))
+    )
+      return [];
     const start = breaks.filter((b) => b <= at).at(-1) ?? 0;
     const end = breaks.find((b) => b > at) ?? request.length;
     const clause = request.slice(start, end);
-    const number = { from: at - start, to: at - start + match[0].length };
-    const distances = Object.entries(numberFieldCues).flatMap(([id, cue]) =>
+    const from = at - start;
+    const to = from + match[0].length;
+    const words = Object.entries(numberFieldCues).flatMap(([id, cue]) =>
       [...clause.matchAll(cue)].map((word) => ({
         id,
-        distance:
-          word.index >= number.to
-            ? word.index - number.to
-            : Math.max(0, number.from - (word.index + word[0].length)),
+        start: word.index,
+        end: word.index + word[0].length,
       })),
     );
-    const nearest = Math.min(...distances.map((d) => d.distance));
-    const fields = distances.length
-      ? [
-          ...new Set(
-            distances.filter((d) => d.distance === nearest).map((d) => d.id),
-          ),
-        ]
-      : [bareNumberField];
+    const preceding = words.filter((w) => w.end <= from);
+    const following = words.filter((w) => w.start >= to);
+    const nearest = preceding.length
+      ? preceding.filter(
+          (w) => w.end === Math.max(...preceding.map((p) => p.end)),
+        )
+      : following.filter(
+          (w) => w.start === Math.min(...following.map((f) => f.start)),
+        );
+    const fields = nearest.length
+      ? [...new Set(nearest.map((w) => w.id))]
+      : Object.keys(numberFieldCues);
     const cases = named
-      .filter(({ pattern }) => pattern.test(clause))
+      .filter(({ pattern }) => clause.search(pattern) >= 0)
       .map(({ id }) => id);
-    return { value: match[0], fields, cases };
+    return [{ value: match[1] ?? match[0], fields, cases }];
   });
 }
 export function fieldValues(
@@ -110,12 +145,8 @@ export function fieldValues(
     if (answer.fieldId === field.id && answer.scope === field.scope)
       add(answer.value, "answer");
   if (field.type === "number") {
-    const digits = new Set(
-      existing.flatMap((id) => identifierDigits(id) ?? []),
-    );
     for (const { value, fields, cases } of requestNumbers(request, existing))
       if (
-        !digits.has(value) &&
         fields.includes(field.id) &&
         (!cases.length || cases.includes(field.scope))
       )
