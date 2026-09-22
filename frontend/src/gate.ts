@@ -3,6 +3,7 @@ import type {
   Decision,
   DecisionInput,
 } from "../../shared/command.js";
+import { effectKey, noChangeKey } from "../../shared/dimensions.js";
 
 export type GateKind =
   | "view"
@@ -12,9 +13,15 @@ export type GateKind =
   | "terminal"
   | "ask";
 type BarKind = Exclude<GateKind, "ask">;
-export type GatePolicy = {
-  /** What a pick is read against: the choice confidence or the top option probability. */
-  read: "confidence" | "pmax";
+/**
+ * What a pick is read against: the choice confidence, the top option
+ * probability, or the summed probability of the options with the top effect,
+ * which must also lead the next effect by margin.
+ */
+type Read =
+  | { read: "confidence" | "pmax" }
+  | { read: "pooled"; margin: number };
+export type GatePolicy = Read & {
   /** Bar per kind of choice; "percent" uses the configured threshold for every kind. */
   bars: "percent" | Record<BarKind, number>;
   /** Kinds of action that pay the separate effect check before they run. */
@@ -62,6 +69,14 @@ export const gates = {
     doneBeforeFirstStep: false,
     completion: "perKind",
   },
+  "g2-pool": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g1Bars,
+    assessed: ["draft", "bound", "commit"],
+    doneBeforeFirstStep: true,
+    completion: "perKind",
+  },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
@@ -83,17 +98,95 @@ export function bar(gate: GateName, percent: number, kind: GateKind) {
   return kind === "ask" || bars === "percent" ? percent / 100 : bars[kind];
 }
 
+type UnpooledGate = {
+  [Name in GateName]: (typeof gates)[Name]["read"] extends "pooled"
+    ? never
+    : Name;
+}[GateName];
+
+function reads(
+  policy: Extract<GatePolicy, { read: "confidence" | "pmax" }>,
+  decision: Pick<Decision, "confidence" | "ranked">,
+) {
+  return policy.read === "confidence"
+    ? decision.confidence
+    : (decision.ranked[0]?.probability ?? 0);
+}
+
 export function acts(
-  gate: GateName,
+  gate: UnpooledGate,
   percent: number,
   decision: Pick<Decision, "confidence" | "ranked">,
   kind: GateKind,
 ) {
-  const read =
-    gates[gate].read === "confidence"
-      ? decision.confidence
-      : (decision.ranked[0]?.probability ?? 0);
-  return read >= bar(gate, percent, kind);
+  return reads(gates[gate], decision) >= bar(gate, percent, kind);
+}
+
+export type GatePick = {
+  choice: string;
+  kind: GateKind;
+  acts: boolean;
+  /** The value read against the bar. */
+  total: number;
+  /** How far the pick leads the next option, or the next effect when pooled. */
+  margin: number;
+};
+
+/** The choice the runner follows and whether it acts without review. */
+export function pick(
+  gate: GateName,
+  percent: number,
+  decision: Pick<
+    Decision,
+    "choice" | "confidence" | "ranked" | "probabilities"
+  >,
+  input: Pick<DecisionInput, "actions" | "context">,
+): GatePick {
+  const policy: GatePolicy = gates[gate];
+  const [first, second] = decision.ranked;
+  if (policy.read !== "pooled") {
+    const kind = gateKind(decision.choice, input);
+    const total = reads(policy, decision);
+    return {
+      choice: decision.choice,
+      kind,
+      acts: total >= bar(gate, percent, kind),
+      total,
+      margin: (first?.probability ?? 0) - (second?.probability ?? 0),
+    };
+  }
+  const groups = new Map<
+    string,
+    { total: number; members: [string, number][] }
+  >();
+  for (const [option, probability] of Object.entries(decision.probabilities)) {
+    const key = effectKey(option, input);
+    const group = groups.get(key) ?? { total: 0, members: [] };
+    group.total += probability;
+    group.members.push([option, probability]);
+    groups.set(key, group);
+  }
+  const [top, next] = [...groups].sort(([, a], [, b]) => b.total - a.total);
+  if (!top) {
+    const kind = gateKind(decision.choice, input);
+    return { choice: decision.choice, kind, acts: false, total: 0, margin: 0 };
+  }
+  const [key, { total, members }] = top;
+  const margin = total - (next?.[1].total ?? 0);
+  const choice =
+    key === noChangeKey && members.some(([option]) => option === "done")
+      ? "done"
+      : members.reduce((best, member) =>
+          member[1] > best[1] ? member : best,
+        )[0];
+  const kind = gateKind(choice, input);
+  return {
+    choice,
+    kind,
+    acts: total >= bar(gate, percent, kind) && margin >= policy.margin,
+    total,
+    margin,
+  };
 }
 
 /** Whether this gate runs the separate effect check for an action of this kind. */

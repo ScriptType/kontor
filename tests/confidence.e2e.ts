@@ -759,3 +759,36 @@ for (const run of [
       },
     );
   });
+
+for (const gate of ["g2-pool", "g1"] as const)
+  test(`${gate} with done at 40 percent and a navigation to the open page at 30 percent`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (value) => localStorage.setItem("kontor-jev-gate-v1", value),
+      JSON.stringify({ version: 1, gate }),
+    );
+    await withLive(
+      page,
+      [],
+      async () => {
+        await start(page, "Zeige die Vorgänge.");
+        if (gate === "g2-pool")
+          await expect(page.locator(".activity-label")).toContainText(
+            "Jev meldet",
+          );
+        else
+          await expect(
+            page.getByRole("region", { name: "Jev-Vorschläge prüfen" }),
+          ).toBeVisible();
+        await expect(page).not.toHaveURL(/#reports$/);
+      },
+      {
+        nextAnswer: () => ({
+          choice: "done",
+          confidence: 0.4,
+          probabilities: { done: 0.4, "nav:cases": 0.3, "nav:reports": 0.3 },
+        }),
+      },
+    );
+  });

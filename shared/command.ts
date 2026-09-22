@@ -66,6 +66,8 @@ export const decisionSchema = z.object({
       z.object({ choice: z.string(), probability: z.number().min(0).max(1) }),
     )
     .length(2),
+  /** Every offered option with its probability; ranked keeps the top two. */
+  probabilities: z.record(z.string(), z.number().min(0).max(1)),
   blockedCause: z
     .object({ controlId: z.string(), confidence: z.number().min(0).max(1) })
     .optional(),

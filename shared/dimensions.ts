@@ -477,6 +477,88 @@ export function actionEffects(actionId: string): ActionEffect[] | null {
     : null;
 }
 
+// The facts CommandRunner.facts() sends as input.context; selected and draft are
+// present only while the case detail is mounted.
+const effectFactsSchema = z.object({
+  currentPage: pageSchema,
+  filters: caseFiltersSchema,
+  menu: z.string().nullable(),
+  selected: z.object({ id: z.string() }).optional(),
+  draft: editableSchema.optional(),
+});
+type EffectFacts = z.infer<typeof effectFactsSchema>;
+function effectFacts(context: string): EffectFacts | null {
+  try {
+    return effectFactsSchema.safeParse(JSON.parse(context)).data ?? null;
+  } catch {
+    return null;
+  }
+}
+const canonical = (value: unknown) =>
+  JSON.stringify(value, (_, inner: unknown) =>
+    inner && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(
+          Object.entries(inner).sort(([a], [b]) => (a < b ? -1 : 1)),
+        )
+      : inner,
+  );
+const isCaseDimension = (id: DimensionId): id is CaseDimensionId =>
+  dimensions.some(
+    (entry) => entry.id === id && "scope" in entry && entry.scope === "case",
+  );
+const isListDimension = (id: DimensionId): id is ListDimensionId =>
+  listDimensions.some((entry) => entry.id === id);
+/** What an effect changes against the current facts: "" for nothing, null when unknown. */
+function change(
+  actionId: string,
+  { dimension, value }: ActionEffect,
+  facts: EffectFacts,
+): string | null {
+  if (value === null) {
+    if (!actionId.startsWith("menu:")) return null;
+    const menu = actionId.slice("menu:".length);
+    return facts.menu === menu ? "menu=closed" : `menu=${menu}`;
+  }
+  const set = `${dimension}=${value}`;
+  if (dimension === "page") return value === facts.currentPage ? "" : set;
+  if (dimension === "cases") return value === facts.selected?.id ? "" : set;
+  if (isListDimension(dimension))
+    return filterValue(dimension, facts.filters) === value ? "" : set;
+  if (isCaseDimension(dimension)) {
+    if (!facts.draft) return null;
+    const next = withCaseValue(dimension, facts.draft, value);
+    if (!next) return null;
+    return canonical(next) === canonical(facts.draft) ? "" : set;
+  }
+  return null;
+}
+/** The effect key of options that change nothing, done among them. */
+export const noChangeKey = "[]";
+/**
+ * Equal for two options exactly when executing either would leave the same
+ * observable state. Saves, discards, questions, halts and options with an
+ * unknown effect are their own key.
+ */
+export function effectKey(
+  choice: string,
+  input: Pick<DecisionInput, "actions" | "context">,
+): string {
+  const own = JSON.stringify({ id: choice });
+  if (choice === "done") return noChangeKey;
+  const kind = input.actions.find((action) => action.id === choice)?.kind;
+  if (kind === undefined || kind === "commit" || kind === "discard") return own;
+  const effects = actionEffects(choice);
+  const facts = effectFacts(input.context);
+  if (!effects?.length || !facts) return own;
+  const changes: string[] = [];
+  for (const effect of effects) {
+    const changed = change(choice, effect, facts);
+    if (changed === null) return own;
+    if (changed) changes.push(changed);
+  }
+  return JSON.stringify(changes.sort());
+}
+
 type Shape = Record<string, z.ZodType>;
 export function coverageProblems(
   shapes: { editable: Shape; filters: Shape } = {

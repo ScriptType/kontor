@@ -117,19 +117,15 @@ export function createJev(config: Config, fetch?: Fetch) {
       if (!client) {
         const fixed = fixture(input);
         const selected = Object.hasOwn(options, fixed) ? fixed : "abstain";
+        const probabilities = Object.fromEntries(
+          Object.keys(options).map((key) => [key, key === selected ? 1 : 0]),
+        );
         return {
           snapshotId: input.snapshotId,
           choice: selected,
           confidence: 1,
-          ranked: rank(
-            options,
-            Object.fromEntries(
-              Object.keys(options).map((key) => [
-                key,
-                key === selected ? 1 : 0,
-              ]),
-            ),
-          ),
+          ranked: rank(options, probabilities),
+          probabilities,
         };
       }
       const answers = await ask(
@@ -149,6 +145,7 @@ export function createJev(config: Config, fetch?: Fetch) {
         choice: answer.choice,
         confidence: answer.confidence,
         ranked: rank(options, answer.probabilities),
+        probabilities: answer.probabilities,
       };
       if (answer.choice === "blocked" && input.blockedControls.length) {
         const causes = Object.fromEntries(

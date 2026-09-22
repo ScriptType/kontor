@@ -100,6 +100,7 @@ test("native top two include terminal and question choices independently of sele
       { choice: "done", probability: 0.4 },
       { choice: "ask:search", probability: 0.3 },
     ],
+    probabilities,
   });
   assert.deepEqual(calls, ["next"]);
 });

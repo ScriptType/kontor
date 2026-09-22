@@ -1,8 +1,11 @@
 import type { Assessment, Decision, DecisionInput } from "../../shared/command";
+import type { GatePick } from "./gate";
 
 export interface DecisionCapture {
   input: DecisionInput;
   decision: Decision;
+  /** What the gate follows: the choice, and whether it acts without review. */
+  pick: GatePick;
   fingerprint: string;
   epoch: number;
   runId: string | null;

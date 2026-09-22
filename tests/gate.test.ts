@@ -6,6 +6,7 @@ import {
   completes,
   gateKind,
   gates,
+  pick,
   workKind,
 } from "../frontend/src/gate.js";
 import type { ActionDescription } from "../shared/command.js";
@@ -208,4 +209,92 @@ test("g2-exits keeps the g1 bars and effect checks and offers no done before the
   assert.equal(gates["g2-exits"].doneBeforeFirstStep, false);
   assert.equal(gates.g1.doneBeforeFirstStep, true);
   assert.equal(gates.threshold.doneBeforeFirstStep, true);
+});
+
+const caseList = {
+  actions: [
+    offered("filter:open", "view"),
+    offered("status-cases:open", "view"),
+    offered("nav:cases", "view"),
+    offered("nav:reports", "view"),
+    offered("nav:team", "view"),
+  ],
+  context: JSON.stringify({
+    currentPage: "cases",
+    filters: {
+      customerId: null,
+      technicianId: null,
+      status: "all",
+      search: "",
+    },
+    menu: null,
+  }),
+};
+const decided = (probabilities: Record<string, number>) => {
+  const ranked = Object.entries(probabilities)
+    .map(([choice, probability]) => ({ choice, probability }))
+    .sort((a, b) => b.probability - a.probability);
+  const [first, second] = ranked;
+  assert(first && second);
+  return {
+    choice: first.choice,
+    confidence: first.probability,
+    ranked: [first, second],
+    probabilities,
+  };
+};
+
+test("g2-pool acts on two options with one effect that neither clears alone", () => {
+  const decision = decided({
+    "filter:open": 0.4,
+    "status-cases:open": 0.35,
+    "nav:team": 0.25,
+  });
+  const pooled = pick("g2-pool", 75, decision, caseList);
+  assert.equal(pooled.choice, "filter:open");
+  assert.equal(pooled.kind, "view");
+  assert.equal(pooled.acts, true);
+  assert.equal(pooled.total.toFixed(2), "0.75");
+  assert.equal(pooled.margin.toFixed(2), "0.50");
+  assert.equal(pick("g1", 75, decision, caseList).acts, false);
+});
+test("g2-pool picks done when the options that change nothing win together", () => {
+  const decision = decided({
+    "nav:cases": 0.36,
+    done: 0.3,
+    "nav:reports": 0.34,
+  });
+  const pooled = pick("g2-pool", 75, decision, caseList);
+  assert.equal(pooled.choice, "done");
+  assert.equal(pooled.kind, "terminal");
+  assert.equal(pooled.acts, true);
+  assert.equal(pooled.total.toFixed(2), "0.66");
+  assert.equal(pick("g1", 75, decision, caseList).choice, "nav:cases");
+  assert.equal(pick("g1", 75, decision, caseList).acts, false);
+});
+test("g2-pool holds a pick that clears its bar but leads the next effect by less than 0.10", () => {
+  const close = decided({
+    "ask:minutes": 0.46,
+    "nav:reports": 0.44,
+    done: 0.1,
+  });
+  assert.equal(pick("g2-pool", 40, close, caseList).choice, "ask:minutes");
+  assert.equal(pick("g2-pool", 40, close, caseList).acts, false);
+  const clear = decided({
+    "ask:minutes": 0.56,
+    "nav:reports": 0.34,
+    done: 0.1,
+  });
+  assert.equal(pick("g2-pool", 40, clear, caseList).acts, true);
+});
+test("unpooled gates follow Jev's own choice", () => {
+  const decision = {
+    ...decided({ "filter:open": 0.4, "status-cases:open": 0.35, done: 0.25 }),
+    choice: "status-cases:open",
+  };
+  for (const gate of ["threshold", "g1", "g2-effect", "g2-exits"] as const)
+    assert.equal(
+      pick(gate, 75, decision, caseList).choice,
+      "status-cases:open",
+    );
 });

@@ -30,12 +30,11 @@ import {
   type DecisionCapture,
 } from "./decision-review";
 import {
-  acts,
   assesses,
   completes,
-  gateKind,
   gateNames,
   gates,
+  pick,
   workKind,
 } from "./gate";
 export type RunState =
@@ -434,12 +433,12 @@ export class CommandRunner {
         if (decision.snapshotId !== input.snapshotId)
           throw new Error("Veraltete Entscheidung.");
         const fresh = this.capture(input, decision);
-        if (decision.choice === "done") await this.checkCompletion(fresh);
+        if (fresh.pick.choice === "done") await this.checkCompletion(fresh);
         else
           this.review(
             fresh,
             "Neue Entscheidung nach Abschlussprüfung. Bitte den nächsten Schritt prüfen.",
-            decision.choice === "abstain" ? "abstain" : "uncertain",
+            fresh.pick.choice === "abstain" ? "abstain" : "uncertain",
           );
         return;
       }
@@ -577,6 +576,7 @@ export class CommandRunner {
     return {
       input,
       decision,
+      pick: pick(this.gate, this.confidencePercent(), decision, input),
       fingerprint: catalogFingerprint(input),
       epoch: this.epoch,
       runId: this.activeId,
@@ -592,7 +592,7 @@ export class CommandRunner {
       return null;
     const input = this.snapshot();
     if (catalogFingerprint(input) !== capture.fingerprint) {
-      if (capture.decision.choice === "done")
+      if (capture.pick.choice === "done")
         this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
       else
         this.block(
@@ -660,14 +660,6 @@ export class CommandRunner {
     }
     return false;
   }
-  private acts({ input, decision }: DecisionCapture) {
-    return acts(
-      this.gate,
-      this.confidencePercent(),
-      decision,
-      gateKind(decision.choice, input),
-    );
-  }
   private async checkCompletion(capture: DecisionCapture) {
     const { input } = capture;
     const assessment = await this.ui.api.assess.call(
@@ -686,7 +678,7 @@ export class CommandRunner {
         assessment,
         workKind(input.steps),
       ) ||
-      !this.acts(capture) ||
+      !capture.pick.acts ||
       this.ui.busy() ||
       this.ui.unknownSave() ||
       this.run()?.operations.some(
@@ -730,35 +722,34 @@ export class CommandRunner {
       if (!this.resolveCapture(capture)) return;
       if (decision.snapshotId !== input.snapshotId)
         throw new Error("Veraltete Entscheidung.");
-      if (decision.choice === "done") {
+      const chosen = capture.pick;
+      if (chosen.choice === "done") {
         await this.checkCompletion(capture);
         return;
       }
-      if (decision.choice === "abstain") {
-        this.terminalOrQuestion(decision.choice, capture, input);
+      if (chosen.choice === "abstain") {
+        this.terminalOrQuestion(chosen.choice, capture, input);
         return;
       }
-      if (decision.choice === "blocked" || decision.choice.startsWith("ask:")) {
-        if (!this.acts(capture))
+      if (chosen.choice === "blocked" || chosen.choice.startsWith("ask:")) {
+        if (!chosen.acts)
           this.review(
             capture,
-            decision.choice === "blocked"
+            chosen.choice === "blocked"
               ? "Jev ist unsicher, ob verbleibende Arbeit blockiert ist. Vorschläge prüfen."
               : "Jev ist bei der Rückfrage unsicher. Vorschläge prüfen.",
           );
-        else this.terminalOrQuestion(decision.choice, capture, input);
+        else this.terminalOrQuestion(chosen.choice, capture, input);
         return;
       }
-      const action = input.actions.find(
-        (action) => action.id === decision.choice,
-      );
+      const action = input.actions.find((action) => action.id === chosen.choice);
       if (!action)
         throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
-      let reason = this.acts(capture)
+      let reason = chosen.acts
         ? ""
         : "Auswahlkonfidenz unter der Bestätigungsschwelle. Vorschläge prüfen.";
       let assessed: { choice: string; assessment: Assessment } | undefined;
-      if (assesses(this.gate, gateKind(action.id, input))) {
+      if (assesses(this.gate, chosen.kind)) {
         const assessment = await this.ui.api.assess.call(
           { ...input, selected: action },
           { signal: this.abort?.signal },
