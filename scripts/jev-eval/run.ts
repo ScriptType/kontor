@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -7,7 +8,8 @@ import { z } from "zod";
 import { readConfig } from "../../server/config.js";
 import { confidencePercent, runSample, type Budget } from "./harness.js";
 import { markdown, summaries, type SampleResult } from "./report.js";
-import { allScenarios, validateScenario } from "./scenarios.js";
+import { readScenarios, scenarioProblems } from "./scenario-files.js";
+import { allScenarios } from "./scenarios.js";
 
 const { values } = parseArgs({
   options: {
@@ -19,6 +21,7 @@ const { values } = parseArgs({
     concurrency: { type: "string", default: "1" },
     out: { type: "string" },
     "max-calls": { type: "string", default: "600" },
+    scenarios: { type: "string" },
   },
 });
 const whole = z.coerce.number().int();
@@ -43,16 +46,16 @@ const out =
     `${variant}-${new Date().toISOString().replaceAll(":", "-")}`,
   );
 
-const scenarios = allScenarios({ seed, count }).filter(
+const file = values.scenarios ? await readScenarios(values.scenarios) : null;
+const scenarios = (file?.scenarios ?? allScenarios({ seed, count })).filter(
   (s) => !only || only.includes(s.id),
 );
 const unknown = only?.filter((id) => !scenarios.some((s) => s.id === id));
 if (!scenarios.length || unknown?.length)
   throw new Error(`Unknown scenario: ${unknown?.join(", ")}`);
-for (const s of scenarios) {
-  const problems = validateScenario(s);
-  if (problems.length) throw new Error(`${s.id}: ${problems.join("; ")}`);
-}
+const problems = scenarioProblems(scenarios);
+if (problems.length) throw new Error(problems.join("\n"));
+const scenariosJson = JSON.stringify(scenarios, null, 2);
 const jobs = scenarios.flatMap((scenario) =>
   Array.from({ length: Math.max(samples, scenario.minSamples) }, (_, i) => ({
     scenario,
@@ -66,18 +69,17 @@ const meta = {
     .toString()
     .trim(),
   model: config.mode === "live" ? config.model : "demo",
-  seed,
-  count,
+  ...(values.scenarios ? { scenarios: values.scenarios } : { seed, count }),
+  ...(only ? { only: only.join(",") } : {}),
+  "scenarios sha256":
+    file?.sha256 ?? createHash("sha256").update(scenariosJson).digest("hex"),
   samples,
   concurrency,
   "confidence threshold": `${confidencePercent} %`,
   started: new Date().toISOString(),
 };
 await mkdir(join(out, "samples"), { recursive: true });
-await writeFile(
-  join(out, "scenarios.json"),
-  JSON.stringify(scenarios, null, 2),
-);
+await writeFile(join(out, "scenarios.json"), scenariosJson);
 
 const results: SampleResult[] = [];
 const write = () =>

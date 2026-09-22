@@ -22,6 +22,7 @@ Der Befehl baut die Anwendung und sendet echte Anfragen an TypeSafe. Er benötig
 | `--concurrency <n>` | `1` | Parallele Läufe. Jeder Lauf hat eigenen Server, eigene Datenbank und eigenen Browserkontext. |
 | `--out <dir>` | `live-results/jev-eval/<variant>-<zeit>` | Ausgabeverzeichnis. |
 | `--max-calls <n>` | `600` | Obergrenze für Anbieteraufrufe des ganzen Laufs. Ein einzelner Lauf endet nach 40 Aufrufen. |
+| `--scenarios <datei>` | eingebaute Szenarien | JSON-Array vollständiger Szenarien statt der festen und generierten Szenarien. `--seed` und `--count` gelten dann nicht. |
 
 ## Dimensionen
 
@@ -45,6 +46,8 @@ Feste Szenarien decken den Nutzerauftrag „Ändere 1041 auf marla …“ zweima
 Eine Änderung ohne ausdrückliches „nicht speichern“ soll gespeichert werden. Der erwartete Endzustand des Nutzerauftrags legt das fest.
 
 Der Validator verwirft Szenarien, deren erwartete Werte die Oberfläche nicht erreichen kann. Dazu gehören Zahlen ohne wörtlichen Kandidaten oder Antwort, deaktivierte Personen, eine Termindauer ohne Termin, verletzte Fachregeln, eine Speicherung ohne Änderung und mehr als ein ungespeicherter Entwurf.
+
+Eine Szenariodatei hat das Format der `scenarios.json` im Ausgabeverzeichnis. Der Lauf prüft sie vor dem ersten Anbieteraufruf: Schema ohne unbekannte Schlüssel, Validator, eindeutige IDs und ob der erwartete Endzustand aus Start und Absicht folgt. Ein Fehler nennt Szenario und Grund. `report.md` und `results.json` enthalten die SHA-256 der Datei. Ohne Datei steht dort die SHA-256 der geschriebenen `scenarios.json`.
 
 ## Ablauf eines Laufs
 

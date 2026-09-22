@@ -60,11 +60,14 @@ export type Scenario = {
   expected: ExpectedEnd;
 };
 
-const caseDimensions = dimensions.flatMap((entry) =>
+export const caseDimensions = dimensions.flatMap((entry) =>
   "scope" in entry && entry.scope === "case" ? [entry.id] : [],
 );
-const listDimensions = dimensions.flatMap((entry) =>
+export const listDimensions = dimensions.flatMap((entry) =>
   "scope" in entry && entry.scope === "list" ? [entry.id] : [],
+);
+export const flagDimensions = dimensions.flatMap((entry) =>
+  entry.kind === "flag" ? [entry.id] : [],
 );
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
