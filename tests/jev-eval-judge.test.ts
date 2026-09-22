@@ -48,6 +48,7 @@ test("the expected end state without a question is magic", () => {
     outcome: "magic",
     endCorrect: true,
     questions: 0,
+    magicSaveCheck: true,
     mismatches: [],
     unexpectedSaves: [],
   });
@@ -90,6 +91,7 @@ test("answered chips separate correct-after-chips from asked-wrong", () => {
     outcome: "correct-after-chips",
     endCorrect: true,
     questions: 1,
+    magicSaveCheck: false,
     mismatches: [],
     unexpectedSaves: [],
   });
@@ -98,6 +100,7 @@ test("answered chips separate correct-after-chips from asked-wrong", () => {
     outcome: "asked-wrong",
     endCorrect: false,
     questions: 1,
+    magicSaveCheck: false,
     mismatches: ["page cases, expected reports"],
     unexpectedSaves: [],
   });
@@ -120,6 +123,47 @@ test("a run that ends at a question the harness cannot answer is stopped-unanswe
   assert.equal(
     judge(s, asExpected(s, [blocked])).outcome,
     "stopped-unanswered",
+  );
+});
+test("magic-save-check also counts a correct run whose only chips asked whether to save", () => {
+  const s = byId("use-09");
+  const save: Stop = {
+    kind: "confirm",
+    message: "V-1042 speichern?",
+    dimension: "save",
+    caseId: "V-1042",
+    value: "yes",
+  };
+  assert.deepEqual(
+    [
+      judge(s, asExpected(s, [done])),
+      judge(s, asExpected(s, [save, done])),
+      judge(s, asExpected(s, [save, chip, done])),
+      judge(s, { ...asExpected(s, [save, done]), page: "cases" }),
+      judge(byId("use-15"), asExpected(byId("use-15"), [save, blocked])),
+    ].map((v) => [v.outcome, v.magicSaveCheck]),
+    [
+      ["magic", true],
+      ["correct-after-chips", true],
+      ["correct-after-chips", false],
+      ["asked-wrong", false],
+      ["handoff", false],
+    ],
+  );
+});
+test("a save chip is answered yes only for a case the scenario expects saved", () => {
+  const fresh = byId("user-fresh");
+  assert.equal(answerFor(fresh, "save", "V-1041"), "yes");
+  assert.equal(answerFor(fresh, "save", "V-1042"), "no");
+  assert.equal(answerFor(fresh, "save"), "yes");
+  const repeat = byId("user-repeat");
+  assert.equal(repeat.intent.flags.save, true);
+  assert.equal(answerFor(repeat, "save", "V-1041"), "no");
+  assert.equal(answerFor(repeat, "save"), "no");
+  assert.equal(answerFor(byId("use-10"), "save", "V-1042"), "no");
+  assert.deepEqual(
+    ["V-1042", "V-1042"].map((id) => answerFor(byId("use-11"), "save", id)),
+    ["yes", "yes"],
   );
 });
 test("a final blocked handoff after the reachable work is a handoff, not magic and not a question, done is wrong", () => {
@@ -220,9 +264,11 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     outcome,
     endCorrect: ["magic", "handoff", "correct-after-chips"].includes(outcome),
     questions,
+    magicSaveCheck: outcome === "magic",
     mismatches: [],
     unexpectedSaves: [],
     variant: "test",
+    saveMode: "auto",
     scenarioId: "x",
     source: "generated",
     sample: 1,

@@ -6,7 +6,12 @@ import { parseArgs } from "node:util";
 import { chromium } from "@playwright/test";
 import { z } from "zod";
 import { readConfig } from "../../server/config.js";
-import { confidencePercent, runSample, type Budget } from "./harness.js";
+import {
+  confidencePercent,
+  runSample,
+  saveModes,
+  type Budget,
+} from "./harness.js";
 import { markdown, summaries, type SampleResult } from "./report.js";
 import { readScenarios, scenarioProblems } from "./scenario-files.js";
 import { allScenarios } from "./scenarios.js";
@@ -22,6 +27,7 @@ const { values } = parseArgs({
     out: { type: "string" },
     "max-calls": { type: "string", default: "600" },
     scenarios: { type: "string" },
+    "save-mode": { type: "string", default: "auto" },
   },
 });
 const whole = z.coerce.number().int();
@@ -33,6 +39,7 @@ const seed = whole.parse(values.seed);
 const count = whole.min(0).parse(values.count);
 const samples = whole.min(1).max(10).parse(values.samples);
 const concurrency = whole.min(1).max(8).parse(values.concurrency);
+const saveMode = z.enum(saveModes).parse(values["save-mode"]);
 const budget: Budget = {
   used: 0,
   limit: whole.min(1).parse(values["max-calls"]),
@@ -76,6 +83,7 @@ const meta = {
   samples,
   concurrency,
   "confidence threshold": `${confidencePercent} %`,
+  "save mode": saveMode,
   started: new Date().toISOString(),
 };
 await mkdir(join(out, "samples"), { recursive: true });
@@ -111,6 +119,7 @@ try {
           browser,
           config,
           variant,
+          saveMode,
           budget,
           ...job,
         });

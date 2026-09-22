@@ -22,6 +22,7 @@ Der Befehl baut die Anwendung und sendet echte Anfragen an TypeSafe. Er benötig
 | `--concurrency <n>` | `1` | Parallele Läufe. Jeder Lauf hat eigenen Server, eigene Datenbank und eigenen Browserkontext. |
 | `--out <dir>` | `live-results/jev-eval/<variant>-<zeit>` | Ausgabeverzeichnis. |
 | `--max-calls <n>` | `600` | Obergrenze für Anbieteraufrufe des ganzen Laufs. Ein einzelner Lauf endet nach 40 Aufrufen. |
+| `--save-mode <modus>` | `auto` | `auto` speichert ohne Nachfrage, `confirm` fragt vor dem Speichern. Der Lauf schreibt `kontor-jev-save-mode-v1` = `{"version":1,"mode":"<modus>"}` vor dem Laden der Seite. Zweige ohne diese Einstellung ignorieren den Schlüssel. |
 | `--scenarios <datei>` | eingebaute Szenarien | JSON-Array vollständiger Szenarien statt der festen und generierten Szenarien. `--seed` und `--count` gelten dann nicht. |
 
 ## Dimensionen
@@ -65,6 +66,7 @@ Eine Variante kann Rückfragen zu Dimensionen stellen. Der Lauf beantwortet sie 
 - Für die Menge `cases` klickt der Lauf jeden beabsichtigten Vorgang und danach `[data-confirm-submit]` im Element.
 - Nach einer Antwort muss das Element verschwinden. Solange Jev arbeitet, zeigt die Aktivitätsleiste den laufenden Zustand. Sonst liest der Lauf den Halt zu früh.
 - Fehlt der passende Wert, zählt die Rückfrage als unbeantwortbar und der Lauf endet.
+- Die Speicherfrage im Modus `confirm` ist ein Element mit `data-confirm-dimension="save"`, optional `data-confirm-case`, und den Schaltflächen `data-confirm-value="yes"` und `"no"`. Der Lauf antwortet `yes`, wenn das Szenario eine Speicherung dieses Vorgangs erwartet, sonst `no`. Ohne Vorgang antwortet er `yes`, wenn das Szenario überhaupt eine Speicherung erwartet.
 
 Jede beantwortete Rückfrage zählt als Frage. Nach höchstens zwölf Antworten endet der Lauf.
 
@@ -90,6 +92,8 @@ Jeder Lauf erhält genau eine Kategorie. Ein Fehler geht vor, danach der Halt an
 | asked-wrong | Chips beantwortet, Endzustand trotzdem falsch. |
 | silent-wrong | Endzustand falsch oder unerwartete Speicherung, ohne Frage. |
 | error | Anbieter- oder Harnessfehler, etwa Zeitüberschreitung. |
+
+`magic-save-check` zählt magic und die Läufe unter correct-after-chips, deren Chips alle Speicherfragen waren. Das ist das Ziel des Modus `confirm`: Jev fragt nur, ob gespeichert werden soll. Der Bericht zeigt die Kennzahl in beiden Modi. Im Modus `auto` erscheint keine Speicherfrage, dort entspricht sie magic.
 
 Dazu kommen die Fragen als Mittelwert je Lauf und als Anteil der Läufe mit mindestens einer Frage, die Anbieteraufrufe und die Laufzeit vom Absenden bis zum letzten Halt.
 

@@ -47,6 +47,7 @@ export type Verdict = {
   outcome: Outcome;
   endCorrect: boolean;
   questions: number;
+  magicSaveCheck: boolean;
   mismatches: string[];
   unexpectedSaves: string[];
 };
@@ -123,9 +124,8 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
   const endCorrect = !mismatches.length && !unexpectedSaves.length;
   const handedOff =
     endCorrect && expected.handoff !== null && final?.kind === "blocked";
-  const questions =
-    observed.stops.filter((stop) => questionKinds.has(stop.kind)).length -
-    (handedOff ? 1 : 0);
+  const asked = observed.stops.filter((stop) => questionKinds.has(stop.kind));
+  const questions = asked.length - (handedOff ? 1 : 0);
   const unanswered =
     !handedOff &&
     final !== undefined &&
@@ -146,7 +146,18 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
         : questions
           ? "asked-wrong"
           : "silent-wrong";
-  return { outcome, endCorrect, questions, mismatches, unexpectedSaves };
+  const magicSaveCheck =
+    outcome === "magic" ||
+    (outcome === "correct-after-chips" &&
+      asked.every((stop) => stop.dimension === "save"));
+  return {
+    outcome,
+    endCorrect,
+    questions,
+    magicSaveCheck,
+    mismatches,
+    unexpectedSaves,
+  };
 }
 
 export function answerFor(
@@ -157,6 +168,10 @@ export function answerFor(
   const { intent } = scenario;
   const entry = dimensions.find((candidate) => candidate.id === dimensionId);
   if (!entry) return null;
+  if (entry.id === "save") {
+    const saved = Object.keys(scenario.expected.saves);
+    return (caseId ? saved.includes(caseId) : saved.length) ? "yes" : "no";
+  }
   if (entry.kind === "flag") return intent.flags[entry.id] ? "yes" : "no";
   if (entry.kind === "set") return Object.keys(intent.cases);
   if (entry.scope === "view") return intent.pages.at(-1) ?? UNSTATED;

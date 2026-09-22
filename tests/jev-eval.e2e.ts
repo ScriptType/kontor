@@ -5,6 +5,7 @@ import { demos } from "../shared/command.js";
 import {
   answerConfirmations,
   applyStart,
+  evalContext,
   readEnd,
   runSample,
   seededStore,
@@ -62,6 +63,7 @@ test("a demo request runs through the real UI and is judged magic without provid
     }),
     sample: 1,
     variant: "test",
+    saveMode: "auto",
     budget: { used: 0, limit: 0 },
   });
   expect(result.outcome).toBe("magic");
@@ -140,6 +142,12 @@ test("confirmations are answered from the ground truth through data-confirm attr
       <button data-confirm-value="V-1042">V-1042</button>
       <button data-confirm-submit>OK</button>
     </section>
+    <section data-confirm-dimension="save" data-confirm-case="V-1041">
+      <button data-confirm-value="yes">Ja</button><button data-confirm-value="no">Nein</button>
+    </section>
+    <section data-confirm-dimension="save" data-confirm-case="V-1042">
+      <button data-confirm-value="yes">Ja</button><button data-confirm-value="no">Nein</button>
+    </section>
     <section data-confirm-dimension="technician" data-confirm-case="V-1042">
       <button data-confirm-value="lea">Lea</button>
     </section>
@@ -159,11 +167,44 @@ test("confirmations are answered from the ground truth through data-confirm attr
   ).toEqual([
     { kind: "confirm", dimension: "workedMinutes", value: "30" },
     { kind: "confirm", dimension: "cases", value: ["V-1042"] },
+    { kind: "confirm", dimension: "save", value: "no" },
+    { kind: "confirm", dimension: "save", value: "yes" },
     { kind: "unanswerable", dimension: "technician", value: "unstated" },
   ]);
   expect(
     await page.evaluate(
       () => (window as unknown as { clicked: string[] }).clicked,
     ),
-  ).toEqual(["workedMinutes=30", "cases=V-1042", "cases=submit"]);
+  ).toEqual([
+    "workedMinutes=30",
+    "cases=V-1042",
+    "cases=submit",
+    "save=no",
+    "save=yes",
+  ]);
+});
+
+test("the save mode is in local storage before the app loads", async ({
+  browser,
+}) => {
+  const s = byId("user-fresh");
+  const store = seededStore(s.start);
+  const app = createApp({ mode: "demo" }, undefined, store);
+  app.server.listen(0, "127.0.0.1");
+  await once(app.server, "listening");
+  const address = app.server.address();
+  if (!address || typeof address === "string") throw new Error("No address");
+  const context = await evalContext(browser, "confirm");
+  try {
+    const page = await context.newPage();
+    await page.goto(`http://127.0.0.1:${address.port}`);
+    expect(
+      await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("kontor-jev-save-mode-v1") ?? "null"),
+      ),
+    ).toEqual({ version: 1, mode: "confirm" });
+  } finally {
+    await context.close();
+    await app.close();
+  }
 });

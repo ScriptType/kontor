@@ -22,6 +22,8 @@ import type { SampleResult } from "./report.js";
 import { startWorkspace, type Scenario, type StartState } from "./scenarios.js";
 
 export const confidencePercent = 75;
+export const saveModes = ["auto", "confirm"] as const;
+export type SaveMode = (typeof saveModes)[number];
 const maxConfirmations = 12;
 const running =
   /^(Bereit für deinen Auftrag|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/;
@@ -295,6 +297,26 @@ export async function readEnd(
   };
 }
 
+export async function evalContext(browser: Browser, saveMode: SaveMode) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+  });
+  await context.addInitScript(
+    ({ percent, mode }) => {
+      localStorage.setItem(
+        "kontor-jev-confidence-v1",
+        JSON.stringify({ version: 1, percent }),
+      );
+      localStorage.setItem(
+        "kontor-jev-save-mode-v1",
+        JSON.stringify({ version: 1, mode }),
+      );
+    },
+    { percent: confidencePercent, mode: saveMode },
+  );
+  return context;
+}
+
 export type Budget = { used: number; limit: number };
 export type CallRecord = {
   question: string;
@@ -308,6 +330,7 @@ export async function runSample(options: {
   scenario: Scenario;
   sample: number;
   variant: string;
+  saveMode: SaveMode;
   budget: Budget;
   maxCalls?: number;
   timeoutMs?: number;
@@ -370,17 +393,7 @@ export async function runSample(options: {
   await once(app.server, "listening");
   const address = app.server.address();
   if (!address || typeof address === "string") throw new Error("No port");
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-  });
-  await context.addInitScript(
-    (percent) =>
-      localStorage.setItem(
-        "kontor-jev-confidence-v1",
-        JSON.stringify({ version: 1, percent }),
-      ),
-    confidencePercent,
-  );
+  const context = await evalContext(browser, options.saveMode);
   const page = await context.newPage();
   const stops: Stop[] = [];
   let observed: (Observed & { steps: string[] }) | null = null;
@@ -431,12 +444,14 @@ export async function runSample(options: {
         outcome: "error" as const,
         endCorrect: false,
         questions: 0,
+        magicSaveCheck: false,
         mismatches: [],
         unexpectedSaves: [],
       };
   return {
     ...verdict,
     variant: options.variant,
+    saveMode: options.saveMode,
     scenarioId: scenario.id,
     source: scenario.source,
     sample: options.sample,
