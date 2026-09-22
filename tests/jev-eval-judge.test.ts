@@ -275,6 +275,7 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     request: "",
     stops: [],
     steps: [],
+    coverageProbability: null,
     unmappedActions: [],
     calls,
     wallMs: calls * 1000,

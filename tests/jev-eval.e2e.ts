@@ -130,6 +130,36 @@ test("an unsaved draft is read from the editor after navigating away", async ({
   });
 });
 
+test("the run's coverage probability and checklist are read from the history when present", async ({
+  page,
+}) => {
+  const s = byId("user-fresh");
+  await withApp(page, s, async (store) => {
+    const read = () =>
+      readEnd(page, store.snapshot(), store.snapshot(), [], [done]);
+    expect(await read()).toMatchObject({
+      coverageProbability: null,
+      checklist: null,
+    });
+    const checklist = { items: [{ id: "technician", done: true }] };
+    await page.evaluate(
+      (checklist) =>
+        localStorage.setItem(
+          "kontor-command-v1",
+          JSON.stringify({
+            version: 3,
+            history: [{ steps: [], coverageProbability: 0.82, checklist }],
+          }),
+        ),
+      checklist,
+    );
+    expect(await read()).toMatchObject({
+      coverageProbability: 0.82,
+      checklist,
+    });
+  });
+});
+
 test("confirmations are answered from the ground truth through data-confirm attributes", async ({
   page,
 }) => {

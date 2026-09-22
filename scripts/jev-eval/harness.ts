@@ -175,6 +175,8 @@ const historySchema = z.object({
   history: z
     .array(
       z.object({
+        coverageProbability: z.number().optional().catch(undefined),
+        checklist: z.unknown().optional(),
         steps: z.array(
           z.object({
             action: z.object({ id: z.string() }),
@@ -186,13 +188,18 @@ const historySchema = z.object({
     )
     .default([]),
 });
+type Run = {
+  steps: string[];
+  coverageProbability: number | null;
+  checklist: unknown;
+};
 export async function readEnd(
   page: Page,
   workspace: Workspace,
   saved: Workspace,
   receipts: Receipt[],
   stops: Stop[],
-): Promise<Observed & { steps: string[] }> {
+): Promise<Observed & Run> {
   if (await page.locator(".palette").isVisible()) {
     await page.keyboard.press("Escape");
     await expect(page.locator(".palette")).toBeHidden();
@@ -294,6 +301,8 @@ export async function readEnd(
     }),
     stops,
     steps: steps.map((step) => `${step.action.id}:${step.outcome}`),
+    coverageProbability: stored?.coverageProbability ?? null,
+    checklist: stored?.checklist ?? null,
   };
 }
 
@@ -396,7 +405,7 @@ export async function runSample(options: {
   const context = await evalContext(browser, options.saveMode);
   const page = await context.newPage();
   const stops: Stop[] = [];
-  let observed: (Observed & { steps: string[] }) | null = null;
+  let observed: (Observed & Run) | null = null;
   let error: string | null = null;
   let began = Date.now();
   let ended = began;
@@ -458,6 +467,7 @@ export async function runSample(options: {
     request: scenario.request,
     stops,
     steps: observed?.steps ?? [],
+    coverageProbability: observed?.coverageProbability ?? null,
     unmappedActions: (observed?.steps ?? [])
       .map((step) => step.slice(0, step.lastIndexOf(":")))
       .filter((id) => actionEffects(id) === null),

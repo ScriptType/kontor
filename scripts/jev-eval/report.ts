@@ -11,6 +11,7 @@ export type SampleResult = Verdict & {
   request: string;
   stops: Stop[];
   steps: string[];
+  coverageProbability: number | null;
   unmappedActions: string[];
   calls: number;
   wallMs: number;
@@ -87,7 +88,7 @@ export function markdown(
   );
   const samples = results.map(
     (r) =>
-      `| ${r.scenarioId} #${r.sample} | ${r.outcome} | ${r.endCorrect ? "yes" : "no"} | ${r.questions} | ${cell(r.stops.map((s) => `${s.kind}${s.dimension ? `:${s.dimension}` : ""}`).join(", "))} | ${cell([...r.mismatches, ...r.unexpectedSaves.map((s) => `unexpected save: ${s}`), ...(r.error ? [`error: ${r.error}`] : [])].join("; "))} | ${r.calls} | ${(r.wallMs / 1000).toFixed(1)} |`,
+      `| ${r.scenarioId} #${r.sample} | ${r.outcome} | ${r.endCorrect ? "yes" : "no"} | ${r.questions} | ${cell(r.stops.map((s) => `${s.kind}${s.dimension ? `:${s.dimension}` : ""}`).join(", "))} | ${cell([...r.mismatches, ...r.unexpectedSaves.map((s) => `unexpected save: ${s}`), ...(r.error ? [`error: ${r.error}`] : [])].join("; "))} | ${r.coverageProbability?.toFixed(2) ?? ""} | ${r.calls} | ${(r.wallMs / 1000).toFixed(1)} |`,
   );
   return [
     `# Jev eval · ${variant}`,
@@ -100,8 +101,8 @@ export function markdown(
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...rows,
     "",
-    "| sample | outcome | end correct | questions | stops | mismatches | calls | wall s |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| sample | outcome | end correct | questions | stops | mismatches | coverage | calls | wall s |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...samples,
     "",
   ].join("\n");

@@ -101,7 +101,7 @@ Dazu kommen die Fragen als Mittelwert je Lauf und als Anteil der Läufe mit mind
 
 ## Ausgabe
 
-Das Ausgabeverzeichnis enthält `report.md`, `results.json`, `scenarios.json` und je Lauf eine Datei unter `samples/`. Eine Lauf-Datei enthält Halte, Schritte, beobachteten Endzustand, Abweichungen und die Anbieterantworten mit Auswahl und Confidence. `live-results/` bleibt außerhalb von Git.
+Das Ausgabeverzeichnis enthält `report.md`, `results.json`, `scenarios.json` und je Lauf eine Datei unter `samples/`. Eine Lauf-Datei enthält Halte, Schritte, beobachteten Endzustand, Abweichungen und die Anbieterantworten mit Auswahl und Confidence. Trägt der Eintrag des Laufs im Jev-Verlauf `coverageProbability` oder `checklist`, übernimmt der Lauf beide in den beobachteten Endzustand. `coverageProbability` steht zusätzlich im Ergebnis und in der Spalte coverage des Berichts. Fehlt ein Feld, steht dort `null`. `live-results/` bleibt außerhalb von Git.
 
 ## Nicht gemessen
 
