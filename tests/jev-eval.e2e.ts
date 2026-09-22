@@ -7,6 +7,7 @@ import {
   applyStart,
   evalContext,
   readEnd,
+  replay,
   runSample,
   seededStore,
 } from "../scripts/jev-eval/harness.js";
@@ -237,4 +238,62 @@ test("the save mode is in local storage before the app loads", async ({
     await context.close();
     await app.close();
   }
+});
+
+test("replaying the human path of user-fresh reaches its expected end, a wrong value or an unreachable step does not", async ({
+  browser,
+}) => {
+  const fresh = byId("user-fresh");
+  const path = [
+    { action: "case:V-1041" },
+    { action: "menu:technician" },
+    { action: "technician:mara" },
+    { field: "minutes", value: "60" },
+    { action: "save" },
+    { action: "menu:customer" },
+    { action: "customer:nord" },
+    { action: "nav:reports" },
+  ];
+  expect(await replay({ browser, scenario: fresh, steps: path })).toEqual({
+    id: "user-fresh",
+    endCorrect: true,
+    mismatches: [],
+    unexpectedSaves: [],
+    executed: [
+      "case:V-1041",
+      "menu:technician",
+      "technician:mara",
+      "field:minutes:60",
+      "save",
+      "menu:customer",
+      "customer:nord",
+      "nav:reports",
+    ],
+    failedStep: null,
+  });
+  const wrong = await replay({
+    browser,
+    scenario: fresh,
+    steps: path.map((step) =>
+      "field" in step ? { ...step, value: "1041" } : step,
+    ),
+  });
+  expect(wrong).toMatchObject({
+    endCorrect: false,
+    mismatches: [
+      "V-1041 saved minutes 1041, expected 60",
+      "V-1041 saves miss an expected intermediate state",
+    ],
+    failedStep: null,
+  });
+  const closedMenu = await replay({
+    browser,
+    scenario: fresh,
+    steps: [{ action: "technician:mara" }, ...path],
+  });
+  expect(closedMenu).toMatchObject({
+    endCorrect: false,
+    executed: [],
+    failedStep: { index: 0, step: "technician:mara", reason: "not on screen" },
+  });
 });

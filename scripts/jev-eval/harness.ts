@@ -171,6 +171,9 @@ export async function answerConfirmations(
   return stops;
 }
 
+const viewOf = (page: Page) =>
+  pageSchema.catch("cases").parse(new URL(page.url()).hash.slice(1));
+
 const historySchema = z.object({
   history: z
     .array(
@@ -204,9 +207,7 @@ export async function readEnd(
     await page.keyboard.press("Escape");
     await expect(page.locator(".palette")).toBeHidden();
   }
-  const view = pageSchema
-    .catch("cases")
-    .parse(new URL(page.url()).hash.slice(1));
+  const view = viewOf(page);
   if (view !== "cases") {
     await page.evaluate(() => {
       location.hash = "cases";
@@ -306,6 +307,15 @@ export async function readEnd(
   };
 }
 
+async function serve(config: Config, store: WorkspaceStore, fetch?: Fetch) {
+  const app = createApp(config, fetch, store);
+  app.server.listen(0, "127.0.0.1");
+  await once(app.server, "listening");
+  const address = app.server.address();
+  if (!address || typeof address === "string") throw new Error("No port");
+  return { url: `http://127.0.0.1:${address.port}`, close: () => app.close() };
+}
+
 export async function evalContext(browser: Browser, saveMode: SaveMode) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
@@ -397,11 +407,7 @@ export async function runSample(options: {
     });
     return response;
   };
-  const app = createApp(config, fetch, store);
-  app.server.listen(0, "127.0.0.1");
-  await once(app.server, "listening");
-  const address = app.server.address();
-  if (!address || typeof address === "string") throw new Error("No port");
+  const app = await serve(config, store, fetch);
   const context = await evalContext(browser, options.saveMode);
   const page = await context.newPage();
   const stops: Stop[] = [];
@@ -410,7 +416,7 @@ export async function runSample(options: {
   let began = Date.now();
   let ended = began;
   try {
-    await page.goto(`http://127.0.0.1:${address.port}`);
+    await page.goto(app.url);
     await expect(page.locator("tbody tr")).toHaveCount(workspace.cases.length);
     await applyStart(page, scenario.start);
     began = Date.now();
@@ -477,4 +483,116 @@ export async function runSample(options: {
     observed,
     callLog,
   };
+}
+
+export const replayStepSchema = z.union([
+  z.strictObject({ action: z.string().min(1) }),
+  z.strictObject({ field: z.string().min(1), value: z.string() }),
+]);
+export type ReplayStep = z.infer<typeof replayStepSchema>;
+export type Replay = {
+  id: string;
+  endCorrect: boolean;
+  mismatches: string[];
+  unexpectedSaves: string[];
+  executed: string[];
+  failedStep: { index: number; step: string; reason: string } | null;
+};
+const stepId = (step: ReplayStep) =>
+  "action" in step ? step.action : `field:${step.field}:${step.value}`;
+
+async function perform(page: Page, step: ReplayStep): Promise<string | null> {
+  const selector =
+    "action" in step
+      ? `[data-action=${JSON.stringify(step.action)}]`
+      : `[data-field=${JSON.stringify(step.field)}]`;
+  const target = page
+    .locator(`${selector}:not([disabled]):not([readonly])`)
+    .filter({ visible: true })
+    .first();
+  if (!(await target.count()))
+    return (await page.locator(selector).filter({ visible: true }).count())
+      ? "disabled"
+      : (await page.locator(selector).count())
+        ? "not visible"
+        : "not on screen";
+  try {
+    if ("action" in step) await target.click({ timeout: 5000 });
+    else {
+      await target.fill(step.value, { timeout: 5000 });
+      await target.dispatchEvent("change");
+    }
+    await page.waitForFunction(
+      () =>
+        localStorage.getItem("kontor-save-v1") === null &&
+        !document
+          .querySelector(".editor-footer [role=status]")
+          ?.textContent?.includes("Wird gespeichert"),
+      undefined,
+      { timeout: 10000 },
+    );
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    return null;
+  } catch (error) {
+    return error instanceof Error
+      ? (error.message.split("\n")[0] ?? "")
+      : String(error);
+  }
+}
+
+export async function replay(options: {
+  browser: Browser;
+  scenario: Scenario;
+  steps: ReplayStep[];
+}): Promise<Replay> {
+  const { scenario } = options;
+  const store = seededStore(scenario.start);
+  const workspace = store.snapshot();
+  const app = await serve({ mode: "demo" }, store);
+  const context = await evalContext(options.browser, "auto");
+  try {
+    const page = await context.newPage();
+    await page.goto(app.url);
+    await expect(page.locator("tbody tr")).toHaveCount(workspace.cases.length);
+    await applyStart(page, scenario.start);
+    const executed: string[] = [];
+    const pagesVisited: View[] = [];
+    let failedStep: Replay["failedStep"] = null;
+    for (const [index, step] of options.steps.entries()) {
+      const reason = await perform(page, step);
+      if (reason) {
+        failedStep = { index, step: stepId(step), reason };
+        break;
+      }
+      executed.push(stepId(step));
+      pagesVisited.push(viewOf(page));
+    }
+    const final: Stop = scenario.expected.handoff
+      ? { kind: "blocked", message: "replay stops for the handoff" }
+      : { kind: "done", message: "replay done" };
+    const observed = await readEnd(
+      page,
+      workspace,
+      store.snapshot(),
+      store.receipts,
+      [final],
+    );
+    const verdict = judge(scenario, { ...observed, pagesVisited });
+    return {
+      id: scenario.id,
+      endCorrect: verdict.endCorrect,
+      mismatches: verdict.mismatches,
+      unexpectedSaves: verdict.unexpectedSaves,
+      executed,
+      failedStep,
+    };
+  } finally {
+    await context.close();
+    await app.close();
+  }
 }

@@ -105,6 +105,24 @@ Das Ausgabeverzeichnis enthält `report.md`, `results.json`, `scenarios.json` un
 
 Jeder Aufruf hängt nach dem letzten Lauf eine Zeile an `live-results/jev-eval-runs.tsv` im Hauptverzeichnis des Repositorys an, auch aus einem Worktree. Die Datei beginnt mit der Kopfzeile `ts`, `variant`, `branch`, `commit`, `scenarios sha256`, `count`, `samples`, `save mode`, `threshold`, `out dir`, `provider calls`, `magic`, `silent-wrong`. `count` ist die Zahl der Szenarien und `samples` die Zahl der abgeschlossenen Läufe. `magic` und `silent-wrong` sind Anzahlen dieser Läufe. `commit` endet auf `-dirty`, wenn versionierte Dateien geändert sind. Parallele Aufrufe schreiben jede Zeile vollständig und die Kopfzeile genau einmal.
 
+## Pfad nachspielen
+
+`scripts/jev-eval/replay.ts` spielt einen menschlichen Pfad durch die Oberfläche nach, ohne Anbieteraufruf. So lässt sich prüfen, welche Schritte ein Szenario braucht und ob sein erwarteter Endzustand erreichbar ist. Der Befehl läuft im Wurzelverzeichnis des Checkouts:
+
+```sh
+node --import tsx scripts/jev-eval/replay.ts --scenarios <datei.json> --id <szenario-id> --steps '<json-array>'
+```
+
+Ohne `--scenarios` gelten die festen Szenarien. Ein Schritt ist `{"action":"<data-action>"}` oder `{"field":"<data-field>","value":"<text>"}`. Beispiel für `user-fresh`:
+
+```sh
+node --import tsx scripts/jev-eval/replay.ts --id user-fresh --steps '[{"action":"case:V-1041"},{"action":"menu:technician"},{"action":"technician:mara"},{"field":"minutes","value":"60"},{"action":"save"},{"action":"menu:customer"},{"action":"customer:nord"},{"action":"nav:reports"}]'
+```
+
+Der Befehl verwendet den vorhandenen Build in `dist/` und baut nie. Er startet Server und Chrome wie ein Lauf und stellt den Startzustand mit demselben Code ein. Eine Aktion klickt das sichtbare, aktive Element. Ein Feld füllt das sichtbare Eingabefeld und löst `input` und `change` aus. Nach jedem Schritt wartet der Befehl auf offene Speicherungen und das Rendern. Den Endzustand liest und bewertet er wie ein Lauf. Als letzter Halt gilt „erledigt“, bei erwarteter Übergabe die Blockade. Besuchte Seiten stammen aus der URL nach jedem Schritt.
+
+Die Ausgabe ist JSON mit `id`, `endCorrect`, `mismatches`, `unexpectedSaves`, `executed` und `failedStep`. `executed` nennt die ausgeführten Schritte im Schrittformat von Jev, Felder als `field:<id>:<wert>`. `failedStep` ist `null` oder `{index, step, reason}` mit dem Grund `not on screen`, `not visible`, `disabled` oder der Meldung von Playwright. Nach einem fehlgeschlagenen Schritt endet das Nachspielen und bewertet den erreichten Zustand.
+
 ## Nicht gemessen
 
 - Verständlichkeit und Qualität der Rückfragen. Der Lauf zählt sie nur.
