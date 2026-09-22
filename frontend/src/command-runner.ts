@@ -29,7 +29,14 @@ import {
   choiceDescription,
   type DecisionCapture,
 } from "./decision-review";
-import { acts, completes, gateKind, gateNames, workKind } from "./gate";
+import {
+  acts,
+  assesses,
+  completes,
+  gateKind,
+  gateNames,
+  workKind,
+} from "./gate";
 export type RunState =
   | {
       kind:
@@ -749,7 +756,7 @@ export class CommandRunner {
         ? ""
         : "Auswahlkonfidenz unter der Bestätigungsschwelle. Vorschläge prüfen.";
       let assessed: { choice: string; assessment: Assessment } | undefined;
-      if (action.kind !== "view") {
+      if (assesses(this.gate, gateKind(action.id, input))) {
         const assessment = await this.ui.api.assess.call(
           { ...input, selected: action },
           { signal: this.abort?.signal },

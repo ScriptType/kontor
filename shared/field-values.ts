@@ -1,5 +1,15 @@
+import { z } from "zod";
 import { appointmentSchema } from "./domain.js";
 import type { DecisionInput, FieldDescription } from "./command.js";
+export const valueSourceSchema = z.enum([
+  "answer",
+  "number",
+  "dateTime",
+  "quote",
+  "existing",
+  "hours",
+]);
+export type ValueSource = z.infer<typeof valueSourceSchema>;
 export const valueSources = {
   answer: {
     de: "aus ausdrücklicher Antwort",
@@ -25,8 +35,12 @@ export const valueSources = {
     de: "Stundenangabe aus Auftrag, in Minuten umgerechnet",
     en: "hours from the request converted to minutes",
   },
-} as const satisfies Record<string, { de: string; en: string }>;
-export type ValueSource = keyof typeof valueSources;
+} as const satisfies Record<ValueSource, { de: string; en: string }>;
+const requestSources: ReadonlySet<ValueSource> = new Set([
+  "number",
+  "hours",
+  "dateTime",
+]);
 
 /**
  * Field words that tie a number in the request to one number field, keyed by
@@ -95,6 +109,8 @@ export type RequestNumber = {
   span?: string;
   fields: string[];
   cases: string[];
+  /** A field word, not the fallback to every number field, decided the fields. */
+  bound: boolean;
 };
 export function requestNumbers(
   request: string,
@@ -154,6 +170,7 @@ export function requestNumbers(
       fields: nearest.length
         ? [...new Set(nearest.map((w) => w.id))]
         : Object.keys(numberFieldCues),
+      bound: nearest.length > 0,
       cases: named
         .filter(({ pattern }) => clause.search(pattern) >= 0)
         .map(({ id }) => id),
@@ -213,25 +230,39 @@ export function describeSource(
     ? `${text}: „${found.span}“ = ${value} Minuten`
     : `${text}: "${found.span}" = ${value} min`;
 }
+/**
+ * Value candidates for one field. A candidate is bound when the request ties it
+ * to this field alone (a field word, or the field type for a date and time) and
+ * it is the only request value offered to this field on this case. A
+ * correction or a sequence offers two values, so neither is bound.
+ */
 export function fieldValues(
   field: FieldDescription,
   request: string,
   answers: DecisionInput["answers"],
   existing: string[],
 ) {
-  const values = new Map<string, { source: ValueSource; span?: string }>();
-  const add = (value: string, source: ValueSource, span?: string) => {
-    if (validFieldValue(field, value))
-      values.set(
-        field.type === "number" ? String(Number(value)) : value,
-        span === undefined ? { source } : { source, span },
-      );
+  type Found = { source: ValueSource; span?: string; bound: boolean };
+  const values = new Map<string, Found>();
+  const add = (
+    value: string,
+    source: ValueSource,
+    tied: boolean,
+    span?: string,
+  ) => {
+    if (!validFieldValue(field, value)) return;
+    const key = field.type === "number" ? String(Number(value)) : value;
+    const bound = tied && (values.get(key)?.bound ?? true);
+    values.set(
+      key,
+      span === undefined ? { source, bound } : { source, span, bound },
+    );
   };
   for (const answer of answers)
     if (answer.fieldId === field.id && answer.scope === field.scope)
-      add(answer.value, "answer");
+      add(answer.value, "answer", false);
   if (field.type === "number") {
-    for (const { value, fields, cases, span } of requestNumbers(
+    for (const { value, fields, cases, span, bound } of requestNumbers(
       request,
       existing,
     ))
@@ -239,20 +270,27 @@ export function fieldValues(
         fields.includes(field.id) &&
         (!cases.length || cases.includes(field.scope))
       )
-        add(value, span === undefined ? "number" : "hours", span);
+        add(value, span === undefined ? "number" : "hours", bound, span);
   } else if (field.type === "datetime-local") {
     for (const match of request.matchAll(
       /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
     ))
-      add(`${match[1]}T${match[2]}`, "dateTime");
+      add(`${match[1]}T${match[2]}`, "dateTime", true);
   } else {
     for (const match of request.matchAll(/["„“]([^"„“]+)["“]/g))
-      if (match[1]) add(match[1], "quote");
+      if (match[1]) add(match[1], "quote", false);
     for (const value of existing)
       if (request.toLocaleLowerCase().includes(value.toLocaleLowerCase()))
-        add(value, "existing");
+        add(value, "existing", false);
   }
-  return [...values].map(([value, found]) => ({ value, ...found }));
+  const single =
+    [...values.values()].filter((found) => requestSources.has(found.source))
+      .length === 1;
+  return [...values].map(([value, found]) => ({
+    value,
+    ...found,
+    bound: found.bound && single,
+  }));
 }
 export function validFieldValue(field: FieldDescription, value: string) {
   if (field.type === "number")

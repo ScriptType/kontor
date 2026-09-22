@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acts, completes, gateKind, workKind } from "../frontend/src/gate.js";
+import {
+  acts,
+  assesses,
+  completes,
+  gateKind,
+  workKind,
+} from "../frontend/src/gate.js";
 import type { ActionDescription } from "../shared/command.js";
 
 const offered = (id: string, kind: ActionDescription["kind"]) => ({
@@ -121,4 +127,70 @@ test("the threshold gate keeps the verdict and its confidence for every kind of 
       false,
     );
   }
+});
+
+const boundInput = {
+  actions: [
+    ...input.actions,
+    {
+      ...offered("field:minutes:50", "draft"),
+      value: { source: "number", bound: true },
+    },
+    {
+      ...offered("field:minutes:55", "draft"),
+      value: { source: "number", bound: false },
+    },
+  ],
+} satisfies { actions: ActionDescription[] };
+
+test("a draft action whose value is a bound request candidate is its own kind", () => {
+  assert.equal(gateKind("field:minutes:50", boundInput), "bound");
+  assert.equal(gateKind("field:minutes:55", boundInput), "draft");
+  assert.equal(gateKind("field:minutes:45", boundInput), "draft");
+  assert.equal(gateKind("technician:lea", boundInput), "draft");
+});
+test("threshold and g1 treat a bound draft exactly like a draft", () => {
+  for (const gate of ["threshold", "g1"] as const) {
+    assert.equal(assesses(gate, "bound"), true);
+    assert.equal(assesses(gate, "draft"), true);
+    assert.equal(assesses(gate, "view"), false);
+    for (const [confidence, pmax] of [
+      [0.8, 0.8],
+      [0.85, 0.85],
+      [0.5, 0.9],
+      [0.9, 0.5],
+    ] as const)
+      assert.equal(
+        acts(gate, 75, decision(confidence, pmax), "bound"),
+        acts(gate, 75, decision(confidence, pmax), "draft"),
+      );
+  }
+});
+test("g2-effect lets a view act from pmax 0.30", () => {
+  assert.equal(acts("g2-effect", 75, decision(0.31, 0.31), "view"), true);
+  assert.equal(acts("g2-effect", 75, decision(0.29, 0.29), "view"), false);
+});
+test("g2-effect lets a bound draft act at 0.70 while a plain draft at 0.80 holds", () => {
+  const bound = gateKind("field:minutes:50", boundInput);
+  const plain = gateKind("field:minutes:55", boundInput);
+  assert.equal(acts("g2-effect", 75, decision(0.7, 0.7), bound), true);
+  assert.equal(acts("g2-effect", 75, decision(0.69, 0.69), bound), false);
+  assert.equal(acts("g2-effect", 75, decision(0.8, 0.8), plain), false);
+  assert.equal(acts("g2-effect", 75, decision(0.85, 0.85), plain), true);
+});
+test("g2-effect keeps the commit, terminal and ask bars of g1", () => {
+  for (const [kind, below, at] of [
+    ["commit", 0.74, 0.75],
+    ["terminal", 0.64, 0.65],
+    ["ask", 0.74, 0.75],
+  ] as const) {
+    assert.equal(acts("g2-effect", 75, decision(below, below), kind), false);
+    assert.equal(acts("g2-effect", 75, decision(at, at), kind), true);
+  }
+});
+test("g2-effect checks the effect of drafts and saves but not of views or bound drafts", () => {
+  assert.equal(assesses("g2-effect", "draft"), true);
+  assert.equal(assesses("g2-effect", "commit"), true);
+  assert.equal(assesses("g2-effect", "bound"), false);
+  assert.equal(assesses("g2-effect", "view"), false);
 });

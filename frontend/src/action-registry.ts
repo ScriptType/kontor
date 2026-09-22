@@ -208,7 +208,7 @@ export class ActionRegistry {
     for (const control of this.fields)
       if (control.available()) {
         const field = control.description();
-        for (const { value, ...found } of fieldValues(
+        for (const { value, bound, ...found } of fieldValues(
           field,
           request,
           answers,
@@ -232,6 +232,7 @@ export class ActionRegistry {
                 }. Value source: ${describeSource(found, value, "en")}`,
                 notFor: field.jev.notFor,
               },
+              value: { source: found.source, bound },
             },
             control,
             () => {

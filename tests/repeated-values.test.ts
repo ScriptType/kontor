@@ -30,7 +30,7 @@ test("a bare number that equals an identifier's digits is not a candidate, other
       [],
       ["V-1042", "V-1041", "Wartung 1041", "Hafen 60"],
     ),
-    [{ value: "60", source: "number" }],
+    [{ value: "60", source: "number", bound: false }],
   );
   assert.deepEqual(
     fieldValues(minutes, "1041 und 1040", [], ["A-1041", "V-1040x"]).map(
@@ -48,8 +48,8 @@ test("an explicit answer equal to an identifier's digits stays a candidate", () 
       ["V-1041"],
     ),
     [
-      { value: "1041", source: "answer" },
-      { value: "30", source: "number" },
+      { value: "1041", source: "answer", bound: false },
+      { value: "30", source: "number", bound: false },
     ],
   );
 });

@@ -712,3 +712,50 @@ for (const run of [
         { completeProbability: run.complete },
       );
     });
+
+for (const run of [
+  {
+    gate: "g2-effect",
+    assessed: ["technician:lea", "save"],
+  },
+  {
+    gate: "g1",
+    assessed: ["technician:lea", "field:minutes:45", "save"],
+  },
+] as const)
+  test(`${run.gate} checks the effect of ${run.assessed.join(", ")} before they run`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (value) => localStorage.setItem("kontor-jev-gate-v1", value),
+      JSON.stringify({ version: 1, gate: run.gate }),
+    );
+    await withLive(
+      page,
+      [
+        "case:V-1042",
+        "menu:technician",
+        "technician:lea",
+        "field:minutes:45",
+        "save",
+      ],
+      async (store, _held, _arrived, _snapshots, _observations, assessed) => {
+        await start(
+          page,
+          "Weise V-1042 Lea Sommer zu, Arbeitszeit 45 Minuten, und speichere.",
+        );
+        await expect(page.locator(".activity-label")).toContainText(
+          "Jev meldet",
+        );
+        const saved = store.snapshot().cases.find((c) => c.id === "V-1042");
+        expect(saved?.technicianId).toBe("lea");
+        expect(saved?.minutes).toBe(45);
+        expect(
+          assessed.flatMap((selected) => {
+            const action = z.object({ id: z.string() }).safeParse(selected);
+            return action.success ? [action.data.id] : [];
+          }),
+        ).toEqual(run.assessed);
+      },
+    );
+  });

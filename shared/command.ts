@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { blockerSchema } from "./domain.js";
+import { valueSourceSchema } from "./field-values.js";
 export const jevTextSchema = z.object({
   does: z.string().min(1),
   now: z.string().optional(),
@@ -12,6 +13,8 @@ export const actionSchema = z.object({
   effect: z.string(),
   kind: z.enum(["view", "draft", "commit", "discard"]),
   jev: jevTextSchema,
+  /** Field candidates only: where the value comes from; never sent to Jev. */
+  value: z.object({ source: valueSourceSchema, bound: z.boolean() }).optional(),
 });
 export const blockedControlSchema = z.object({
   action: actionSchema,

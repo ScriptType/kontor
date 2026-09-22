@@ -19,6 +19,7 @@ export async function withLive(
     arrived: Promise<void>,
     snapshots: string[][],
     observations: unknown[],
+    assessed: unknown[],
   ) => Promise<void>,
   options: {
     hold?: string;
@@ -50,6 +51,7 @@ export async function withLive(
   let heldOnce = false;
   const snapshots: string[][] = [];
   const observations: unknown[] = [];
+  const assessed: unknown[] = [];
   const store = new WorkspaceStore(":memory:");
   const app = createApp(
     { mode: "live", apiKey: "test", model: "jev-latest" },
@@ -123,6 +125,7 @@ export async function withLive(
               : options.forbidCommit && commit
                 ? "forbidden"
                 : (options.assessment ?? "authorized"));
+      if (key === "assessment") assessed.push(selected);
       if (key === "next") {
         observations.push(JSON.parse(payload.state));
         snapshots.push(Object.keys(payload.questions["next"]?.criteria ?? {}));
@@ -180,7 +183,7 @@ export async function withLive(
   if (!address || typeof address === "string") throw new Error("No port");
   try {
     await page.goto(`http://127.0.0.1:${address.port}`);
-    await run(store, held, arrived.promise, snapshots, observations);
+    await run(store, held, arrived.promise, snapshots, observations, assessed);
   } finally {
     held.release();
     await app.close();

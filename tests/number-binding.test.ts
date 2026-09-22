@@ -71,7 +71,7 @@ test("an explicit answer stays a candidate whatever the request binds", () => {
       [{ fieldId: "minutes", scope: "V-1041", value: "45" }],
       ids,
     ),
-    [{ value: "45", source: "answer" }],
+    [{ value: "45", source: "answer", bound: false }],
   );
 });
 test("every number field of a dimension has words that bind request numbers to it", () => {
@@ -93,7 +93,7 @@ test("an identifier spoken in two parts is no value and names its case", () => {
 test("an hour phrase becomes minutes and keeps its source span", () => {
   assert.deepEqual(
     fieldValues(field("minutes"), "1041 war lea 2 std dran", [], ids),
-    [{ value: "120", source: "hours", span: "2 std" }],
+    [{ value: "120", source: "hours", span: "2 std", bound: true }],
   );
   assert.equal(
     describeSource({ source: "hours", span: "2 std" }, "120", "de"),

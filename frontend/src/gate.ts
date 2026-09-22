@@ -4,19 +4,55 @@ import type {
   DecisionInput,
 } from "../../shared/command.js";
 
-export const gateNames = ["threshold", "g1"] as const;
-export type GateName = (typeof gateNames)[number];
-export type GateKind = "view" | "draft" | "commit" | "terminal" | "ask";
+export type GateKind =
+  | "view"
+  | "draft"
+  | "bound"
+  | "commit"
+  | "terminal"
+  | "ask";
+type BarKind = Exclude<GateKind, "ask">;
+export type GatePolicy = {
+  /** What a pick is read against: the choice confidence or the top option probability. */
+  read: "confidence" | "pmax";
+  /** Bar per kind of choice; "percent" uses the configured threshold for every kind. */
+  bars: "percent" | Record<BarKind, number>;
+  /** Kinds of action that pay the separate effect check before they run. */
+  assessed: readonly GateKind[];
+  completion: "verdict" | "perKind";
+};
 
-// Bars fitted on holdout-1 by the Jev bench (bench/gate-table.json); ask keeps
-// the configured threshold.
-const g1Bars = (percent: number): Record<GateKind, number> => ({
+// Bars fitted on holdout-1 by the Jev bench (bench/gate-table.json).
+const g1Bars = {
   view: 0.7,
   draft: 0.85,
+  bound: 0.85,
   commit: 0.75,
   terminal: 0.65,
-  ask: percent / 100,
-});
+} as const satisfies Record<BarKind, number>;
+
+export const gates = {
+  threshold: {
+    read: "confidence",
+    bars: "percent",
+    assessed: ["draft", "bound", "commit"],
+    completion: "verdict",
+  },
+  g1: {
+    read: "pmax",
+    bars: g1Bars,
+    assessed: ["draft", "bound", "commit"],
+    completion: "perKind",
+  },
+  "g2-effect": {
+    read: "pmax",
+    bars: { ...g1Bars, view: 0.3, bound: 0.7 },
+    assessed: ["draft", "commit"],
+    completion: "perKind",
+  },
+} as const satisfies Record<string, GatePolicy>;
+export type GateName = keyof typeof gates;
+export const gateNames = Object.keys(gates) as GateName[];
 
 export function gateKind(
   choice: string,
@@ -25,8 +61,14 @@ export function gateKind(
   if (choice === "done" || choice === "blocked" || choice === "abstain")
     return "terminal";
   if (choice.startsWith("ask:")) return "ask";
-  const kind = input.actions.find((action) => action.id === choice)?.kind;
-  return kind === undefined || kind === "discard" ? "commit" : kind;
+  const action = input.actions.find((action) => action.id === choice);
+  if (action === undefined || action.kind === "discard") return "commit";
+  return action.kind === "draft" && action.value?.bound ? "bound" : action.kind;
+}
+
+export function bar(gate: GateName, percent: number, kind: GateKind) {
+  const { bars } = gates[gate];
+  return kind === "ask" || bars === "percent" ? percent / 100 : bars[kind];
 }
 
 export function acts(
@@ -35,12 +77,16 @@ export function acts(
   decision: Pick<Decision, "confidence" | "ranked">,
   kind: GateKind,
 ) {
-  switch (gate) {
-    case "threshold":
-      return decision.confidence >= percent / 100;
-    case "g1":
-      return (decision.ranked[0]?.probability ?? 0) >= g1Bars(percent)[kind];
-  }
+  const read =
+    gates[gate].read === "confidence"
+      ? decision.confidence
+      : (decision.ranked[0]?.probability ?? 0);
+  return read >= bar(gate, percent, kind);
+}
+
+/** Whether this gate runs the separate effect check for an action of this kind. */
+export function assesses(gate: GateName, kind: GateKind) {
+  return (gates[gate].assessed as readonly GateKind[]).includes(kind);
 }
 
 export type WorkKind = "view" | "draft" | "saved";
@@ -68,13 +114,13 @@ export function completes(
   assessment: Pick<Assessment, "verdict" | "confidence" | "probabilities">,
   kind: WorkKind,
 ) {
-  switch (gate) {
-    case "threshold":
+  switch (gates[gate].completion) {
+    case "verdict":
       return (
         assessment.verdict === "complete" &&
         assessment.confidence >= percent / 100
       );
-    case "g1":
+    case "perKind":
       return (assessment.probabilities.complete ?? 0) >= g1CompletionBars[kind];
   }
 }
