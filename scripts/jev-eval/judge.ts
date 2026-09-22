@@ -126,8 +126,17 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
     endCorrect && expected.handoff !== null && final?.kind === "blocked";
   const asked = observed.stops.filter((stop) => questionKinds.has(stop.kind));
   const questions = asked.length - (handedOff ? 1 : 0);
+  const wroteWrong =
+    unexpectedSaves.length > 0 ||
+    observed.receipts.some(
+      (receipt) =>
+        !(expected.saves[receipt.caseId] ?? []).some((wanted) =>
+          same(wanted, receipt.saved),
+        ),
+    );
   const unanswered =
     !handedOff &&
+    !wroteWrong &&
     final !== undefined &&
     final.kind !== "confirm" &&
     questionKinds.has(final.kind);

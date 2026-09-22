@@ -125,6 +125,17 @@ test("a run that ends at a question the harness cannot answer is stopped-unanswe
     "stopped-unanswered",
   );
 });
+test("a wrong write before an unanswered question is asked-wrong, never stopped-unanswered", () => {
+  const s = byId("use-09");
+  const stray = s.expected.records["V-1041"];
+  assert.ok(stray);
+  const written = judge(s, {
+    ...asExpected(s, [review]),
+    receipts: [{ caseId: "V-1041", saved: stray }],
+  });
+  assert.equal(written.outcome, "asked-wrong");
+  assert.deepEqual(written.unexpectedSaves, ["V-1041 saved 1x"]);
+});
 test("magic-save-check also counts a correct run whose only chips asked whether to save", () => {
   const s = byId("use-09");
   const save: Stop = {
