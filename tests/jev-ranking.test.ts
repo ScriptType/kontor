@@ -28,7 +28,21 @@ const input: DecisionInput = {
   ],
   blockedControls: [],
   answers: [],
-  steps: [],
+  steps: [
+    {
+      snapshotId: "earlier",
+      action: {
+        id: "nav:customers",
+        label: "Kunden",
+        effect: "Kunden anzeigen",
+        kind: "view",
+      },
+      authorizedBy: "request",
+      outcome: "changed",
+      before: "{}",
+      after: "{}",
+    },
+  ],
 };
 function provider(answer: (options: string[]) => unknown) {
   const calls: string[] = [];

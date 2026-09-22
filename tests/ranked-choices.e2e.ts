@@ -297,7 +297,6 @@ test("an uncertain blocked choice opens the review and a ranked navigation proce
     [],
     async (store) => {
       const before = store.snapshot();
-      await page.locator('[data-action="nav:reports"]').click();
       await start(page, "Zeige die offenen Vorgänge.");
       await expect(review(page)).toBeVisible();
       await expect(rows(page)).toHaveCount(2);
@@ -317,12 +316,14 @@ test("an uncertain blocked choice opens the review and a ranked navigation proce
     {
       nextAnswer: (index) =>
         index === 0
-          ? {
-              choice: "blocked",
-              confidence: 0.54,
-              probabilities: { blocked: 0.54, "nav:cases": 0.3 },
-            }
-          : stopped,
+          ? { choice: "nav:reports", confidence: 1 }
+          : index === 1
+            ? {
+                choice: "blocked",
+                confidence: 0.54,
+                probabilities: { blocked: 0.54, "nav:cases": 0.3 },
+              }
+            : stopped,
       effectAnswer: () => ({ choice: "authorized", confidence: 1 }),
     },
   );

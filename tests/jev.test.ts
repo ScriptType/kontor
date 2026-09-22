@@ -21,6 +21,24 @@ const input: DecisionInput = {
   answers: [],
   steps: [],
 };
+const steppedInput: DecisionInput = {
+  ...input,
+  steps: [
+    {
+      snapshotId: "earlier",
+      action: {
+        id: "nav:customers",
+        label: "Kunden",
+        effect: "Kunden anzeigen",
+        kind: "view",
+      },
+      authorizedBy: "request",
+      outcome: "changed",
+      before: "{}",
+      after: "{}",
+    },
+  ],
+};
 function provider(choice: string, confidence = 1) {
   return createJev(
     { mode: "live", apiKey: "test", model: "jev-latest" },
@@ -285,8 +303,8 @@ test("every explicit blocked choice with candidates asks one causal question", a
     [{ choice: "nav:customers", confidence: 0.4 }, blockedInput],
     [{ choice: "done", confidence: 1 }, blockedInput],
     [{ choice: "done", confidence: 0.4 }, blockedInput],
-    [{ choice: "blocked", confidence: 1 }, input],
-    [{ choice: "blocked", confidence: 0.1 }, input],
+    [{ choice: "blocked", confidence: 1 }, steppedInput],
+    [{ choice: "blocked", confidence: 0.1 }, steppedInput],
   ] satisfies [{ choice: string; confidence: number }, DecisionInput][]) {
     const { jev, calls } = causalProvider([next]);
     assert.partialDeepStrictEqual(await jev.decide(decisionInput), {
@@ -390,5 +408,32 @@ test("blocked controls require nonempty reasons and a bounded list", () => {
         () => blockedInput.blockedControls[0],
       ),
     }).success,
+  );
+});
+test("blocked is offered only after a step or with a blocked control", async () => {
+  const offered = async (decisionInput: DecisionInput) => {
+    const { jev, calls } = causalProvider([
+      { choice: "abstain", confidence: 1 },
+    ]);
+    await jev.decide(decisionInput);
+    return calls[0]?.options ?? [];
+  };
+  assert.deepEqual(await offered(input), ["nav:customers", "done", "abstain"]);
+  assert((await offered(steppedInput)).includes("blocked"));
+  assert((await offered(blockedInput)).includes("blocked"));
+  await assert.rejects(provider("blocked").decide(input), {
+    code: "PROVIDER_INVALID_RESPONSE",
+  });
+});
+test("the demo fixture abstains instead of choosing an unoffered blocked", async () => {
+  const demo = createJev({ mode: "demo" });
+  assert.equal(
+    (await demo.decide({ ...input, request: "Unbekannter Auftrag" })).choice,
+    "abstain",
+  );
+  assert.equal(
+    (await demo.decide({ ...steppedInput, request: "Unbekannter Auftrag" }))
+      .choice,
+    "blocked",
   );
 });

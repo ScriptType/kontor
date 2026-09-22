@@ -144,6 +144,8 @@ Die Entscheidung `abstain` hält den Lauf an, wenn Jev keinen sinnvollen nächst
 
 Eine `blocked`-Entscheidung unter der Sicherheitsschwelle beendet den Lauf nicht sofort. Sie öffnet wie eine unsichere Rückfrage die Auswahl mit den beiden Bewertungen. Eine angebotene Navigation oder ein anderer Schritt bleibt so erreichbar. Wählt der Nutzer dort die Blockade, gilt die Ursache aus derselben Jev-Antwort. Ab der Schwelle hält eine `blocked`-Entscheidung den Lauf weiterhin unmittelbar an.
 
+Vor dem ersten ausgeführten Schritt bietet Jev `blocked` nur an, wenn ein deaktiviertes Bedienelement mit Begründung sichtbar ist. Ohne Schritt und ohne solches Bedienelement kann noch nichts blockiert sein. Ein unklarer Auftrag endet dann mit `abstain`. Das Demo-Szenario wählt in diesem Fall ebenfalls `abstain`.
+
 Die Auswahl einer niedriger bewerteten Abschlussoption startet eine neue Abschlussprüfung. Nur eine neue Jev-Auswahl von `done` kann deren Auswahl-Confidence liefern. Eine andere neue Auswahl erscheint zur Prüfung und wird dabei nicht unmittelbar ausgeführt. Optionswahrscheinlichkeit oder Nutzerklick ersetzen keine der Abschlussvoraussetzungen.
 
 `CommandRunner` besitzt eine persönliche Sicherheitsschwelle als ganzen Prozentwert von 0 bis 100, mit Standard 75. Sie bleibt separat von Verlauf und Speicherprotokoll im Browser gespeichert. Die Prüfung lautet `confidence < percent / 100`. Sie gilt für Aktionsauswahl, Auftragsumfang und beide Modellbewertungen des Abschlusses. Zusätzliche oder unklare Änderungen benötigen unabhängig vom Wert eine Freigabe. Ein verbotener Schritt bleibt gesperrt. Auch bei 0 Prozent gelten die Anforderungen an Abschlussurteil, ausstehende Speicherungen und Speicherbelege.

@@ -839,7 +839,7 @@ for (const hidden of ["hidden", "inert", "aria-hidden", "no-reasons"]) {
   }) => {
     await withLive(
       page,
-      ["blocked"],
+      ["nav:cases", "blocked"],
       async (store, _held, _arrived, snapshots, observations) => {
         const before = store.snapshot();
         await page
@@ -856,11 +856,12 @@ for (const hidden of ["hidden", "inert", "aria-hidden", "no-reasons"]) {
             );
         await start(page, "Schließe den offenen Vorgang ab.");
         await expect(page.locator(".answer-panel")).toBeVisible();
-        expect(observations[0]).toMatchObject({
+        expect(observations[1]).toMatchObject({
           blockedControls: [],
           currentFacts: { blockedControls: [] },
         });
-        expect(snapshots[0]).not.toContain("complete");
+        expect(snapshots[1]).toContain("blocked");
+        expect(snapshots[1]).not.toContain("complete");
         await expect(page.locator(".blocked-control")).toHaveCount(0);
         expect(store.snapshot()).toEqual(before);
       },

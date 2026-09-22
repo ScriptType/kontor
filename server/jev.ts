@@ -96,12 +96,14 @@ export function createJev(config: Config, fetch?: Fetch) {
           `Ask the user for a missing ${field.label} value (${field.type}), only if the request and previous answers do not supply it.`;
       options["done"] =
         "Every part of the original request is satisfied, in its requested order. Drafts are not saved changes.";
-      options["blocked"] =
-        "Outstanding request work cannot proceed with available controls or needs human evidence. Never silently omit a trailing task.";
+      if (input.steps.length > 0 || input.blockedControls.length > 0)
+        options["blocked"] =
+          "Outstanding request work cannot proceed with available controls or needs human evidence. Never silently omit a trailing task.";
       options["abstain"] =
         "Cannot understand the request or choose a sensible next step. Stop automatic work and ask the user to revise or select a suggestion.";
       if (!client) {
-        const selected = fixture(input);
+        const fixed = fixture(input);
+        const selected = Object.hasOwn(options, fixed) ? fixed : "abstain";
         return {
           snapshotId: input.snapshotId,
           choice: selected,
