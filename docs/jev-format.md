@@ -1,0 +1,95 @@
+# Jev-Formatbank
+
+Die Formatbank misst, wie Form und Umfang der Anfrage an Jev die Entscheidungen unter dem Gate `g3` verändern. Sie stellt aufgenommene Entscheidungszustände in einer anderen Schreibweise erneut an den Anbieter und liest die Antwort genau so, wie die Schleife in `frontend/src/command-runner.ts` sie liest. So lassen sich gekürzte oder umformatierte Zustände an rund 250 Zuständen vergleichen, bevor ganze Läufe mit `npm run eval:jev` sie bestätigen.
+
+## Ablauf
+
+1. Läufe unter `g3` mit `--record-payloads` aufnehmen.
+2. Zustände mit `scripts/jev-format/extract.ts` herausziehen und beschriften.
+3. Varianten mit `scripts/jev-format/run.ts` stellen.
+4. Die Rangliste mit `scripts/jev-format/table.ts` schreiben.
+
+Alle Dateien liegen unter `live-results/question-pipeline-2026-09-21/round4/format/` im Hauptverzeichnis des Repositorys, auch aus einem Worktree.
+
+## Aufnehmen
+
+```sh
+npm run build
+node --env-file-if-exists=.env --import tsx scripts/jev-eval/run.ts \
+  --variant r4f-rec-h1-g3 --scenarios <holdout.json> --samples 1 --gate g3 \
+  --concurrency 4 --max-calls 2500 --record-payloads \
+  --out live-results/question-pipeline-2026-09-21/round4/format/rec-h1-g3
+```
+
+## Herausziehen
+
+```sh
+node --import tsx scripts/jev-format/extract.ts
+```
+
+Der Befehl liest die Läufe `rec-h1-g3` und `rec-h2-g3` (`--runs` ändert das) und schreibt drei Dateien:
+
+| Datei | Inhalt |
+| --- | --- |
+| `states.json` | Jeder Entscheidungszustand auf dem menschlichen Pfad aus `holdout-meta.json` und `holdout2-meta.json`, beschriftet wie in der Entscheidungsbank (`labelState`): `next`, `acceptable`, `safe`. Dazu die Art jeder Option unter `g3` und die aufgenommene Antwort samt Prüfung. |
+| `calls.json` | Jeder Entscheidungs- und Prüfaufruf mit Tokenverbrauch und der Größe jedes Zustandsteils, auch abseits des Pfads. |
+| `assess-questions.json` | Die beiden Prüffragen (Wirkung und Abschluss) wörtlich aus den Aufnahmen. |
+
+Ob ein Feldwert an den Auftrag gebunden ist, sendet die App nicht an Jev. Der Befehl berechnet es mit `fieldValues` aus `shared/field-values.ts` neu, mit den Vorgängen und Kunden des Startzustands. Danach prüft er an jeder aufgenommenen Entscheidung vier Dinge und gibt die Abweichungen aus:
+
+- Der neu serialisierte Zustand gleicht dem gesendeten Text.
+- Der gebaute Prüfzustand gleicht dem gesendeten Prüfzustand.
+- Nach genau den Entscheidungen, nach denen die Bank eine Prüfung erwartet, folgt in der Aufnahme eine Prüfung.
+- Genau die Aktionen, die die Bank ausführen würde, hat der Lauf ausgeführt.
+
+## Varianten
+
+`scripts/jev-format/variants.ts` enthält eine Tabelle der Varianten. Eine Variante hat drei Teile:
+
+- `decide(payload)` gibt Zustand und Fragen der Entscheidung zurück.
+- `read(answer, payload)` bildet die Antwort auf Wahrscheinlichkeiten über die aufgenommenen Options-IDs ab.
+- `assess(payload, selected, questions)` gibt Zustand und Frage einer Prüfung zurück.
+
+Eine Variante mit `shape` ändert den Zustand der Entscheidung und beider Prüfungen, wie eine Änderung an `modelState` in `server/jev.ts` es täte. `decideShape` ändert nur die Entscheidung, `question` nur Anweisung und Optionen der Entscheidung.
+
+`node --import tsx scripts/jev-format/preview.ts` zeigt die mittlere Größe jeder Variante. Mit `--variant <name> --state <id>` zeigt es, was die Variante für einen Zustand sendet.
+
+## Messen
+
+```sh
+node --env-file-if-exists=.env --import tsx scripts/jev-format/run.ts \
+  --variants identity,f1-dedupe --samples 2 --concurrency 16
+node --import tsx scripts/jev-format/table.ts
+```
+
+| Option | Standard | Bedeutung |
+| --- | --- | --- |
+| `--variants <a,b>` | Pflicht | Namen aus `variants.ts`. `recorded` wertet die aufgenommenen Antworten ohne Anbieteraufruf aus. |
+| `--samples <n>` | `1` | Unabhängige Stichproben je Variante. Ab der zweiten Stichprobe geht ein Salz in den Cache-Schlüssel ein. |
+| `--concurrency <n>` | `8` | Parallele Zustände, höchstens 24. |
+
+Je Zustand stellt der Befehl die Entscheidung, liest sie mit `pick` aus `frontend/src/gate.ts` unter `g3` und stellt die Prüfung, wenn die Schleife sie vor dem Handeln stellen würde. Er handelt wie die Schleife: Die Auswahl muss ihre Schwelle und den Abstand erreichen, der Laufwächter darf nicht anhalten, eine Wirkungsprüfung muss `authorized` mit mindestens 75 % liefern und eine Abschlussprüfung die Schwelle je Art der Arbeit. Prüfungen, die die Schleife nur für den Hinweistext stellt, stellt die Bank nicht.
+
+Jede Antwort landet unter `cache/<sha256>.json` mit dem gemeldeten Tokenverbrauch. Der Schlüssel ist der Hash aus Modell, Anfrage und Salz. Bei 429 oder 529 wartet der Befehl länger und versucht es bis zu siebenmal, bei 402 bricht er ab.
+
+`results/<variante>@<n>.json` enthält eine Zeile je Zustand. `table.md` zeigt je Holdout:
+
+| Kennzahl | Bedeutung |
+| --- | --- |
+| act-correct | Die Schleife würde handeln, und die Auswahl liegt in `safe`. |
+| act-wrong | Die Schleife würde handeln, und die Auswahl liegt nicht in `safe`. „not a view“ zählt davon nur Entwürfe, Speichern, Abschluss und Halt. |
+| stop | Die Schleife würde nachfragen. |
+| top1-safe | Die gelesene Auswahl liegt in `safe`, unabhängig vom Handeln. |
+| safe mass | Mittlere Wahrscheinlichkeit auf den Optionen in `safe`. |
+| decide input tokens | Vom Anbieter gemeldete Eingabetokens der Entscheidung, Mittel je Zustand. |
+
+Die Grundlinie mittelt alle Stichproben von `identity` und die aufgenommenen Antworten. Als Rauschen gilt der größte Abstand einer dieser Stichproben zum Mittel der übrigen. Fett markiert eine Abweichung darüber.
+
+`node --import tsx scripts/jev-format/tokens.ts` schreibt `tokens.md` mit Tokenverbrauch und Größe der Zustandsteile aller aufgenommenen Aufrufe.
+
+## Grenzen
+
+- Die Zustände liegen auf dem Pfad, den Jev unter `g3` bis dahin richtig ging. Zustände nach einem Fehler fehlen.
+- Die Beschriftung kennt einen richtigen Weg. Öffnet Jev einen Vorgang vor einer Navigation, die der menschliche Pfad zuerst macht, zählt das als falsch, auch wenn der Lauf danach richtig endet.
+- Eine Variante sieht nur den aufgenommenen Zustand. Folgen für spätere Schritte, etwa ein kürzerer Verlauf, zeigt erst ein ganzer Lauf.
+- Die Nachfrage nach der Ursache einer Blockade (`cause`) stellt die Bank nicht.
