@@ -42,23 +42,26 @@ async function call(recordPayloads: boolean) {
 test("a recorded call keeps the exact request body, the provider's answers and its usage", async () => {
   const { callLog, budget, questions } = await call(true);
   assert.equal(budget.used, 1);
-  assert.deepEqual(callLog.map(({ ms: _, ...rest }) => rest), [
-    {
-      question: "next",
-      choice: "save",
-      confidence: 0.62,
-      probabilities: { save: 0.62, done: 0.38 },
-      payload: {
-        request: {
-          state: '{"page":"cases"}',
-          questions,
-          model: "jev-latest",
+  assert.deepEqual(
+    callLog.map(({ ms: _, ...rest }) => rest),
+    [
+      {
+        question: "next",
+        choice: "save",
+        confidence: 0.62,
+        probabilities: { save: 0.62, done: 0.38 },
+        payload: {
+          request: {
+            state: '{"page":"cases"}',
+            questions,
+            model: "jev-latest",
+          },
+          answers,
+          usage,
         },
-        answers,
-        usage,
       },
-    },
-  ]);
+    ],
+  );
 });
 test("without recording the call log holds no payload", async () => {
   const { callLog } = await call(false);
