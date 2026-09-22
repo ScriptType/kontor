@@ -21,6 +21,10 @@ export const valueSources = {
     de: "vorhandener Datenwert im Auftrag",
     en: "existing data value named in the request",
   },
+  hours: {
+    de: "Stundenangabe aus Auftrag, in Minuten umgerechnet",
+    en: "hours from the request converted to minutes",
+  },
 } as const satisfies Record<string, { de: string; en: string }>;
 export type ValueSource = keyof typeof valueSources;
 
@@ -46,19 +50,56 @@ const clauseBreak =
 // are no number.
 const quantity =
   /(?<![\p{L}\p{N}_.,:/+\-])(\d{1,5})(?=\s?(?:minuten|minutes|minute|mins|min)\b|(?![\p{L}\p{N}_:/+\-]|[.,]\d))/giu;
-// Hours are not a minute value, and a clock time is no quantity at all.
+// A number before an hour unit belongs to an hour phrase, and a clock time is
+// no quantity at all.
 const notMinutes = /^\s?(?:h|std|stunden?|hours?|hrs?|uhr)\b/iu;
 const clockBefore = /(?:\bum|\bgegen|\bhalb|\bviertel)\s$/iu;
 const minuteUnit = /^\s?(?:minuten|minutes|minute|mins|min)\b/iu;
+
+const hourUnit = String.raw`(?:h|std\.?|stunden?|hours?|hrs?)(?![\p{L}])`;
+const minuteTail = String.raw`(?:\s?(?:minuten|minutes|minute|mins|min)(?![\p{L}]))?`;
+// Hours in digits or words, each with its minutes. Longer phrases come first,
+// so "eine halbe stunde" is never read as "eine stunde".
+const hourPhrases: [RegExp, (m: RegExpMatchArray) => number][] = [
+  [
+    new RegExp(
+      String.raw`(?<![\p{L}\p{N}_.,:/+\-])(\d{1,2})(?:[.,](\d{1,2}))?\s?${hourUnit}(?:\s?(\d{1,2})${minuteTail}(?!\d))?`,
+      "giu",
+    ),
+    (m) =>
+      Math.round(Number(`${m[1]}.${m[2] ?? "0"}`) * 60) + Number(m[3] ?? 0),
+  ],
+  [/\b(?:anderthalb|eineinhalb)\s?stunden?\b/giu, () => 90],
+  [/(?<![\p{N}/])1\/2\s?(?:stunde|std\.?)(?![\p{L}])/giu, () => 30],
+  [/\b(?:(?:eine|ne|einer)\s)?halben?\s(?:stunde|std)\b/giu, () => 30],
+  [/\bdreiviertel\s?stunde\b/giu, () => 45],
+  [/\b(?:(?:eine|ne|einer)\s)?viertel\s?stunde\b/giu, () => 15],
+  [
+    /\b(eine|ne|einer|zwei|drei|vier)\s(?:stunden?|std\.?)(?![\p{L}])/giu,
+    (m) =>
+      60 * ({ zwei: 2, drei: 3, vier: 4 }[(m[1] ?? "").toLowerCase()] ?? 1),
+  ],
+];
 
 const identifierDigits = (value: string) => /^\p{L}+-(\d+)$/u.exec(value)?.[1];
 
 /**
  * Every literal minute quantity in the request that is not an identifier's
- * digits, with the number fields it belongs to and the identifiers its clause
+ * digits, and every hour phrase converted to minutes with its source span,
+ * each with the number fields it belongs to and the identifiers its clause
  * names (empty when it names none).
  */
-export function requestNumbers(request: string, identifiers: string[] = []) {
+export type RequestNumber = {
+  value: string;
+  /** The hour phrase a converted value came from; absent for a literal. */
+  span?: string;
+  fields: string[];
+  cases: string[];
+};
+export function requestNumbers(
+  request: string,
+  identifiers: string[] = [],
+): RequestNumber[] {
   // "1041" or, spoken in two parts, "10 41" names case V-1041.
   const named = identifiers.flatMap((id) => {
     const digits = identifierDigits(id);
@@ -87,21 +128,12 @@ export function requestNumbers(request: string, identifiers: string[] = []) {
   for (const match of request.matchAll(clauseBreak))
     breaks.push(match.index, match.index + match[0].length);
   breaks.sort((a, b) => a - b);
-  return [...request.matchAll(quantity)].flatMap((match) => {
-    const at = match.index;
-    const after = request.slice(at + match[0].length);
-    const before = request.slice(Math.max(0, at - 12), at);
-    if (
-      idSpans.some((span) => at >= span.from && at < span.to) ||
-      notMinutes.test(after) ||
-      (clockBefore.test(before) && !minuteUnit.test(after))
-    )
-      return [];
+  const bind = (at: number, length: number) => {
     const start = breaks.filter((b) => b <= at).at(-1) ?? 0;
     const end = breaks.find((b) => b > at) ?? request.length;
     const clause = request.slice(start, end);
     const from = at - start;
-    const to = from + match[0].length;
+    const to = from + length;
     const words = Object.entries(numberFieldCues).flatMap(([id, cue]) =>
       [...clause.matchAll(cue)].map((word) => ({
         id,
@@ -118,14 +150,68 @@ export function requestNumbers(request: string, identifiers: string[] = []) {
       : following.filter(
           (w) => w.start === Math.min(...following.map((f) => f.start)),
         );
-    const fields = nearest.length
-      ? [...new Set(nearest.map((w) => w.id))]
-      : Object.keys(numberFieldCues);
-    const cases = named
-      .filter(({ pattern }) => clause.search(pattern) >= 0)
-      .map(({ id }) => id);
-    return [{ value: match[1] ?? match[0], fields, cases }];
+    return {
+      fields: nearest.length
+        ? [...new Set(nearest.map((w) => w.id))]
+        : Object.keys(numberFieldCues),
+      cases: named
+        .filter(({ pattern }) => clause.search(pattern) >= 0)
+        .map(({ id }) => id),
+    };
+  };
+  const hours: { at: number; end: number; value: string; span: string }[] = [];
+  for (const [pattern, minutes] of hourPhrases)
+    for (const match of request.matchAll(pattern)) {
+      const at = match.index;
+      const end = at + match[0].length;
+      if (hours.some((h) => at < h.end && end > h.at)) continue;
+      hours.push({ at, end, value: String(minutes(match)), span: match[0] });
+    }
+  const covered = [
+    ...idSpans,
+    ...hours.map((h) => ({ from: h.at, to: h.end })),
+  ];
+  const numbers = [...request.matchAll(quantity)].flatMap((match) => {
+    const at = match.index;
+    const after = request.slice(at + match[0].length);
+    const before = request.slice(Math.max(0, at - 12), at);
+    if (
+      covered.some((span) => at >= span.from && at < span.to) ||
+      notMinutes.test(after) ||
+      (clockBefore.test(before) && !minuteUnit.test(after))
+    )
+      return [];
+    return [
+      {
+        at,
+        value: match[1] ?? match[0],
+        ...bind(at, match[0].length),
+      },
+    ];
   });
+  return [
+    ...numbers,
+    ...hours.map((h) => ({
+      at: h.at,
+      value: h.value,
+      span: h.span,
+      ...bind(h.at, h.end - h.at),
+    })),
+  ]
+    .sort((a, b) => a.at - b.at)
+    .map(({ at: _, ...number }) => number);
+}
+/** Where a candidate comes from, with the converted hour phrase when there is one. */
+export function describeSource(
+  found: { source: ValueSource; span?: string },
+  value: string,
+  language: "de" | "en",
+) {
+  const text = valueSources[found.source][language];
+  if (found.span === undefined) return text;
+  return language === "de"
+    ? `${text}: „${found.span}“ = ${value} Minuten`
+    : `${text}: "${found.span}" = ${value} min`;
 }
 export function fieldValues(
   field: FieldDescription,
@@ -133,24 +219,27 @@ export function fieldValues(
   answers: DecisionInput["answers"],
   existing: string[],
 ) {
-  const values = new Map<string, ValueSource>();
-  const add = (value: string, source: ValueSource) => {
+  const values = new Map<string, { source: ValueSource; span?: string }>();
+  const add = (value: string, source: ValueSource, span?: string) => {
     if (validFieldValue(field, value))
       values.set(
         field.type === "number" ? String(Number(value)) : value,
-        source,
+        span === undefined ? { source } : { source, span },
       );
   };
   for (const answer of answers)
     if (answer.fieldId === field.id && answer.scope === field.scope)
       add(answer.value, "answer");
   if (field.type === "number") {
-    for (const { value, fields, cases } of requestNumbers(request, existing))
+    for (const { value, fields, cases, span } of requestNumbers(
+      request,
+      existing,
+    ))
       if (
         fields.includes(field.id) &&
         (!cases.length || cases.includes(field.scope))
       )
-        add(value, "number");
+        add(value, span === undefined ? "number" : "hours", span);
   } else if (field.type === "datetime-local") {
     for (const match of request.matchAll(
       /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
@@ -163,7 +252,7 @@ export function fieldValues(
       if (request.toLocaleLowerCase().includes(value.toLocaleLowerCase()))
         add(value, "existing");
   }
-  return [...values].map(([value, source]) => ({ value, source }));
+  return [...values].map(([value, found]) => ({ value, ...found }));
 }
 export function validFieldValue(field: FieldDescription, value: string) {
   if (field.type === "number")

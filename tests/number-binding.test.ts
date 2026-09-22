@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { FieldDescription } from "../shared/command.js";
 import { dimensions, literalField } from "../shared/dimensions.js";
-import { fieldValues, numberFieldCues } from "../shared/field-values.js";
+import {
+  describeSource,
+  fieldValues,
+  numberFieldCues,
+} from "../shared/field-values.js";
 
 const ids = ["V-1042", "V-1041", "V-1039", "V-1037", "V-1035"];
 const field = (
@@ -26,12 +30,16 @@ test("an appointment length is never offered as worked minutes", () => {
   for (const request of [
     "1042 muss am 2026-09-24 um 10:00 raus, termin 45 min.",
     "hab den termin vergessen: nächsten dienstag halb elf, 45 min. danach kunden",
-    "dauer ne stunde, nee, 45 min reichen",
     "Die Termin soll 45 Minuten lang sein",
   ]) {
     assert.deepEqual(offered(field("minutes", "V-1042"), request), [], request);
     assert.deepEqual(offered(field("duration", "V-1042"), request), ["45"]);
   }
+});
+test("a corrected duration offers both values and never worked minutes", () => {
+  const request = "dauer ne stunde, nee, 45 min reichen";
+  assert.deepEqual(offered(field("minutes", "V-1042"), request), []);
+  assert.deepEqual(offered(field("duration", "V-1042"), request), ["60", "45"]);
 });
 test("a number without a field word stays offered to every number field", () => {
   const request = "1041 auf lea mit 75 min dann teamansicht";
@@ -80,4 +88,15 @@ test("an identifier spoken in two parts is no value and names its case", () => {
   assert.deepEqual(offered(field("duration"), request), ["90"]);
   assert.deepEqual(offered(field("minutes"), request), []);
   assert.deepEqual(offered(field("duration", "V-1042"), request), []);
+});
+
+test("an hour phrase becomes minutes and keeps its source span", () => {
+  assert.deepEqual(
+    fieldValues(field("minutes"), "1041 war lea 2 std dran", [], ids),
+    [{ value: "120", source: "hours", span: "2 std" }],
+  );
+  assert.equal(
+    describeSource({ source: "hours", span: "2 std" }, "120", "de"),
+    "Stundenangabe aus Auftrag, in Minuten umgerechnet: „2 std“ = 120 Minuten",
+  );
 });

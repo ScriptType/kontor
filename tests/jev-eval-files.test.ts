@@ -152,7 +152,7 @@ test("a draft with a misspelled dimension or a value the UI cannot reach is refu
     () =>
       scenarioFromDraft({
         ...sloppyUser,
-        request: "1041 an marla, ne stunde",
+        request: "1041 an marla, so lange wie letztes mal",
         intent: { cases: { "V-1041": { workedMinutes: "60" } } },
       }),
     /ctl-01: V-1041: worked minutes 60 are neither a literal in the request nor an answer to an ambiguous dimension/,

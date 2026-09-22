@@ -15,7 +15,7 @@ import {
   type FieldDescription,
   type DecisionInput,
 } from "../../shared/command";
-import { fieldValues, valueSources } from "../../shared/field-values";
+import { describeSource, fieldValues } from "../../shared/field-values";
 export type Actor = "manual" | "jev";
 interface Control {
   element: HTMLElement;
@@ -208,7 +208,7 @@ export class ActionRegistry {
     for (const control of this.fields)
       if (control.available()) {
         const field = control.description();
-        for (const { value, source } of fieldValues(
+        for (const { value, ...found } of fieldValues(
           field,
           request,
           answers,
@@ -220,8 +220,8 @@ export class ActionRegistry {
               label: `${field.label} auf ${value} setzen`,
               effect:
                 field.current === value
-                  ? `${field.label} ist bereits ${value}; ${valueSources[source].de}`
-                  : `${field.label}: ${field.current || "leer"} → ${value}; ${valueSources[source].de}`,
+                  ? `${field.label} ist bereits ${value}; ${describeSource(found, value, "de")}`
+                  : `${field.label}: ${field.current || "leer"} → ${value}; ${describeSource(found, value, "de")}`,
               kind: field.kind,
               jev: {
                 does: `Set ${jevFieldName(field)} to ${value}`,
@@ -229,7 +229,7 @@ export class ActionRegistry {
                   field.current === value
                     ? `value is already ${value}; no change`
                     : `current value ${field.current || "empty"} → ${value}`
-                }. Value source: ${valueSources[source].en}`,
+                }. Value source: ${describeSource(found, value, "en")}`,
                 notFor: field.jev.notFor,
               },
             },
