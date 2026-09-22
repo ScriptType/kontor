@@ -21,6 +21,7 @@ import {
   type FieldDescription,
 } from "../../shared/command";
 import { validFieldValue } from "../../shared/field-values";
+import { changingActions } from "../../shared/dimensions";
 import { blockers, receiptSchema } from "../../shared/domain";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
@@ -560,16 +561,20 @@ export class CommandRunner {
       ...(data?.customers.map((c) => c.name) ?? []),
     ];
     const blockedControls = this.registry.blockedSnapshot();
+    const policy = gates[this.gate];
+    const context = this.facts(blockedControls);
+    const actions = this.registry.snapshot(run.request, run.answers, existing);
     return {
       request: run.request,
       snapshotId: crypto.randomUUID(),
-      context: this.facts(blockedControls),
+      context,
       blockedControls,
-      actions: this.registry.snapshot(run.request, run.answers, existing),
+      actions: policy.memory ? changingActions({ actions, context }) : actions,
       fields: this.registry.fieldSnapshot(),
       answers: run.answers,
       steps: run.steps,
-      doneBeforeFirstStep: gates[this.gate].doneBeforeFirstStep,
+      doneBeforeFirstStep: policy.doneBeforeFirstStep,
+      state: policy.memory ? "lean" : "full",
     };
   }
   private capture(input: DecisionInput, decision: Decision): DecisionCapture {

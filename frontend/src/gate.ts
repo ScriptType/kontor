@@ -28,6 +28,8 @@ export type GatePolicy = Read & {
   assessed: readonly GateKind[];
   /** Whether Jev may choose done before any step ran. */
   doneBeforeFirstStep: boolean;
+  /** Lean state: a compact step log, and no options that change nothing. */
+  memory: boolean;
   completion: "verdict" | "perKind";
 };
 
@@ -47,6 +49,7 @@ export const gates = {
     bars: "percent",
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
+    memory: false,
     completion: "verdict",
   },
   g1: {
@@ -54,6 +57,7 @@ export const gates = {
     bars: g1Bars,
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
+    memory: false,
     completion: "perKind",
   },
   "g2-effect": {
@@ -61,6 +65,7 @@ export const gates = {
     bars: effectBars,
     assessed: ["draft", "commit"],
     doneBeforeFirstStep: true,
+    memory: false,
     completion: "perKind",
   },
   "g2-exits": {
@@ -68,6 +73,7 @@ export const gates = {
     bars: g1Bars,
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: false,
+    memory: false,
     completion: "perKind",
   },
   "g2-pool": {
@@ -76,6 +82,7 @@ export const gates = {
     bars: g1Bars,
     assessed: ["draft", "bound", "commit"],
     doneBeforeFirstStep: true,
+    memory: false,
     completion: "perKind",
   },
   g2: {
@@ -84,6 +91,7 @@ export const gates = {
     bars: effectBars,
     assessed: ["draft", "commit"],
     doneBeforeFirstStep: false,
+    memory: false,
     completion: "perKind",
   },
 } as const satisfies Record<string, GatePolicy>;

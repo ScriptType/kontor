@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ActionDescription } from "../shared/command.js";
-import { effectKey, noChangeKey } from "../shared/dimensions.js";
+import {
+  changingActions,
+  effectKey,
+  noChangeKey,
+} from "../shared/dimensions.js";
 import {
   defaultCaseFilters,
   type CaseDraft,
@@ -136,4 +140,37 @@ test("unreadable facts leave every option its own key", () => {
     assert.notEqual(key("nav:cases"), key("done"));
     assert.notEqual(key("nav:cases"), key("nav:reports"));
   }
+});
+test("only view and draft actions that change nothing are dropped from the options", () => {
+  const context = JSON.stringify({
+    currentPage: "cases",
+    filters: { ...defaultCaseFilters, status: "open" },
+    menu: null,
+    selected: { id: "V-1042" },
+    draft,
+  });
+  const kept = changingActions({
+    actions: [
+      ...actions,
+      action("filter:all"),
+      action("filter:open"),
+      action("field:search:Wartung"),
+      action("unknown-view"),
+    ],
+    context,
+  }).map((a) => a.id);
+  assert.deepEqual(kept, [
+    "nav:reports",
+    "customer:nord",
+    "menu:technician",
+    "menu:customer",
+    "technician:lea",
+    "field:minutes:45",
+    "close",
+    "save",
+    "discard",
+    "filter:all",
+    "field:search:Wartung",
+    "unknown-view",
+  ]);
 });

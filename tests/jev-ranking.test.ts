@@ -6,6 +6,7 @@ import { stepSchema, type DecisionInput } from "../shared/command.js";
 
 const input: DecisionInput = {
   doneBeforeFirstStep: true,
+  state: "full",
   snapshotId: "capture",
   request: "Zeige Kunden",
   context: "{}",

@@ -56,6 +56,8 @@ export const decisionInputSchema = z.object({
   steps: z.array(stepSchema).max(60),
   /** Gate setting filled by the runner; never part of the model context. */
   doneBeforeFirstStep: z.boolean().default(true),
+  /** Gate setting: lean sends Jev a compact step log instead of snapshots. */
+  state: z.enum(["full", "lean"]).default("full"),
 });
 export const decisionSchema = z.object({
   snapshotId: z.string(),

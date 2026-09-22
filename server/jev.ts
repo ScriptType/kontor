@@ -13,6 +13,7 @@ import {
   assessmentSchema,
   type assessmentInputSchema,
 } from "../shared/command.js";
+import { stepLog } from "../shared/step-log.js";
 import type { Config } from "./config.js";
 const answerSchema = z.object({
   answers: z.record(
@@ -267,11 +268,36 @@ function modelState(
     selected?: z.infer<typeof assessmentInputSchema>["selected"];
   },
 ) {
+  const selected =
+    input.selected === undefined
+      ? {}
+      : {
+          selected:
+            input.selected === "done" ? "done" : jevAction(input.selected),
+        };
+  const facts = JSON.parse(input.context);
+  if (input.state === "lean") {
+    // The decide options already carry every action text; blocked controls
+    // appear once at the top level.
+    const { blockedControls: _blocked, ...currentFacts } = facts;
+    return {
+      originalRequest: input.request,
+      explicitAnswers: input.answers,
+      currentFacts,
+      observedSteps: stepLog(input.steps),
+      ...(input.selected === undefined
+        ? {}
+        : { availableActions: input.actions.map(jevAction) }),
+      availableFields: input.fields.map(({ jev: _, ...field }) => field),
+      blockedControls: input.blockedControls.map(jevBlockedControl),
+      ...selected,
+    };
+  }
   return {
     snapshotId: input.snapshotId,
     originalRequest: input.request,
     explicitAnswers: input.answers,
-    currentFacts: JSON.parse(input.context),
+    currentFacts: facts,
     observedSteps: input.steps.map((step) => ({
       action: jevAction(step.action),
       authorizedBy: step.authorizedBy,
@@ -282,12 +308,7 @@ function modelState(
     availableActions: input.actions.map(jevAction),
     availableFields: input.fields.map(({ jev: _, ...field }) => field),
     blockedControls: input.blockedControls.map(jevBlockedControl),
-    ...(input.selected === undefined
-      ? {}
-      : {
-          selected:
-            input.selected === "done" ? "done" : jevAction(input.selected),
-        }),
+    ...selected,
   };
 }
 

@@ -11,6 +11,7 @@ import {
 } from "../shared/command.js";
 const input: DecisionInput = {
   doneBeforeFirstStep: true,
+  state: "full",
   request: "Zeig Kunden, danach Team",
   context: "{}",
   snapshotId: "fresh",
@@ -501,6 +502,82 @@ test("the demo fixture still runs its sequence when done waits for a first step"
     ).choice,
     "done",
   );
+});
+test("a lean decide state carries a step log and no duplicate options, snapshots or snapshot id", async () => {
+  const stateOf = async (decisionInput: DecisionInput) => {
+    const { jev, calls } = causalProvider([
+      { choice: "abstain", confidence: 1 },
+      { choice: "authorized", confidence: 1 },
+    ]);
+    await jev.decide(decisionInput);
+    const [selected] = decisionInput.actions;
+    assert(selected);
+    await jev.assess({ ...decisionInput, selected });
+    return calls.map((call) =>
+      z.record(z.string(), z.unknown()).parse(call.state),
+    );
+  };
+  const stepped: DecisionInput = {
+    ...blockedInput,
+    context: JSON.stringify({
+      currentPage: "customers",
+      blockedControls: ["copy"],
+    }),
+    steps: steppedInput.steps.map((step) => ({
+      ...step,
+      before: JSON.stringify({ page: "cases", receipts: [] }),
+      after: JSON.stringify({ page: "customers", receipts: [] }),
+    })),
+  };
+  const [decide, assess] = await stateOf({ ...stepped, state: "lean" });
+  assert(decide && assess);
+  assert(!("availableActions" in decide));
+  assert(!("snapshotId" in decide));
+  assert(!JSON.stringify(decide).includes('"before"'));
+  assert(!JSON.stringify(decide).includes('"lean"'));
+  assert.deepEqual(decide["currentFacts"], { currentPage: "customers" });
+  assert.equal(z.array(z.unknown()).parse(decide["blockedControls"]).length, 1);
+  assert.deepEqual(decide["observedSteps"], [
+    {
+      action:
+        "Go to the customer overview page. View only; changes no case data",
+      kind: "view",
+      authorizedBy: "request",
+      outcome: "changed",
+      changes: [{ path: "page", from: "cases", to: "customers" }],
+    },
+  ]);
+  assert("availableActions" in assess);
+  assert.deepEqual(assess["observedSteps"], decide["observedSteps"]);
+  const [fullDecide, fullAssess] = await stateOf(stepped);
+  assert(fullDecide && fullAssess);
+  assert.deepEqual(Object.keys(fullDecide), [
+    "snapshotId",
+    "originalRequest",
+    "explicitAnswers",
+    "currentFacts",
+    "observedSteps",
+    "availableActions",
+    "availableFields",
+    "blockedControls",
+  ]);
+  assert.deepEqual(z.array(z.unknown()).parse(fullDecide["observedSteps"])[0], {
+    action: {
+      id: "nav:customers",
+      label: "Kunden",
+      effect:
+        "Go to the customer overview page. View only; changes no case data",
+      kind: "view",
+    },
+    authorizedBy: "request",
+    outcome: "changed",
+    before: { page: "cases", receipts: [] },
+    after: { page: "customers", receipts: [] },
+  });
+  assert.deepEqual(fullDecide["currentFacts"], {
+    currentPage: "customers",
+    blockedControls: ["copy"],
+  });
 });
 test("the demo fixture abstains instead of choosing an unoffered blocked", async () => {
   const demo = createJev({ mode: "demo" });

@@ -559,6 +559,17 @@ export function effectKey(
   return JSON.stringify(changes.sort());
 }
 
+/** The actions left once view and draft actions that change nothing are dropped. */
+export function changingActions(
+  input: Pick<DecisionInput, "actions" | "context">,
+) {
+  return input.actions.filter(
+    (action) =>
+      (action.kind !== "view" && action.kind !== "draft") ||
+      effectKey(action.id, input) !== noChangeKey,
+  );
+}
+
 type Shape = Record<string, z.ZodType>;
 export function coverageProblems(
   shapes: { editable: Shape; filters: Shape } = {
