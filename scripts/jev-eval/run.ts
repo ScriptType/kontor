@@ -37,6 +37,7 @@ const { values } = parseArgs({
     "save-mode": { type: "string", default: "auto" },
     threshold: { type: "string" },
     gate: { type: "string", default: "threshold" },
+    "record-payloads": { type: "boolean", default: false },
   },
 });
 const whole = z.coerce.number().int();
@@ -104,6 +105,7 @@ const meta = {
   "confidence threshold": `${threshold} %`,
   gate,
   "save mode": saveMode,
+  "record payloads": values["record-payloads"] ? "yes" : "no",
   started: new Date().toISOString(),
 };
 await mkdir(join(out, "samples"), { recursive: true });
@@ -143,6 +145,7 @@ try {
           threshold,
           gate,
           budget,
+          recordPayloads: values["record-payloads"],
           ...job,
         });
         results.push(result);

@@ -353,29 +353,33 @@ export type CallRecord = {
   confidence: number | null;
   probabilities: Record<string, number> | null;
   ms: number;
+  payload?: { request: unknown; answers: unknown; usage: unknown };
 };
-export async function runSample(options: {
-  browser: Browser;
-  config: Config;
-  scenario: Scenario;
-  sample: number;
-  variant: string;
-  saveMode: SaveMode;
-  threshold?: number;
-  gate?: GateName;
+const providerAnswerSchema = z.object({
+  answers: z
+    .record(
+      z.string(),
+      z
+        .object({
+          choice: z.string(),
+          confidence: z.number(),
+          probabilities: z.record(z.string(), z.number()).optional(),
+        })
+        .loose(),
+    )
+    .optional(),
+  usage: z.unknown().optional(),
+});
+export function recordingFetch(options: {
   budget: Budget;
-  maxCalls?: number;
-  timeoutMs?: number;
-}): Promise<
-  SampleResult & { observed: Observed | null; callLog: CallRecord[] }
-> {
-  const { browser, config, scenario, budget } = options;
-  const maxCalls = options.maxCalls ?? 40;
-  const deadline = Date.now() + (options.timeoutMs ?? 300000);
-  const store = seededStore(scenario.start);
-  const workspace = store.snapshot();
-  const callLog: CallRecord[] = [];
-  const fetch: Fetch = async (url, init) => {
+  callLog: CallRecord[];
+  maxCalls: number;
+  recordPayloads: boolean;
+  fetch?: Fetch;
+}): Fetch {
+  const { budget, callLog, maxCalls } = options;
+  const send = options.fetch ?? globalThis.fetch;
+  return async (url, init) => {
     if (budget.used >= budget.limit)
       throw new Error("Eval call budget exhausted");
     if (callLog.length >= maxCalls)
@@ -390,42 +394,64 @@ export async function runSample(options: {
       ms: 0,
     };
     callLog.push(record);
+    const request: unknown = JSON.parse(String(init?.body));
     record.question = Object.keys(
-      z
-        .object({ questions: z.record(z.string(), z.unknown()) })
-        .parse(JSON.parse(String(init?.body))).questions,
+      z.object({ questions: z.record(z.string(), z.unknown()) }).parse(request)
+        .questions,
     ).join(",");
-    const response = await globalThis.fetch(url, init);
-    const answer = z
-      .object({
-        answers: z
-          .record(
-            z.string(),
-            z.object({
-              choice: z.string(),
-              confidence: z.number(),
-              probabilities: z.record(z.string(), z.number()).optional(),
-            }),
-          )
-          .optional(),
-      })
-      .safeParse(
-        await response
-          .clone()
-          .json()
-          .catch(() => null),
-      );
-    const first = answer.success
-      ? Object.values(answer.data.answers ?? {})[0]
-      : undefined;
+    const response = await send(url, init);
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    const answer = providerAnswerSchema.safeParse(body);
+    const answers = answer.success ? (answer.data.answers ?? null) : null;
+    const first = answers ? Object.values(answers)[0] : undefined;
     Object.assign(record, {
       choice: first?.choice ?? null,
       confidence: first?.confidence ?? null,
       probabilities: first?.probabilities ?? null,
       ms: Date.now() - began,
+      ...(options.recordPayloads
+        ? {
+            payload: {
+              request,
+              answers,
+              usage: answer.success ? (answer.data.usage ?? null) : null,
+            },
+          }
+        : {}),
     });
     return response;
   };
+}
+export async function runSample(options: {
+  browser: Browser;
+  config: Config;
+  scenario: Scenario;
+  sample: number;
+  variant: string;
+  saveMode: SaveMode;
+  threshold?: number;
+  gate?: GateName;
+  budget: Budget;
+  maxCalls?: number;
+  timeoutMs?: number;
+  recordPayloads?: boolean;
+}): Promise<
+  SampleResult & { observed: Observed | null; callLog: CallRecord[] }
+> {
+  const { browser, config, scenario, budget } = options;
+  const deadline = Date.now() + (options.timeoutMs ?? 300000);
+  const store = seededStore(scenario.start);
+  const workspace = store.snapshot();
+  const callLog: CallRecord[] = [];
+  const fetch = recordingFetch({
+    budget,
+    callLog,
+    maxCalls: options.maxCalls ?? 40,
+    recordPayloads: options.recordPayloads ?? false,
+  });
   const app = await serve(config, store, fetch);
   const context = await evalContext(
     browser,
