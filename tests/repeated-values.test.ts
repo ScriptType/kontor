@@ -21,7 +21,7 @@ test("grounded repeated minutes remain available alongside a legitimate bare 104
     ["1041", "60"],
   );
 });
-test("a bare number that equals an identifier's digits stays a candidate and names that identifier", () => {
+test("a bare number that equals an identifier's digits is not a candidate, other literals stay", () => {
   assert.deepEqual(
     fieldValues(
       minutes,
@@ -29,22 +29,26 @@ test("a bare number that equals an identifier's digits stays a candidate and nam
       [],
       ["V-1042", "V-1041", "Wartung 1041", "Hafen 60"],
     ),
-    [
-      {
-        value: "1041",
-        source: "wörtliche Zahl aus Auftrag; entspricht auch Kennung V-1041",
-      },
-      { value: "60", source: "wörtliche Zahl aus Auftrag" },
-    ],
+    [{ value: "60", source: "number" }],
   );
   assert.deepEqual(
-    fieldValues(minutes, "1041", [], ["V-1041", "A-1041", "V-10410"]),
+    fieldValues(minutes, "1041 und 1040", [], ["A-1041", "V-1040x"]).map(
+      (item) => item.value,
+    ),
+    ["1040"],
+  );
+});
+test("an explicit answer equal to an identifier's digits stays a candidate", () => {
+  assert.deepEqual(
+    fieldValues(
+      minutes,
+      "Ändere 1041 und erfasse 30",
+      [{ fieldId: "minutes", scope: "V-1041", value: "1041" }],
+      ["V-1041"],
+    ),
     [
-      {
-        value: "1041",
-        source:
-          "wörtliche Zahl aus Auftrag; entspricht auch Kennung V-1041, A-1041",
-      },
+      { value: "1041", source: "answer" },
+      { value: "30", source: "number" },
     ],
   );
 });

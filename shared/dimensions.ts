@@ -10,7 +10,7 @@ import {
   type CaseFilters,
   type Workspace,
 } from "./domain.js";
-import { fieldValues } from "./field-values.js";
+import { fieldValues, valueSources } from "./field-values.js";
 
 export const UNSTATED = "unstated";
 
@@ -331,7 +331,10 @@ export function dimensionOptions(
         context.request,
         context.answers ?? [],
         existingValues(workspace),
-      ).map(({ value, source }) => ({ value, label: source }))
+      ).map(({ value, source }) => ({
+        value,
+        label: valueSources[source].de,
+      }))
     : [];
   return [...literals, ...unset];
 }

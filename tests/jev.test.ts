@@ -124,13 +124,13 @@ test("lexical candidates exclude IDs and dates and carry explicit provenance", (
       [{ fieldId: "minutes", scope: "V-1042", value: "42" }],
       [],
     ),
-    [{ value: "42", source: "aus ausdrücklicher Antwort" }],
+    [{ value: "42", source: "answer" }],
   );
   assert(!validFieldValue(field, "-1"));
   assert(!validFieldValue(field, "10001"));
   assert.deepEqual(
     fieldValues({ ...field, current: "35" }, "35 Minuten", [], []),
-    [{ value: "35", source: "wörtliche Zahl aus Auftrag" }],
+    [{ value: "35", source: "number" }],
   );
 });
 test("search accepts quoted and mentioned existing text, never invented values", () => {

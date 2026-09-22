@@ -105,7 +105,7 @@ test("saved matching assignments can run twice without writes or fake receipts",
         expect(store.snapshot()).toEqual(before);
       }
       expect(snapshots[0]).toContain("field:minutes:60");
-      expect(snapshots[0]).toContain("field:minutes:1041");
+      expect(snapshots[0]).not.toContain("field:minutes:1041");
     },
     {
       nextAnswer: (index) => ({

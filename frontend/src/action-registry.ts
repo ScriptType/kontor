@@ -14,7 +14,7 @@ import type {
   FieldDescription,
   DecisionInput,
 } from "../../shared/command";
-import { fieldValues } from "../../shared/field-values";
+import { fieldValues, valueSources } from "../../shared/field-values";
 export type Actor = "manual" | "jev";
 interface Control {
   element: HTMLElement;
@@ -219,8 +219,8 @@ export class ActionRegistry {
               label: `${field.label} auf ${value} setzen`,
               effect:
                 field.current === value
-                  ? `${field.label} ist bereits ${value}; ${source}`
-                  : `${field.label}: ${field.current || "leer"} → ${value}; ${source}`,
+                  ? `${field.label} ist bereits ${value}; ${valueSources[source].de}`
+                  : `${field.label}: ${field.current || "leer"} → ${value}; ${valueSources[source].de}`,
               kind: field.kind,
             },
             control,

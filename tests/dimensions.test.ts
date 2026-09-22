@@ -80,7 +80,7 @@ test("foreign-key values come from workspace data, with the null meaning appende
     workspace.cases.map((c) => c.id),
   );
 });
-test("number values are literal candidates within the schema bounds", () => {
+test("number values are literal candidates within the schema bounds, never an identifier's digits", () => {
   const request =
     "Ändere 1041 auf Mara. 60 Minuten, nicht 20000 und nicht 10 Minuten.";
   const minutes = dimensionOptions(dimension("workedMinutes"), {
@@ -89,9 +89,9 @@ test("number values are literal candidates within the schema bounds", () => {
   });
   assert.deepEqual(
     minutes.map((option) => option.value),
-    ["1041", "60", "10"],
+    ["60", "10"],
   );
-  assert.match(minutes[0]?.label ?? "", /Kennung V-1041/);
+  assert.equal(minutes[0]?.label, "wörtliche Zahl aus Auftrag");
   assert.deepEqual(values("appointmentDuration", request), ["60"]);
 });
 test("an explicit answer is a candidate only for its own case", () => {
