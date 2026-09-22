@@ -44,6 +44,8 @@ const g1Bars = {
   terminal: 0.65,
 } as const satisfies Record<BarKind, number>;
 const effectBars = { ...g1Bars, view: 0.3, bound: 0.7 } as const;
+// Views and drafts are cheap to take back; the guard, not the bar, stops loops.
+const exploreBars = { ...g1Bars, view: 0, draft: 0.6, bound: 0.6 } as const;
 
 export const gates = {
   threshold: {
@@ -100,6 +102,24 @@ export const gates = {
     doneBeforeFirstStep: false,
     memory: false,
     guard: false,
+    completion: "perKind",
+  },
+  "explore-nomem": {
+    read: "pmax",
+    bars: exploreBars,
+    assessed: ["commit"],
+    doneBeforeFirstStep: false,
+    memory: false,
+    guard: true,
+    completion: "perKind",
+  },
+  explore: {
+    read: "pmax",
+    bars: exploreBars,
+    assessed: ["commit"],
+    doneBeforeFirstStep: false,
+    memory: true,
+    guard: true,
     completion: "perKind",
   },
 } as const satisfies Record<string, GatePolicy>;

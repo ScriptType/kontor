@@ -5,6 +5,7 @@ import {
   assesses,
   completes,
   gateKind,
+  gateNames,
   gates,
   pick,
   workKind,
@@ -332,4 +333,35 @@ test("g2 reads pooled totals against the g2-effect bars and offers no done befor
   assert.equal(assesses("g2", "draft"), true);
   assert.equal(assesses("g2", "commit"), true);
   assert.equal(gates.g2.doneBeforeFirstStep, false);
+});
+for (const gate of ["explore-nomem", "explore"] as const) {
+  test(`${gate} lets any view act and a draft act from 0.60 without an effect check`, () => {
+    assert.equal(acts(gate, 75, decision(0.05, 0.05), "view"), true);
+    assert.equal(assesses(gate, "view"), false);
+    for (const choice of ["field:minutes:50", "field:minutes:55"]) {
+      const kind = gateKind(choice, boundInput);
+      assert.equal(acts(gate, 75, decision(0.6, 0.6), kind), true, choice);
+      assert.equal(acts(gate, 75, decision(0.59, 0.59), kind), false, choice);
+      assert.equal(assesses(gate, kind), false, choice);
+    }
+  });
+  test(`${gate} keeps the save bar and check, and the done bar and completion check`, () => {
+    const save = gateKind("save", input);
+    assert.equal(acts(gate, 75, decision(0.74, 0.74), save), false);
+    assert.equal(acts(gate, 75, decision(0.75, 0.75), save), true);
+    assert.equal(assesses(gate, save), true);
+    const done = gateKind("done", input);
+    assert.equal(acts(gate, 75, decision(0.64, 0.64), done), false);
+    assert.equal(acts(gate, 75, decision(0.65, 0.65), done), true);
+    assert.equal(completes(gate, 75, assessed(0.84), "draft"), false);
+    assert.equal(completes(gate, 75, assessed(0.85), "draft"), true);
+    assert.equal(gates[gate].doneBeforeFirstStep, false);
+    assert.equal(gates[gate].guard, true);
+  });
+}
+test("explore sends Jev the lean state, explore-nomem the full one", () => {
+  assert.equal(gates.explore.memory, true);
+  assert.equal(gates["explore-nomem"].memory, false);
+  for (const gate of gateNames)
+    if (gate !== "explore") assert.equal(gates[gate].memory, false, gate);
 });
