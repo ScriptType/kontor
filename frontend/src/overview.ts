@@ -155,6 +155,19 @@ type Technician = Workspace["technicians"][number];
               ></span></span
             ><strong>{{ minutesFor(c.id) }} min ↗</strong>
           </button>
+          <div class="linked-list report-cases">
+            @for (serviceCase of casesFor(c.id); track serviceCase.id) {
+              <button
+                [kontorAction]="actions.caseAction(serviceCase)"
+                (invoked)="actions.execute('case:' + serviceCase.id, $event)"
+              >
+                <span
+                  >{{ serviceCase.id }} · {{ serviceCase.title
+                  }}<small>{{ serviceCase.minutes }} min</small></span
+                ><span>↗</span>
+              </button>
+            }
+          </div>
         }
       </section>
       </section>

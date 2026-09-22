@@ -599,6 +599,10 @@ tr.selected {
   text-align: left;
   font-size: 12px;
 }
+.report-cases {
+  border-top: 0;
+  margin: 0 0 12px 200px;
+}
 .bar-track {
   height: 8px;
   background: #edf1f6;
@@ -934,6 +938,9 @@ tr.selected {
   .report-row {
     grid-template-columns: 1fr 70px;
     gap: 12px;
+  }
+  .report-cases {
+    margin-left: 0;
   }
   .bar-track {
     grid-row: 2;
