@@ -23,6 +23,8 @@ Der Befehl baut die Anwendung und sendet echte Anfragen an TypeSafe. Er benötig
 | `--out <dir>` | `live-results/jev-eval/<variant>-<zeit>` | Ausgabeverzeichnis. |
 | `--max-calls <n>` | `600` | Obergrenze für Anbieteraufrufe des ganzen Laufs. Ein einzelner Lauf endet nach 40 Aufrufen. |
 | `--save-mode <modus>` | `auto` | `auto` speichert ohne Nachfrage, `confirm` fragt vor dem Speichern. Der Lauf schreibt `kontor-jev-save-mode-v1` = `{"version":1,"mode":"<modus>"}` vor dem Laden der Seite. Zweige ohne diese Einstellung ignorieren den Schlüssel. |
+| `--threshold <n>` | `75` | Sicherheitsschwelle in Prozent von 0 bis 100. Der Lauf schreibt sie vor dem Laden der Seite nach `kontor-jev-confidence-v1`. |
+| `--gate <name>` | `threshold` | Regel, nach der eine Entscheidung ohne Nachfrage ausgeführt wird. `threshold` vergleicht die Auswahl-Confidence mit der Schwelle. `g1` vergleicht die höchste Optionswahrscheinlichkeit mit einer Schwelle je Art der Wahl: Ansicht 70 %, Entwurf 85 %, Speichern oder Verwerfen 75 %, Abschluss oder Halt 65 %. Eine Rückfrage behält die Schwelle aus `--threshold`. Der Lauf schreibt `kontor-jev-gate-v1` = `{"version":1,"gate":"<name>"}` vor dem Laden der Seite. |
 | `--scenarios <datei>` | eingebaute Szenarien | JSON-Array vollständiger Szenarien statt der festen und generierten Szenarien. `--seed` und `--count` gelten dann nicht. |
 
 ## Dimensionen
@@ -147,7 +149,7 @@ Dazu kommen die Fragen als Mittelwert je Lauf und als Anteil der Läufe mit mind
 
 Das Ausgabeverzeichnis enthält `report.md`, `results.json`, `scenarios.json` und je Lauf eine Datei unter `samples/`. Eine Lauf-Datei enthält Halte, Schritte, beobachteten Endzustand, Abweichungen und die Anbieterantworten mit Auswahl und Confidence. Trägt der Eintrag des Laufs im Jev-Verlauf `coverageProbability` oder `checklist`, übernimmt der Lauf beide in den beobachteten Endzustand. `coverageProbability` steht zusätzlich im Ergebnis und in der Spalte coverage des Berichts. Fehlt ein Feld, steht dort `null`. `live-results/` bleibt außerhalb von Git.
 
-Jeder Aufruf hängt nach dem letzten Lauf eine Zeile an `live-results/jev-eval-runs.tsv` im Hauptverzeichnis des Repositorys an, auch aus einem Worktree. Die Datei beginnt mit der Kopfzeile `ts`, `variant`, `branch`, `commit`, `scenarios sha256`, `count`, `samples`, `save mode`, `threshold`, `out dir`, `provider calls`, `magic`, `silent-wrong`. `count` ist die Zahl der Szenarien und `samples` die Zahl der abgeschlossenen Läufe. `magic` und `silent-wrong` sind Anzahlen dieser Läufe. `commit` endet auf `-dirty`, wenn versionierte Dateien geändert sind. Parallele Aufrufe schreiben jede Zeile vollständig und die Kopfzeile genau einmal.
+Jeder Aufruf hängt nach dem letzten Lauf eine Zeile an `live-results/jev-eval-runs.tsv` im Hauptverzeichnis des Repositorys an, auch aus einem Worktree. Die Datei beginnt mit der Kopfzeile `ts`, `variant`, `branch`, `commit`, `scenarios sha256`, `count`, `samples`, `save mode`, `threshold`, `out dir`, `provider calls`, `magic`, `silent-wrong`. `count` ist die Zahl der Szenarien und `samples` die Zahl der abgeschlossenen Läufe. `threshold` enthält die Schwelle, mit `--gate g1` in der Form `g1/75`. `magic` und `silent-wrong` sind Anzahlen dieser Läufe. `commit` endet auf `-dirty`, wenn versionierte Dateien geändert sind. Parallele Aufrufe schreiben jede Zeile vollständig und die Kopfzeile genau einmal.
 
 ## Pfad nachspielen
 

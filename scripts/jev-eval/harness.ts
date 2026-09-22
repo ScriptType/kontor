@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createApp } from "../../server/app.js";
 import type { Config } from "../../server/config.js";
 import { WorkspaceStore } from "../../server/workspace-store.js";
+import type { GateName } from "../../frontend/src/gate.js";
 import { actionEffects } from "../../shared/dimensions.js";
 import {
   caseFiltersSchema,
@@ -320,12 +321,13 @@ export async function evalContext(
   browser: Browser,
   saveMode: SaveMode,
   threshold = confidencePercent,
+  gate: GateName = "threshold",
 ) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
   });
   await context.addInitScript(
-    ({ percent, mode }) => {
+    ({ percent, mode, gate }) => {
       localStorage.setItem(
         "kontor-jev-confidence-v1",
         JSON.stringify({ version: 1, percent }),
@@ -334,8 +336,12 @@ export async function evalContext(
         "kontor-jev-save-mode-v1",
         JSON.stringify({ version: 1, mode }),
       );
+      localStorage.setItem(
+        "kontor-jev-gate-v1",
+        JSON.stringify({ version: 1, gate }),
+      );
     },
-    { percent: threshold, mode: saveMode },
+    { percent: threshold, mode: saveMode, gate },
   );
   return context;
 }
@@ -355,6 +361,7 @@ export async function runSample(options: {
   variant: string;
   saveMode: SaveMode;
   threshold?: number;
+  gate?: GateName;
   budget: Budget;
   maxCalls?: number;
   timeoutMs?: number;
@@ -417,6 +424,7 @@ export async function runSample(options: {
     browser,
     options.saveMode,
     options.threshold,
+    options.gate,
   );
   const page = await context.newPage();
   const stops: Stop[] = [];

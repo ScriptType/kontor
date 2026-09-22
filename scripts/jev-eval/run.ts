@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { chromium } from "@playwright/test";
 import { z } from "zod";
 import { readConfig } from "../../server/config.js";
+import { gateNames } from "../../frontend/src/gate.js";
 import {
   confidencePercent,
   runSample,
@@ -35,6 +36,7 @@ const { values } = parseArgs({
     scenarios: { type: "string" },
     "save-mode": { type: "string", default: "auto" },
     threshold: { type: "string" },
+    gate: { type: "string", default: "threshold" },
   },
 });
 const whole = z.coerce.number().int();
@@ -50,6 +52,7 @@ const saveMode = z.enum(saveModes).parse(values["save-mode"]);
 const threshold = values.threshold
   ? whole.min(0).max(100).parse(values.threshold)
   : confidencePercent;
+const gate = z.enum(gateNames).parse(values.gate);
 const budget: Budget = {
   used: 0,
   limit: whole.min(1).parse(values["max-calls"]),
@@ -99,6 +102,7 @@ const meta = {
   samples,
   concurrency,
   "confidence threshold": `${threshold} %`,
+  gate,
   "save mode": saveMode,
   started: new Date().toISOString(),
 };
@@ -137,6 +141,7 @@ try {
           variant,
           saveMode,
           threshold,
+          gate,
           budget,
           ...job,
         });
@@ -169,7 +174,7 @@ try {
     ["count", scenarios.length],
     ["samples", results.length],
     ["save mode", saveMode],
-    ["threshold", threshold],
+    ["threshold", gate === "threshold" ? threshold : `${gate}/${threshold}`],
     ["out dir", resolve(out)],
     ["provider calls", budget.used],
     ["magic", all.magic],
