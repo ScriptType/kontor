@@ -92,7 +92,8 @@ test("number values are literal candidates within the schema bounds, never an id
     ["60", "10"],
   );
   assert.equal(minutes[0]?.label, "wörtliche Zahl aus Auftrag");
-  assert.deepEqual(values("appointmentDuration", request), ["60"]);
+  assert.deepEqual(values("appointmentDuration", request), []);
+  assert.deepEqual(values("appointmentDuration", "Termin 60 Minuten"), ["60"]);
 });
 test("an explicit answer is a candidate only for its own case", () => {
   const answers = [{ fieldId: "minutes", scope: "V-1042", value: "45" }];
