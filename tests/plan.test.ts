@@ -91,9 +91,10 @@ test("an answer outside the offered options or a failed call is a provider error
 });
 
 /**
- * Reads the user's request with the answers the model gave on it: the case and
- * its assignee change, a choice over all people names jonas, the person the
- * list is filtered by, and the yes/no for Lea is `lea`.
+ * Reads the user's request with the answers the model gave on it: the case,
+ * its assignee and, wrongly, its status change; a choice over all people names
+ * jonas, the person the list is filtered by, a status choice says done, the
+ * yes/no for Lea is `lea` and every other yes/no is 0.1.
  */
 function readAssignment(lea: number) {
   const request =
@@ -114,7 +115,8 @@ function readAssignment(lea: number) {
     const yes = (question: { instructions?: string }) =>
       asksAbout("act on case V-1041 (")(question) ||
       (asksAbout("change this field of case V-1041 (")(question) &&
-        asksAbout("The technician assigned")(question))
+        (asksAbout("The technician assigned")(question) ||
+          asksAbout("The case status")(question)))
         ? 0.8
         : asksAbout("make Lea Sommer the value of this field of case V-1041 (")(
               question,
@@ -128,7 +130,11 @@ function readAssignment(lea: number) {
           if (question.type === "noul")
             return [key, { type: "noul", noul: yes(question) }];
           const options = Object.keys(question.criteria ?? {});
-          const choice = options.includes("jonas") ? "jonas" : options[0];
+          const choice = options.includes("jonas")
+            ? "jonas"
+            : options.includes("done")
+              ? "done"
+              : options[0];
           return [
             key,
             {
@@ -154,6 +160,10 @@ test("an assignment is read even when a choice over all people would name the cu
   assert.deepEqual((await readAssignment(0.8))?.cases, {
     "V-1041": { technician: "lea" },
   });
+});
+
+test("a status change whose own yes/no is low does not complete the case", async () => {
+  assert.equal((await readAssignment(0.8))?.cases["V-1041"]?.status, undefined);
 });
 
 test("an assignee change that names no person changes nobody", async () => {
