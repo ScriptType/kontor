@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { writtenHours } from "./clock-times.js";
 import { fieldSchema, type FieldDescription } from "./command.js";
 import {
   dimensions,
@@ -327,7 +328,7 @@ const dayParts = {
 } as const;
 
 const dateTimeReader: Reader = {
-  parts(field, { today }) {
+  parts(field, { request, today }) {
     const intro = `${newValue(field)} Heute ist ${weekdays[weekdayIndex(dayOf(today))]}, der ${today.split("-").reverse().join(".")}.`;
     const none = { none: "nicht genannt" };
     return {
@@ -407,9 +408,9 @@ const dateTimeReader: Reader = {
         text: `${intro} Welche Stunde nennt der Auftrag für die Uhrzeit, so wie sie dasteht („halb 10“: 10, „viertel nach 2“: 2, „14 Uhr“: 14)?`,
         options: {
           ...Object.fromEntries(
-            Array.from({ length: 24 }, (_, i) => [
-              String(i + 1),
-              `${i + 1} (${germanWord(i + 1).split(" / ")[0]})`,
+            writtenHours(request).map((hour) => [
+              String(hour),
+              hour ? `${hour} (${germanWord(hour).split(" / ")[0]})` : "0",
             ]),
           ),
           none: "der Auftrag nennt keine Stunde",

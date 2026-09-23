@@ -218,6 +218,27 @@ test("code assembles the clock time from hour, relation, minutes and day part", 
     assert.equal(dateTimeOf(parts)?.[1], time, JSON.stringify(parts));
 });
 
+const hourOptions = (request: string) =>
+  Object.keys(
+    readers.dateTime.parts(field("appointment"), scene(request))["hour"]!
+      .options,
+  );
+// request, the hour options code offers
+const hourChoices: [string, string[]][] = [
+  ["Termin halb elf", ["11", "none"]],
+  ["Termin halb 12", ["12", "none"]],
+  ["Termin morgen", ["none"]],
+  ["um 14:15", ["14", "none"]],
+  ["um 9.45", ["9", "none"]],
+  ["um 0 Uhr oder um 24", ["0", "24", "none"]],
+  ["eine halbe Stunde vor vierundzwanzig", ["1", "24", "none"]],
+  ["1039 um 25 Uhr", ["none"]],
+];
+test("the hour is one the request writes, in digits or words, or none", () => {
+  for (const [request, hours] of hourChoices)
+    assert.deepEqual(hourOptions(request), hours, request);
+});
+
 test("a part prefills only at the bar's confidence, and a past day says so", () => {
   const read = (value: string | null, confidence: number) => ({
     value,
