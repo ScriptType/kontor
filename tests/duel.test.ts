@@ -178,6 +178,7 @@ const input: DecisionInput = {
   doneBeforeFirstStep: false,
   state: "full",
   prompt: "compact",
+  history: "full",
   snapshotId: "capture",
   request: "Zeige das Team",
   context: "{}",

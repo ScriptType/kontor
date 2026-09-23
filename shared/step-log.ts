@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { jevText, type DecisionInput } from "./command.js";
 
 type Step = DecisionInput["steps"][number];
@@ -71,4 +72,39 @@ export function stepLog(steps: Step[]) {
       ...(visited ? { note: visitedNote } : {}),
     };
   });
+}
+
+/**
+ * An observation without the saved case record (the current facts carry it)
+ * and the draft owner, with id lists as counts and unknownSave only when set.
+ */
+export function slimObservation(observed: string): Record<string, unknown> {
+  const {
+    selected: _selected,
+    draftOwner: _owner,
+    ...rest
+  } = z.record(z.string(), z.unknown()).parse(JSON.parse(observed));
+  return Object.fromEntries(
+    Object.entries(rest).flatMap(([key, value]) =>
+      counted.has(key) && Array.isArray(value)
+        ? [[key, value.length]]
+        : key === "unknownSave" && value === null
+          ? []
+          : [[key, value]],
+    ),
+  );
+}
+
+/**
+ * The slim history: each step's slim observation after it. A step keeps the
+ * observation before it only where that differs from the one after the step
+ * before, so no observation drops out of the chain.
+ */
+export function slimObservations(steps: Pick<Step, "before" | "after">[]) {
+  return steps.map((step, index) => ({
+    ...(steps[index - 1]?.after === step.before
+      ? {}
+      : { before: slimObservation(step.before) }),
+    after: slimObservation(step.after),
+  }));
 }

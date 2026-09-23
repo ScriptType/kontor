@@ -68,6 +68,12 @@ export const decisionInputSchema = z.object({
    * also drops snapshot ids and viewport details and shortens option texts.
    */
   prompt: z.enum(["full", "focused", "compact"]).default("full"),
+  /**
+   * Gate setting for the full, focused and compact state: slim writes each
+   * earlier step with its slim observation after it, and before it only
+   * where that differs from the step before (shared/step-log.ts).
+   */
+  history: z.enum(["full", "slim"]).default("full"),
   /** Filled by the runner for a focused or compact prompt. */
   hints: requestHintsSchema.optional(),
   /**

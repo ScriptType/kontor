@@ -60,6 +60,8 @@ export type GatePolicy = Read & {
    * changed nothing leaves the options.
    */
   norepeat?: boolean;
+  /** How earlier steps are written for Jev; full when absent. */
+  history?: DecisionInput["history"];
   /** Whether the header shows the case picker that opens any case, whatever the list filters hide. */
   jump?: true;
 };
@@ -303,6 +305,24 @@ export const gates = {
     duel: 0.75,
     norepeat: true,
     jump: true,
+  },
+  // The slim history cuts decide and check input without dropping anything
+  // observed (bench round6/format, l9-slim-after).
+  "g4-lean": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
+    duel: 0.75,
+    norepeat: true,
+    jump: true,
+    history: "slim",
   },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;

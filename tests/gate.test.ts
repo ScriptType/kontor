@@ -10,6 +10,8 @@ import {
   gates,
   pick,
   workKind,
+  type GateName,
+  type GatePolicy,
 } from "../frontend/src/gate.js";
 import type { ActionDescription } from "../shared/command.js";
 
@@ -490,7 +492,7 @@ test("only the plan gates let the plan release a check", () => {
     if (
       !gate.startsWith("g3-compact-plan") &&
       !gate.startsWith("g3-cpe-") &&
-      gate !== "g4"
+      !gate.startsWith("g4")
     )
       assert.deepEqual(gates[gate].planVote, [], gate);
   assert.deepEqual(gates["g3-compact-plan"].planVote, ["pick", "completion"]);
@@ -507,22 +509,27 @@ test("the plan gates are g3-compact apart from the plan vote", () => {
     assert.deepEqual(rest, compact, gate);
   }
 });
-test("g3-cpe-duel-nr is g3-cpe-duel with norepeat, which only it and g4 use", () => {
+// Each experiment row is g4 with one change.
+const g4Changes = [
+  ["g4-lean", { history: "slim" }],
+] as const satisfies readonly (readonly [GateName, Partial<GatePolicy>])[];
+const g4Rows = ["g4", ...g4Changes.map(([gate]) => gate)];
+test("g3-cpe-duel-nr is g3-cpe-duel with norepeat, which only it and the g4 rows use", () => {
   const { norepeat, ...nr } = gates["g3-cpe-duel-nr"];
   assert.deepEqual(nr, gates["g3-cpe-duel"]);
   assert.equal(norepeat, true);
   assert.deepEqual(
     gateNames.filter((gate) => "norepeat" in gates[gate]),
-    ["g3-cpe-duel-nr", "g4"],
+    ["g3-cpe-duel-nr", ...g4Rows],
   );
 });
-test("g3-cpe-duel-jump is g3-cpe-duel with the case picker, which only it and g4 show", () => {
+test("g3-cpe-duel-jump is g3-cpe-duel with the case picker, which only it and the g4 rows show", () => {
   const { jump, ...rest } = gates["g3-cpe-duel-jump"];
   assert.equal(jump, true);
   assert.deepEqual(rest, gates["g3-cpe-duel"]);
   assert.deepEqual(
     gateNames.filter((gate) => "jump" in gates[gate]),
-    ["g3-cpe-duel-jump", "g4"],
+    ["g3-cpe-duel-jump", ...g4Rows],
   );
 });
 test("the default gate g4 is g3-cpe-duel with norepeat and the case picker", () => {
@@ -530,4 +537,13 @@ test("the default gate g4 is g3-cpe-duel with norepeat and the case picker", () 
   assert.deepEqual([norepeat, jump], [true, true]);
   assert.deepEqual(rest, gates["g3-cpe-duel"]);
   assert.equal(defaultGate, "g4");
+});
+test("each g4 row is g4 with its one change, and g4 keeps the full history", () => {
+  for (const [gate, change] of g4Changes)
+    assert.deepEqual(gates[gate], { ...gates.g4, ...change }, gate);
+  assert.equal("history" in gates.g4, false);
+  assert.deepEqual(
+    gateNames.filter((gate) => "history" in gates[gate]),
+    ["g4-lean"],
+  );
 });

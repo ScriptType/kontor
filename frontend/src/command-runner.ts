@@ -713,6 +713,7 @@ export class CommandRunner {
       doneBeforeFirstStep: policy.doneBeforeFirstStep,
       state: leanStates[policy.memory],
       prompt: policy.prompt,
+      history: policy.history ?? "full",
       ...(policy.prompt !== "full" && data
         ? {
             hints: {

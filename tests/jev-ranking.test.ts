@@ -8,6 +8,7 @@ const input: DecisionInput = {
   doneBeforeFirstStep: true,
   state: "full",
   prompt: "full",
+  history: "full",
   snapshotId: "capture",
   request: "Zeige Kunden",
   context: "{}",

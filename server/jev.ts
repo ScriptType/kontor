@@ -13,7 +13,7 @@ import {
   assessmentSchema,
   type assessmentInputSchema,
 } from "../shared/command.js";
-import { stepLog } from "../shared/step-log.js";
+import { slimObservations, stepLog } from "../shared/step-log.js";
 import type { Config } from "./config.js";
 const answerSchema = z.object({
   answers: z.record(
@@ -326,18 +326,20 @@ function modelState(
   const deciding = input.selected === undefined;
   const shownFacts = compact ? withoutViewport(facts) : facts;
   const { blockedControls: _blocked, ...factsOnce } = shownFacts;
+  const slim = input.history === "slim" ? slimObservations(input.steps) : null;
   return {
     ...(compact ? {} : { snapshotId: input.snapshotId }),
     originalRequest: input.request,
     ...(focused && input.hints ? { requestHints: input.hints } : {}),
     explicitAnswers: input.answers,
     currentFacts: focused && deciding ? factsOnce : shownFacts,
-    observedSteps: input.steps.map((step) => ({
+    observedSteps: input.steps.map((step, index) => ({
       action: jevAction(step.action),
       authorizedBy: step.authorizedBy,
       outcome: step.outcome,
-      before: JSON.parse(step.before),
-      after: JSON.parse(step.after),
+      ...(slim
+        ? slim[index]
+        : { before: JSON.parse(step.before), after: JSON.parse(step.after) }),
     })),
     ...(focused && deciding
       ? {}

@@ -15,6 +15,7 @@ const input: DecisionInput = {
   doneBeforeFirstStep: true,
   state: "full",
   prompt: "full",
+  history: "full",
   request: "Zeig Kunden, danach Team",
   context: "{}",
   snapshotId: "fresh",
@@ -724,6 +725,80 @@ test("a compact prompt drops snapshot ids and viewport details and keeps what an
     "Go to the customer overview page. Now: current page is the case list page",
   );
   assert(!call.criteria["ask:minutes"]?.includes("Not for"));
+});
+test("a slim history writes each step's slim observation after it, and before it only where the chain breaks", async () => {
+  const observed = (page: string, operations: string[]) =>
+    JSON.stringify({
+      page,
+      caseId: "V-1042",
+      selected: { id: "V-1042", status: "open" },
+      draftOwner: "jev",
+      operations,
+      receipts: operations,
+      unknownSave: null,
+      message: "",
+    });
+  const [step] = steppedInput.steps;
+  assert(step);
+  const slimInput: DecisionInput = {
+    ...steppedInput,
+    prompt: "compact",
+    history: "slim",
+    hints: requestHints(input.request, seedWorkspace()),
+    steps: [
+      { ...step, before: observed("cases", []), after: observed("team", []) },
+      { ...step, before: observed("team", []), after: observed("team", ["a"]) },
+      { ...step, before: observed("reports", ["a"]), after: observed("customers", ["a"]) },
+    ],
+  };
+  const { jev, calls } = causalProvider([
+    { choice: "abstain", confidence: 1 },
+    { choice: "authorized", confidence: 1 },
+    { choice: "complete", confidence: 1 },
+  ]);
+  const [selected] = slimInput.actions;
+  assert(selected);
+  await jev.decide(slimInput);
+  await jev.assess({ ...slimInput, selected });
+  await jev.assess({ ...slimInput, selected: "done" });
+  const states = calls.map((call) =>
+    z.record(z.string(), z.unknown()).parse(call.state),
+  );
+  assert.equal(states.length, 3);
+  const slim = (page: string, operations: number) => ({
+    page,
+    caseId: "V-1042",
+    operations,
+    receipts: operations,
+    message: "",
+  });
+  for (const state of states) {
+    const steps = z
+      .array(z.record(z.string(), z.unknown()))
+      .parse(state["observedSteps"]);
+    assert.deepEqual(
+      steps.map(({ before, after }) => ({ before, after })),
+      [
+        { before: slim("cases", 0), after: slim("team", 0) },
+        { before: undefined, after: slim("team", 1) },
+        { before: slim("reports", 1), after: slim("customers", 1) },
+      ],
+    );
+    assert.equal(steps[1]?.["outcome"], "changed");
+    assert.deepEqual(state["requestHints"], slimInput.hints);
+    assert.equal(state["originalRequestAgain"], input.request);
+    assert(!JSON.stringify(state).includes('"slim"'));
+  }
+  const full = causalProvider([{ choice: "abstain", confidence: 1 }]);
+  await full.jev.decide({ ...slimInput, history: "full" });
+  const [fullStep] = z
+    .array(z.record(z.string(), z.unknown()))
+    .parse(
+      z.record(z.string(), z.unknown()).parse(full.calls[0]?.state)[
+        "observedSteps"
+      ],
+    );
+  assert.deepEqual(fullStep?.["before"], JSON.parse(observed("cases", [])));
 });
 test("the demo fixture abstains instead of choosing an unoffered blocked", async () => {
   const demo = createJev({ mode: "demo" });
