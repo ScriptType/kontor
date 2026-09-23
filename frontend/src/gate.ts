@@ -289,7 +289,7 @@ export const gates = {
     duel: 0.75,
     jump: true,
   },
-  "g3-cpe-nrj": {
+  g4: {
     read: "pooled",
     margin: 0.1,
     bars: g3Bars,
@@ -307,8 +307,11 @@ export const gates = {
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
-/** The app's gate unless the browser stores another; won holdout-4. */
-export const defaultGate: GateName = "g3-compact-plan-effect";
+/**
+ * The app's gate unless the browser stores another: g3-cpe-duel with norepeat
+ * and the case picker, the round-6 candidate measured on holdout-1 and -2.
+ */
+export const defaultGate: GateName = "g4";
 /** Browser key of the stored gate; v1 values are ignored so browsers move to the default. */
 export const gatePreferenceKey = "kontor-jev-gate-v2";
 

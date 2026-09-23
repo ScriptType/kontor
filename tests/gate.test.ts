@@ -4,6 +4,7 @@ import {
   acts,
   assesses,
   completes,
+  defaultGate,
   gateKind,
   gateNames,
   gates,
@@ -386,8 +387,7 @@ test("every gate before g3 treats set exactly like draft", () => {
   };
   assert.equal(gateKind("technician:lea", list), "set");
   assert.equal(gateKind("field:minutes:45", list), "draft");
-  for (const gate of gateNames) {
-    if (gate.startsWith("g3")) continue;
+  for (const gate of gateNames.slice(0, gateNames.indexOf("g3"))) {
     assert.equal(assesses(gate, "set"), assesses(gate, "draft"), gate);
     for (const pmax of [0, 0.59, 0.6, 0.84, 0.85])
       for (const percent of [60, 75])
@@ -489,7 +489,8 @@ test("only the plan gates let the plan release a check", () => {
   for (const gate of gateNames)
     if (
       !gate.startsWith("g3-compact-plan") &&
-      !gate.startsWith("g3-cpe-")
+      !gate.startsWith("g3-cpe-") &&
+      gate !== "g4"
     )
       assert.deepEqual(gates[gate].planVote, [], gate);
   assert.deepEqual(gates["g3-compact-plan"].planVote, ["pick", "completion"]);
@@ -506,21 +507,27 @@ test("the plan gates are g3-compact apart from the plan vote", () => {
     assert.deepEqual(rest, compact, gate);
   }
 });
-test("g3-cpe-duel-nr is g3-cpe-duel with norepeat", () => {
+test("g3-cpe-duel-nr is g3-cpe-duel with norepeat, which only it and g4 use", () => {
   const { norepeat, ...nr } = gates["g3-cpe-duel-nr"];
   assert.deepEqual(nr, gates["g3-cpe-duel"]);
   assert.equal(norepeat, true);
   assert.deepEqual(
     gateNames.filter((gate) => "norepeat" in gates[gate]),
-    ["g3-cpe-duel-nr", "g3-cpe-nrj"],
+    ["g3-cpe-duel-nr", "g4"],
   );
 });
-test("only g3-cpe-duel-jump shows the case picker, otherwise it is g3-cpe-duel", () => {
+test("g3-cpe-duel-jump is g3-cpe-duel with the case picker, which only it and g4 show", () => {
   const { jump, ...rest } = gates["g3-cpe-duel-jump"];
   assert.equal(jump, true);
   assert.deepEqual(rest, gates["g3-cpe-duel"]);
   assert.deepEqual(
     gateNames.filter((gate) => "jump" in gates[gate]),
-    ["g3-cpe-duel-jump", "g3-cpe-nrj"],
+    ["g3-cpe-duel-jump", "g4"],
   );
+});
+test("the default gate g4 is g3-cpe-duel with norepeat and the case picker", () => {
+  const { norepeat, jump, ...rest } = gates.g4;
+  assert.deepEqual([norepeat, jump], [true, true]);
+  assert.deepEqual(rest, gates["g3-cpe-duel"]);
+  assert.equal(defaultGate, "g4");
 });

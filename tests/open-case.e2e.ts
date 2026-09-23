@@ -82,9 +82,15 @@ test("the case picker keeps an unsaved draft and reaches the cases page from ano
   });
 });
 
-for (const gate of [null, "g3-cpe-duel", "g3-compact-plan-effect"] as const)
-  test(`no case picker under ${gate ?? "the default gate"}`, async ({ page }) => {
-    if (gate) await storeGate(page, gate satisfies GateName);
+test("the default gate shows the case picker", async ({ page }) => {
+  await withDemo(page, async () => {
+    await expect(page.locator('[data-action="menu:open-case"]')).toHaveCount(1);
+  });
+});
+
+for (const gate of ["g3-cpe-duel", "g3-compact-plan-effect"] as const)
+  test(`no case picker under ${gate}`, async ({ page }) => {
+    await storeGate(page, gate satisfies GateName);
     await withDemo(page, async () => {
       await expect(page.locator('[data-action="nav:cases"]')).toBeVisible();
       await expect(page.locator('[data-action="menu:open-case"]')).toHaveCount(

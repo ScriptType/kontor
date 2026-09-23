@@ -170,7 +170,7 @@ test("a noted question comes before the run leaves its case", async ({
   );
 });
 
-test("an unsure step after a noted question raises the question, not a review", async ({
+test("an unsure step after a noted question raises the question, not a review, once its duel stays unsure", async ({
   page,
 }) => {
   const choices = ["case:V-1042", "ask:minutes"];
@@ -183,7 +183,8 @@ test("an unsure step after a noted question raises the question, not a review", 
         "V-1042 · Arbeitszeit",
       );
       await expect(page.locator(".choice-review")).toHaveCount(0);
-      expect(snapshots).toHaveLength(3);
+      expect(snapshots).toHaveLength(4);
+      expect(snapshots[3]).toEqual(["nav:team", "priority:Normal"]);
       expect(store.snapshot().revision).toBe(0);
     },
     {
