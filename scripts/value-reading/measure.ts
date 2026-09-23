@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import type { FieldDescription } from "../../shared/command.js";
 import type { ValueReading } from "../../shared/value-reading.js";
@@ -71,7 +72,9 @@ const dimensionField = {
   appointmentStart: "appointment",
 } as const;
 async function scenarioItems(path: string): Promise<Item[]> {
-  const set = path.includes("holdout2") ? "h2" : "h1";
+  const name = basename(path, ".json");
+  const set =
+    ({ holdout: "h1", holdout2: "h2" } as Record<string, string>)[name] ?? name;
   const scenarios = JSON.parse(await readFile(path, "utf8")) as {
     id: string;
     request: string;
