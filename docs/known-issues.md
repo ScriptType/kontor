@@ -119,3 +119,15 @@ Ein Mensch, der die Vorbelegung ungeprüft bestätigt, setzt den alten Wert erne
 Die Vorbelegung liest den Wert jetzt nicht mehr im Code, sondern Jev liest ihn (`readValues` in `server/reader.ts`, `shared/value-reading.ts`). Code rechnet jede geschriebene Zahl und jede gesprochene Dauer in Minuten um und bietet sie als Auswahl an. Jev wählt die Angabe mit dem neuen Wert. Für den Auftrag aus `h-diktat-05` wählt Jev „neunzig (Minuten)“ = 90, und das Antwortfeld zeigt 90. Liest Jev keinen neuen Wert mit mindestens 0,6 Konfidenz, bleibt das Feld leer, auch wenn der Auftrag den alten Wert als Zahl nennt. Der Browser-Test `tests/missing-value.e2e.ts` hält beides fest. Im Eval-Lauf auf holdout-1 endete `h-diktat-05` danach als correct-after-answers mit der Vorbelegung 90.
 
 Grenzen: Fragt man nach der Termindauer, liest Jev eine Minutenangabe ohne Feldwort („75 min“, „az 50 min“) sicher als Termindauer, auch wo die Szenarien Arbeitszeit meinen. Eine eigene Frage nach dem Feld half nicht: auch sie nannte bei „az 50 min“ die Termindauer (0,85). In 1529 aufgezeichneten Läufen fragte Jev nie nach der Termindauer, wo das Szenario keine nennt; die Vorbelegung kann diesen Fehler also nur zeigen, wenn Jev falsch nach der Termindauer fragt. Zahlwörter über hundert („hundertzwanzig“) stehen nicht in der Auswahl.
+
+## KI-011: Grenzen der gerechneten Werte und der Zeilenbindung
+
+Status: am 23. September 2026 in Runde 6 beim Bau der gerechneten Kandidaten festgestellt, nicht behoben.
+
+Die Summen und Differenzen der Arbeitszeit rechnen mit dem Stand beim Start des Laufs. Ein Auftrag wie „auf 45 speichern, dann noch 15 dazu“ erreicht deshalb nicht 60. Die zweite Angabe bietet 45 + 15 nicht an, sondern den Startwert plus 15.
+
+Die Zeitspannen für die Termindauer kennen keinen Wechsel über 12 Uhr. „von 11 bis 1“ ergibt keinen Kandidaten. „bis um 15“ gilt nicht als Ende einer Spanne. Eine Uhrzeit mit Punkt am Satzende („9.45.“) liest die Anwendung als Datum. Stundenwörter ohne Uhrzeitform („von neun bis elf“) ergeben keine Spanne.
+
+Öffnet Jev einen Vorgang über das Menü **Vorgang öffnen** statt über seine Zeile, bindet der Lauf eine Angabe wie „den ersten“ nicht an diesen Vorgang. `listOrdinals` nennt sie dann nicht.
+
+Eine abgebrochene Messung zeigte zudem, dass eine Aufrufgrenze der Auswertung wie ein Ausfall von Jev aussah. Die Auswertung nennt eine solche Grenze jetzt als Ursache, und der Server gibt Fehlername und HTTP-Status des Anbieters in den Fehlerdaten mit.
