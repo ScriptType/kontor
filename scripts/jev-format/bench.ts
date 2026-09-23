@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   APIError,
   choice,
@@ -36,8 +36,8 @@ export const labRoot = join(
   "live-results",
   "question-pipeline-2026-09-21",
 );
-/** Bench files of one recording round; JEV_FORMAT_DIR names another, relative to labRoot. */
-export const formatDir = join(
+/** Bench files of one recording round; JEV_FORMAT_DIR names another, relative to labRoot or absolute. */
+export const formatDir = resolve(
   labRoot,
   process.env["JEV_FORMAT_DIR"] ?? join("round4", "format"),
 );

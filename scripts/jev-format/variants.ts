@@ -1,7 +1,12 @@
 import { choice, type EntryType } from "@typesafe-ai/sdk";
 import { seedWorkspace } from "../../shared/domain.js";
 import { requestHints } from "../../shared/request-hints.js";
-import { observedChanges, stepLog } from "../../shared/step-log.js";
+import {
+  observedChanges,
+  slimObservation,
+  slimObservations,
+  stepLog,
+} from "../../shared/step-log.js";
 import {
   assessQuestion,
   assessState,
@@ -324,26 +329,28 @@ const placedSteps = (s: State) => {
  * l3: the snapshots kept, without the saved case record (the facts carry the
  * current one), id lists as counts, and fields that stay empty.
  */
-const slimObservation = (observed: Record<string, unknown>) => {
-  const { selected: _, draftOwner: __, ...rest } = observed;
-  return Object.fromEntries(
-    Object.entries(rest).flatMap(([key, value]) =>
-      key === "operations" || key === "receipts"
-        ? [[key, Array.isArray(value) ? value.length : value]]
-        : key === "unknownSave" && value === null
-          ? []
-          : [[key, value]],
-    ),
-  );
-};
 const slimSteps = (s: State) => ({
   ...s,
   observedSteps: stepsOf(s).map((step) => ({
     ...step,
-    before: slimObservation(step.before),
-    after: slimObservation(step.after),
+    before: slimObservation(JSON.stringify(step.before)),
+    after: slimObservation(JSON.stringify(step.after)),
   })),
 });
+/** l9: the product's slim history (shared/step-log.ts, gate g4-lean). */
+const slimHistory = (s: State) => {
+  const steps = productSteps(s);
+  const observed = slimObservations(steps);
+  return {
+    ...s,
+    observedSteps: stepsOf(s).map(({ action, authorizedBy, outcome }, i) => ({
+      action,
+      authorizedBy,
+      outcome,
+      ...observed[i],
+    })),
+  };
+};
 /**
  * l8: each step's observation before it is the one after the step before, so
  * only the first step keeps its `before`.
@@ -481,6 +488,6 @@ export const variants = {
   "l6-placed-noregions": variant({ shape: pipe(placedSteps, noRegions)() }),
   "l7-slim-noregions": variant({ shape: pipe(slimSteps, noRegions)() }),
   "l8-after": variant({ shape: pipe(afterOnly)() }),
-  "l9-slim-after": variant({ shape: pipe(slimSteps, afterOnly)() }),
+  "l9-slim-after": variant({ shape: pipe(slimHistory)() }),
   "l10-after-counted": variant({ shape: pipe(countedIds, afterOnly)() }),
 } satisfies Record<string, Variant>;

@@ -1,12 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { gates } from "../../frontend/src/gate.js";
+import {
+  gates,
+  type GateName,
+  type GatePolicy,
+} from "../../frontend/src/gate.js";
 import { createJev } from "../../server/jev.js";
 import type { DecisionInput } from "../../shared/command.js";
 import { seedWorkspace } from "../../shared/domain.js";
 import { requestHints } from "../../shared/request-hints.js";
 import {
+  assessState,
   formatDir,
   type AssessQuestions,
   type BenchState,
@@ -17,14 +22,23 @@ import { variants } from "./variants.js";
 // The product gates must send the state their bench variant measured. Each
 // recorded state is turned back into a decision input, sent through
 // server/jev.ts under the gate's prompt, and compared with the variant.
-const arms = [
-  { gate: "g3", variant: "identity" },
-  { gate: "g3-focused", variant: "c3-dedupe-end-hints" },
-  { gate: "g3-compact", variant: "c6-squeeze-hints" },
-] as const;
+// Recordings under g3 carry the full state, those under g3-cpe-duel the
+// compact one that g4 also sends; each form checks the gates built on it.
 const states: BenchState[] = JSON.parse(
   await readFile(join(formatDir, "states.json"), "utf8"),
 );
+const arms: { gate: GateName; variant: keyof typeof variants }[] = states[0]
+  ?.state.availableActions
+  ? [
+      { gate: "g3", variant: "identity" },
+      { gate: "g3-focused", variant: "c3-dedupe-end-hints" },
+      { gate: "g3-compact", variant: "c6-squeeze-hints" },
+    ]
+  : [
+      { gate: "g3-cpe-duel", variant: "identity" },
+      { gate: "g4", variant: "identity" },
+      { gate: "g4-lean", variant: "l9-slim-after" },
+    ];
 const questions: AssessQuestions = JSON.parse(
   await readFile(join(formatDir, "assess-questions.json"), "utf8"),
 );
@@ -33,8 +47,16 @@ const action = (a: SentAction) => ({
   ...a,
   jev: { does: a.effect, reveals: "" },
 });
-function inputOf(state: BenchState, prompt: DecisionInput["prompt"]) {
+function inputOf(state: BenchState, gate: GateName) {
   const s = state.state;
+  const policy: GatePolicy = gates[gate];
+  const { prompt } = policy;
+  // A compact decide leaves the facts' blocked controls out; the check state
+  // puts them back where the browser wrote them.
+  const facts = z
+    .object({ currentFacts: z.record(z.string(), z.unknown()) })
+    .loose()
+    .parse(assessState(state, "done")).currentFacts;
   const blocked = z
     .array(
       z
@@ -45,8 +67,8 @@ function inputOf(state: BenchState, prompt: DecisionInput["prompt"]) {
     .parse(s.blockedControls);
   return {
     request: s.originalRequest,
-    snapshotId: s.snapshotId,
-    context: JSON.stringify(s.currentFacts),
+    snapshotId: s.snapshotId ?? state.id,
+    context: JSON.stringify(facts),
     actions: state.actions.map(action),
     fields: s.availableFields.map((f) => ({ ...f, jev: { name: f.label } })),
     blockedControls: blocked,
@@ -62,9 +84,13 @@ function inputOf(state: BenchState, prompt: DecisionInput["prompt"]) {
     doneBeforeFirstStep: false,
     state: "full",
     prompt,
+    history: policy.history ?? "full",
     ...(prompt === "full"
       ? {}
-      : { hints: requestHints(s.originalRequest, seedWorkspace()) }),
+      : {
+          hints:
+            s.requestHints ?? requestHints(s.originalRequest, seedWorkspace()),
+        }),
   } as DecisionInput;
 }
 let differences = 0;
@@ -103,7 +129,7 @@ for (const { gate, variant } of arms) {
   const bench = variants[variant];
   let differ = 0;
   for (const state of states) {
-    const input = inputOf(state, gates[gate].prompt);
+    const input = inputOf(state, gate);
     sent.length = 0;
     await jev.decide(input);
     await jev.assess({ ...input, selected: "done" });
