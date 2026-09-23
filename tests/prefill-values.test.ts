@@ -239,6 +239,10 @@ const relationChoices: [request: string, written: string[]][] = [
   ["Termin kurz vor elf", []],
   ["Termin 45 nach 3", []],
   ["Termin 1042 nach 14 Uhr", []],
+  ["Termin zwanzig vor elf, 30 min", ["vor_20"]],
+  ["Termin 5 nach 10 Minuten", []],
+  ["Termin 3 vor 2 Tagen", []],
+  ["Termin zehn nach zwei Wochen", []],
 ];
 test("the relation is a fixed one, minutes the request writes before or after an hour, other, or none", () => {
   for (const [request, written] of relationChoices)

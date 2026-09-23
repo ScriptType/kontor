@@ -41,9 +41,14 @@ const lengths: [string, string[]][] = [
   ["von zehn bis halb zwölf Uhr", ["90"]],
   ["von 9 Uhr 30 bis 11", ["90"]],
   ["von neun Uhr dreißig bis elf", ["90"]],
+  ["von zwanzig vor elf bis zwölf", ["80"]],
+  ["von 20 vor 11 bis 12", ["80"]],
+  ["zehn nach drei bis vier", ["50"]],
+  ["fünf nach halb zehn bis elf", ["85"]],
   ["von 13:15 bis viertel vor 3", []],
   ["2 bis 3 Stunden", []],
   ["2  bis 3  Stunden", []],
+  ["2 bis 3 Tagen", []],
   ["30 bis 45 Minuten", []],
   ["von 15 bis 13", []],
   ["von 9 bis 0 Uhr", []],
@@ -55,6 +60,10 @@ const lengths: [string, string[]][] = [
   ["zwei bis drei Stunden", []],
   ["von zwei bis drei Leuten", []],
   ["zwei bis drei Termine", []],
+  ["3 vor 2 Tagen", []],
+  ["5 nach 10 Minuten", []],
+  ["neun bis drei vor zwei Tagen", []],
+  ["neun bis fünf nach zehn Minuten", []],
 ];
 test("a time range offers its length to the appointment length, unbound", () => {
   for (const [request, values] of lengths)
