@@ -176,11 +176,11 @@
             @if (row.choice === state.capture.decision.choice) { <small>Von Jev gewählt</small> }
             @if (state.capture.assessments[row.choice]?.verdict === 'forbidden') {
             <p class="blocker">Jev hält diesen Schritt für einen Widerspruch zum Auftrag. Du kannst ihn trotzdem ausführen.</p>
-            <button type="button" [attr.aria-label]="'Trotzdem ausführen: ' + runner.describeChoice(row.choice, state.capture).label" (click)="selectRanked(row.choice)">
+            <button type="button" [attr.aria-label]="'Trotzdem ausführen: ' + runner.describeChoice(row.choice, state.capture).label" [attr.data-review-option]="row.choice" data-review-force (click)="selectRanked(row.choice)">
               Trotzdem ausführen
             </button>
             } @else {
-            <button type="button" (click)="selectRanked(row.choice)">
+            <button type="button" [attr.data-review-option]="row.choice" (click)="selectRanked(row.choice)">
               {{ runner.describeChoice(row.choice, state.capture).label }}
             </button>
             }
@@ -203,7 +203,7 @@
       <section #attentionPanel class="answer-panel">
         <h3>Konkreten Schritt bestätigen</h3>
         <p>{{ state.message }}</p>
-        <button class="primary" (click)="approve()">
+        <button class="primary" [attr.data-review-option]="state.action.id" (click)="approve()">
           Diesen Schritt freigeben
         </button>
         <button (click)="runner.stop()">Ablehnen und stoppen</button>

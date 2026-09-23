@@ -43,6 +43,13 @@ test("native ranking keeps original confidence and the second option gets its ow
       await expect(rows(page).nth(1)).toContainText("30 %");
       await expect(review(page)).toContainText("Auswahlkonfidenz 40 %");
       await expect(review(page)).toContainText("Kunden öffnen");
+      await expect(choose(page, "Team öffnen")).toHaveAttribute(
+        "data-review-option",
+        "nav:team",
+      );
+      await expect(choose(page, "Berichte öffnen")).not.toHaveAttribute(
+        "data-review-force",
+      );
       await choose(page, "Berichte öffnen").click();
       await expect(page).toHaveURL(/#reports$/);
       await expect(review(page)).toContainText("Jev hält bei Unklarheit an");
@@ -83,6 +90,9 @@ for (const verdict of ["additional", "unclear"]) {
         await expect(page.locator(".answer-panel")).toContainText(
           "Berichte öffnen",
         );
+        await expect(
+          page.getByRole("button", { name: "Diesen Schritt freigeben" }),
+        ).toHaveAttribute("data-review-option", "nav:reports");
         await page
           .getByRole("button", { name: "Diesen Schritt freigeben" })
           .click();
@@ -153,6 +163,11 @@ test("a forbidden alternative warns first and runs on the user's click", async (
       await choose(page, "Berichte öffnen").click();
       const override = choose(page, "Trotzdem ausführen: Berichte öffnen");
       await expect(override).toBeEnabled();
+      await expect(override).toHaveAttribute(
+        "data-review-option",
+        "nav:reports",
+      );
+      await expect(override).toHaveAttribute("data-review-force", "");
       await expect(review(page)).toContainText(
         "Jev hält diesen Schritt für einen Widerspruch zum Auftrag. Du kannst ihn trotzdem ausführen.",
       );
