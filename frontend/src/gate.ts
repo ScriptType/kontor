@@ -442,6 +442,22 @@ export const gates = {
     norepeat: true,
     jump: true,
   },
+  "g3-cpe-nrj": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
+    todo: false,
+    duel: 0.75,
+    norepeat: true,
+    jump: true,
+  },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
