@@ -605,6 +605,25 @@ export function recordingFetch(options: {
     return response;
   };
 }
+/**
+ * Why a sample failed where the app only shows "nicht erreichbar": the
+ * harness's own error, a call it refused, or the provider's last failed status.
+ */
+export function sampleError(
+  harness: string | null,
+  refused: string[],
+  callLog: CallRecord[],
+  errored: boolean,
+): string | null {
+  const failed = callLog.findLast(
+    (call) => call.status !== null && call.status >= 400,
+  );
+  return (
+    harness ??
+    refused[0] ??
+    (errored && failed ? `Provider HTTP ${failed.status}` : null)
+  );
+}
 export async function runSample(options: {
   browser: Browser;
   config: Config;
@@ -743,7 +762,7 @@ export async function runSample(options: {
     reviewClicks: stops.filter((stop) => stop.kind === "review-answer").length,
     calls: callLog.length,
     wallMs: ended - began,
-    error: error ?? refused[0] ?? null,
+    error: sampleError(error, refused, callLog, verdict.outcome === "error"),
     observed,
     callLog,
   };

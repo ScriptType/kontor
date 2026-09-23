@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { choice, TypeSafeClient } from "@typesafe-ai/sdk";
 import {
   recordingFetch,
+  sampleError,
   type Budget,
   type CallRecord,
 } from "../scripts/jev-eval/harness.js";
@@ -108,4 +109,31 @@ test("a call past the eval budget is refused unsent and the refusal is kept for 
   assert.equal(recording.sent(), 1);
   assert.equal(recording.callLog.length, 1);
   assert.deepEqual(recording.refused, ["Eval call budget exhausted"]);
+});
+test("an errored sample names its cause: the harness, then a refused call, then the provider's last failed status", async () => {
+  const refusedRun = recorder({ limit: 1 });
+  await refusedRun.ask();
+  await assert.rejects(refusedRun.ask());
+  assert.equal(
+    sampleError(null, refusedRun.refused, refusedRun.callLog, true),
+    "Eval call budget exhausted",
+  );
+  assert.equal(
+    sampleError("locator.click: closed", refusedRun.refused, [], true),
+    "locator.click: closed",
+  );
+  const limited = recorder({
+    respond: () => Response.json({ error: "slow down" }, { status: 429 }),
+  });
+  await assert.rejects(limited.ask());
+  assert.equal(
+    sampleError(null, limited.refused, limited.callLog, true),
+    "Provider HTTP 429",
+  );
+  assert.equal(
+    sampleError(null, limited.refused, limited.callLog, false),
+    null,
+  );
+  const { callLog } = await call(false);
+  assert.equal(sampleError(null, [], callLog, true), null);
 });
