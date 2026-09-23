@@ -51,6 +51,8 @@ Das Öffnen des Auftragsfensters pausiert die Bedienung. Escape schließt das Fe
 
 Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Jev kann zuvor über sichtbare Bedienelemente zum betroffenen Vorgang navigieren. Escape schließt die aktuelle Rückfrage, ohne sie sofort erneut zu öffnen. Über **Antworten** erreichst du sie wieder.
 
+Fehlt Jev ein Wert, merkt Jev die Rückfrage vor und erledigt zuerst die übrigen Änderungen am selben Vorgang. Die Frage erscheint, bevor Jev den Vorgang speichert, verlässt oder den Auftrag abschließt. Nennt der Auftrag einen Teil des Werts, etwa ein Datum ohne Uhrzeit, ist dieser Teil schon eingetragen. Ein Datum ohne Jahr gilt im Jahr des Auftragsstarts. Liegt es in der Vergangenheit, weist die Rückfrage darauf hin.
+
 Öffne **Jev-Einstellungen** in der Palette, um die Sicherheitsschwelle einzustellen. Wähle einen ganzen Prozentwert von 0 bis 100. Unterhalb dieses Werts verlangt Jev eine Bestätigung vor Aktionen und bestätigt keinen Auftragsabschluss. Der Standard ist 75 Prozent. Die Einstellung bleibt in diesem Browser erhalten. Änderst du sie während eines Auftrags, musst du anschließend ausdrücklich fortsetzen.
 
 Bei einem fehlenden Prüfbeleg führt **Prüfbeleg erfassen** direkt zum Feld im betroffenen Vorgang. Trage deine tatsächliche Beobachtung ein, übernimm sie in den Entwurf und speichere. Mit **Auftrag fortsetzen** prüft Jev anschließend den ursprünglichen Abschlussauftrag erneut.
