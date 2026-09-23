@@ -549,20 +549,48 @@ test("only g3-cpe-todo sends Jev the plan reading with its hints", () => {
   };
   const request = "Gib V-1041 an Lea und speichere.";
   for (const gate of gateNames) {
-    const hints = decisionHints(gate, request, workspace, [], plan);
+    const hints = decisionHints(gate, request, workspace, [], plan, []);
     assert.equal(hints === undefined, gates[gate].prompt === "full", gate);
     assert.equal(hints?.planReading !== undefined, gates[gate].todo, gate);
   }
   assert.deepEqual(
-    decisionHints("g3-cpe-todo", request, workspace, [], plan)?.planReading
-      ?.stillOpen,
+    decisionHints("g3-cpe-todo", request, workspace, [], plan, [])
+      ?.planReading?.stillOpen,
     [
       "case V-1041: assigned technician should become Lea Sommer (now Jonas Weber)",
       "case V-1041: save the change",
     ],
   );
   assert.equal(
-    decisionHints("g3-cpe-todo", request, workspace, [], null)?.planReading,
+    decisionHints("g3-cpe-todo", request, workspace, [], null, [])
+      ?.planReading,
     undefined,
   );
+});
+
+const withSeen = ["g3-cpe-duel-seen", "g3-cpe-duel-nrseen"];
+const withNorepeat = ["g3-cpe-duel-nr", "g3-cpe-duel-nrseen"];
+test("the norepeat and seen gates are g3-cpe-duel with their flags", () => {
+  const { norepeat, ...nr } = gates["g3-cpe-duel-nr"];
+  const { seen, ...seenRest } = gates["g3-cpe-duel-seen"];
+  const { norepeat: both, seen: bothSeen, ...nrseen } =
+    gates["g3-cpe-duel-nrseen"];
+  for (const rest of [nr, seenRest, nrseen])
+    assert.deepEqual(rest, gates["g3-cpe-duel"]);
+  assert.deepEqual([norepeat, seen, both, bothSeen], [true, true, true, true]);
+  for (const gate of gateNames) {
+    assert.equal("norepeat" in gates[gate], withNorepeat.includes(gate), gate);
+    assert.equal("seen" in gates[gate], withSeen.includes(gate), gate);
+  }
+});
+test("only the seen gates send Jev the pages shown so far", () => {
+  const workspace = seedWorkspace();
+  const shown = ["customers", "reports", "cases"];
+  for (const gate of gateNames)
+    assert.deepEqual(
+      decisionHints(gate, "Zeige Berichte.", workspace, [], null, shown)
+        ?.pagesShownSoFar,
+      withSeen.includes(gate) ? shown : undefined,
+      gate,
+    );
 });

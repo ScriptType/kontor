@@ -38,7 +38,12 @@ import {
   listOrdinalSchema,
   requestOrdinals,
 } from "../../shared/request-hints";
-import { guardStop, type GuardStop } from "../../shared/run-guard";
+import {
+  guardStop,
+  withoutSpentActions,
+  type GuardStop,
+} from "../../shared/run-guard";
+import { pagesShown } from "../../shared/step-log";
 import {
   blockers,
   draftOf,
@@ -673,7 +678,7 @@ export class CommandRunner {
     const data = this.ui.data();
     const existing = this.existing();
     const blockedControls = this.registry.blockedSnapshot();
-    const policy = gates[this.gate];
+    const policy: GatePolicy = gates[this.gate];
     const context = this.facts(blockedControls);
     const actions = this.registry.snapshot(run.request, run.answers, existing);
     const plan = this.awaitedPlan();
@@ -686,13 +691,15 @@ export class CommandRunner {
         data,
         run.ordinals,
         plan && world ? { run: plan, world } : null,
+        pagesShown(run.steps, this.ui.page()),
       );
+    const changing =
+      policy.memory === "off" ? actions : changingActions({ actions, context });
     const shown = withheld(
       {
-        actions:
-          policy.memory === "off"
-            ? actions
-            : changingActions({ actions, context }),
+        actions: policy.norepeat
+          ? withoutSpentActions(changing, run.steps, this.observed())
+          : changing,
         fields: this.registry.fieldSnapshot(),
       },
       openQuestions(run.questions, run.answers),
