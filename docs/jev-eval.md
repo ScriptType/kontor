@@ -27,6 +27,8 @@ Der Befehl baut die Anwendung und sendet echte Anfragen an TypeSafe. Er benötig
 | `--gate <name>` | `threshold` | Regel, nach der eine Entscheidung ohne Nachfrage ausgeführt wird. Die Anwendung verwendet ohne gespeicherte Wahl `g3-compact-plan-effect`. Die Auswertung bleibt bei `threshold`, damit frühere Läufe vergleichbar bleiben; das Produktverhalten misst `--gate g3-compact-plan-effect`. `threshold` vergleicht die Auswahl-Confidence mit der Schwelle. `g1` vergleicht die höchste Optionswahrscheinlichkeit mit einer Schwelle je Art der Wahl: Ansicht 70 %, Entwurf 85 %, Speichern oder Verwerfen 75 %, Abschluss oder Halt 65 %. Eine Rückfrage behält die Schwelle aus `--threshold`. Die Abschlussbewertung prüft unter `g1` die Wahrscheinlichkeit von `complete` je Art der bisherigen Arbeit: nur Ansicht 60 %, Entwurf ohne Speichern 85 %, gespeichert 80 %. `g2-effect` gleicht `g1`, lässt aber eine Ansicht ab 30 % wirken und einen gebundenen Entwurf ab 70 % ohne eigene Umfangsprüfung. Gebunden ist ein Wert aus dem Auftrag, den ein Feldwort oder der Feldtyp genau diesem Feld zuordnet und der als einziger Auftragswert für dieses Feld des Vorgangs angeboten wird. `g2-exits` gleicht `g1`, bietet `done` aber erst nach dem ersten ausgeführten Schritt an. `g2-pool` gleicht `g1`, summiert aber die Wahrscheinlichkeiten aller Optionen mit gleicher Wirkung. Die stärkste Gruppe muss die Schwelle erreichen und die nächste um 10 Prozentpunkte übertreffen. `g2` verbindet `g2-pool` mit den Schwellen und Umfangsprüfungen von `g2-effect` und bietet `done` wie `g2-exits` erst nach dem ersten Schritt an. `explore-nomem` lässt jede Ansicht sofort und einen Entwurf ab 60 % ohne Umfangsprüfung wirken, behält für Speichern, Abschluss und Halt die Schwellen von `g1`, bietet `done` erst nach dem ersten Schritt an und hält bei Schleifen und nach dem Schrittbudget an: eine Aktion zweimal ohne Änderung, dieselbe Seite zum dritten Mal ohne Datenänderung, 8 plus 4 Schritte je Teilsatz, höchstens 24. `explore` gleicht `explore-nomem` und sendet Jev zusätzlich den schlanken Zustand mit kurzem Schrittverlauf und ohne Optionen ohne Wirkung. `g3` summiert Optionen mit gleicher Wirkung und verlangt 10 Prozentpunkte Abstand zur nächsten Wirkung. Ansichten wirken ab 30 %, Entwürfe über Buttons und Feldwerte ab 60 %. Nur ungebundene Feldwerte, Speichern und Verwerfen erhalten eine Umfangsprüfung. Speichern, Abschluss und Halt behalten die Schwellen von `g1`. `done` gibt es erst nach dem ersten Schritt, und Schleifen und Schrittzahl sind begrenzt wie unter `explore-nomem`. `g3-mem` gleicht `g3` und sendet der Entscheidung den schlanken Zustand ohne Optionen ohne Wirkung. Umfangs- und Abschlussprüfung erhalten den vollständigen Zustand. `g3-focused` gleicht `g3`, wiederholt den Auftrag am Ende des Zustands, ergänzt Hinweise aus dem Auftrag und sendet der Entscheidung keine Aktionsliste im Zustand. `g3-compact` gleicht `g3-focused` und kürzt zusätzlich Optionstexte und Bildschirmangaben, siehe [architecture.md](architecture.md). `g3-compact-plan` gleicht `g3-compact` und liest beim Start den ganzen Auftrag als Plan. Stimmt der Plan genau mit der Wahl überein, gibt er eine Auswahl unter ihrer Schwelle und die Abschlussbewertung von `done` frei. `g3-compact-plan-effect` gibt zusätzlich eine nicht bestätigte Umfangsprüfung frei, außer bei einem verbotenen Schritt. Der Lauf schreibt `kontor-jev-gate-v2` = `{"version":2,"gate":"<name>"}` vor dem Laden der Seite. |
 | `--record-payloads` | aus | Speichert je Anbieteraufruf im `callLog` der Lauf-Datei unter `payload` den vollständigen Anfragekörper (`state`, `questions`, `model`), die Antworten mit Auswahl, Confidence und Wahrscheinlichkeiten und den vom Anbieter gemeldeten Tokenverbrauch (`usage`). Grundlage der Formatbank in [jev-format.md](jev-format.md). |
 | `--scenarios <datei>` | eingebaute Szenarien | JSON-Array vollständiger Szenarien statt der festen und generierten Szenarien. `--seed` und `--count` gelten dann nicht. |
+| `--answer-review` | aus | Beantwortet Auswahlprüfung und Freigabe mit einem Klick, siehe [Klickvertrag für Auswahlprüfung und Freigabe](#klickvertrag-für-auswahlprüfung-und-freigabe). Ohne die Option endet der Lauf dort wie bisher. |
+| `--meta <datei>` | keine | Menschliche Pfade je Szenario im Format der `holdout-meta.json`: je ID ein Objekt mit `steps`, einem Array von Schritten im Format von `executed` beim [Nachspielen](#pfad-nachspielen). Andere Schlüssel ignoriert der Lauf. Nur `--answer-review` liest die Pfade. |
 
 ## Dimensionen
 
@@ -101,7 +103,7 @@ Fehlt `flags.save`, gilt `true`, sobald ein Vorgang Werte erhält und `noSave` f
 
 Jeder Lauf startet den echten Server mit einer Datenbank im Arbeitsspeicher und öffnet Chrome. Gespeicherte Startwerte schreibt der Lauf direkt in die Datenbank. Seite, Vorgang und Filter stellt er über die Oberfläche ein. Die Bestätigungsschwelle ist 75 Prozent. Die Uhr des Browsers steht auf Dienstag, 22.09.2026, 9 Uhr (`scenarioDay` in `scripts/jev-eval/harness.ts`), dem Tag, an dem die Szenarien geschrieben sind. So meint „morgen“ im Szenario den 23.09.2026.
 
-Danach sendet der Lauf den Auftrag über die Befehlspalette. Er wartet, bis Jev anhält. Ein Halt vor dem Abschluss zählt als Rückfrage: Auswahlprüfung, fehlender Wert, Freigabe und Blockade. Einen fehlenden Wert beantwortet der Lauf im Antwortfeld, siehe [Antwortvertrag für fehlende Werte](#antwortvertrag-für-fehlende-werte), und wartet auf den nächsten Halt. Auswahlprüfung, Freigabe und Blockade erhalten keine simulierte Antwort. Der Lauf endet dort.
+Danach sendet der Lauf den Auftrag über die Befehlspalette. Er wartet, bis Jev anhält. Ein Halt vor dem Abschluss zählt als Rückfrage: Auswahlprüfung, fehlender Wert, Freigabe und Blockade. Einen fehlenden Wert beantwortet der Lauf im Antwortfeld, siehe [Antwortvertrag für fehlende Werte](#antwortvertrag-für-fehlende-werte), und wartet auf den nächsten Halt. Auswahlprüfung und Freigabe beantwortet der Lauf nur mit `--answer-review`, siehe [Klickvertrag für Auswahlprüfung und Freigabe](#klickvertrag-für-auswahlprüfung-und-freigabe). Sonst endet er dort. Eine Blockade erhält keine simulierte Antwort. Der Lauf endet dort.
 
 ## Bestätigungsvertrag für Varianten
 
@@ -131,6 +133,24 @@ Hat die Absicht keinen einzelnen Wert, antwortet der Lauf nicht und tippt nichts
 
 Eine beantwortete Frage ist ein Halt der Art `answer`. Er nennt die Dimension, bei vorgangsbezogenen Dimensionen den Vorgang, und den bestätigten Wert. Er zählt als Frage wie ein Chip. Chips und Antworten teilen sich die Obergrenze von zwölf Antworten je Lauf.
 
+## Klickvertrag für Auswahlprüfung und Freigabe
+
+Mit `--answer-review` klickt der Lauf bei einer Auswahlprüfung („Nächsten Schritt prüfen“, „Jev hält bei Unklarheit an“) und bei einer Freigabe („Konkreten Schritt bestätigen“) die Option, die ein Mensch mit Kenntnis des Szenarios wählt. Er liest die Optionen nur über diese Attribute:
+
+- `data-review-option="<Kennung>"` steht an jeder Schaltfläche einer Option. Die Kennung ist die Entscheidungsoption: eine Aktions-ID, `done`, `blocked`, `abstain` oder `ask:<Feld>`. In der Freigabe trägt „Diesen Schritt freigeben“ die ID der Aktion.
+- `data-review-force` steht zusätzlich an „Trotzdem ausführen“. Diese Schaltfläche ersetzt die Option, die die Umfangsprüfung verbietet. Ein Klick darauf führt den Schritt aus.
+
+Angeboten sind nur die sichtbaren Optionen, also die beiden bestbewerteten der Auswahlprüfung oder die eine Aktion der Freigabe. Weitere Optionen derselben Jev-Antwort kann ein Mensch dort nicht klicken. Der Lauf wählt nach dieser Regel:
+
+1. `done`, wenn der Zustand in diesem Moment schon richtig bewertet wird und das Szenario keine Übergabe erwartet. Den Zustand liest der Lauf aus der Beobachtung nach dem letzten Schritt im Jev-Verlauf und aus der Datenbank. Er liest ihn nicht vom Bildschirm, denn das würde die Palette schließen und die Seite wechseln.
+2. `blocked`, wenn das Szenario eine Übergabe erwartet und der Zustand abgesehen von der Übergabe richtig bewertet wird.
+3. Sonst die erste angebotene Aktion oder Rückfrage `ask:<Feld>`, die auf dem menschlichen Pfad aus `--meta` sicher ist. Sicher bedeutet: Der Lauf ist bisher genau den ersten Schritten des Pfads gefolgt, und die Option ist der nächste Schritt oder gehört zu dessen Abschnitt bis zur nächsten Speicherung, Navigation oder Vorgangsauswahl. Führt der nächste Schritt nur auf eine Seite, die der Auftrag nicht zeigen will, ist auch der Schritt danach sicher. Das ist `safe` aus `labelState` der Formatbank in `scripts/jev-format/bench.ts`.
+4. `abstain` wählt der Lauf nie.
+
+Findet der Lauf keine Option, bleibt der Halt unbeantwortet wie ohne die Option. Seine Meldung nennt dann die angebotenen Optionen und den Grund, etwa die Abweichungen für `done` oder den Schritt, an dem der Lauf den menschlichen Pfad verlassen hat. Ohne Pfad für das Szenario kann der Lauf nur `done` und `blocked` klicken.
+
+Ein Klick ist ein Halt der Art `review-answer` mit der Kennung in `value`. Er zählt als Frage. Klicks, Chips und Antworten teilen sich die Obergrenze von zwölf Antworten je Lauf. Danach wartet der Lauf auf den nächsten Halt. Bestätigt die Umfangsprüfung die geklickte Aktion nicht sicher, folgt eine Freigabe für denselben Schritt. Das sind zwei Klicks. Für Jevs eigene Auswahl gilt dabei die Umfangsprüfung, die zur Auswahlprüfung geführt hat. Nach einer unsicheren Umfangsprüfung kostet sie deshalb immer zwei Klicks.
+
 ## Endzustand und Kennzahlen
 
 Der Lauf liest den Endzustand ohne Prüfhaken im Produktcode:
@@ -148,7 +168,7 @@ Jeder Lauf erhält genau eine Kategorie. Ein Fehler geht vor, danach der Halt an
 | --- | --- |
 | magic | Endzustand richtig, keine Frage und keine Übergabe. |
 | handoff | Endzustand richtig, und der Lauf hält korrekt für die erwartete Übergabe an einen Menschen an. Das ist nicht magic, auch nicht nach beantworteten Fragen. |
-| correct-after-answers | Endzustand richtig, und der Lauf hat jede Frage beantwortet, als Chip oder als Wert im Antwortfeld. |
+| correct-after-answers | Endzustand richtig, und der Lauf hat jede Frage beantwortet, als Chip, als Wert im Antwortfeld oder als Klick in Auswahlprüfung und Freigabe. |
 | stopped-unanswered | Der Lauf endet an einer Frage ohne Antwort: Auswahlprüfung, fehlender Wert ohne einzelnen Wert in der Absicht, Freigabe, Blockade ohne erwartete Übergabe oder unbeantwortbarer Chip. Der Bericht zählt in Klammern, wie oft der Endzustand in diesem Moment schon stimmte. |
 | asked-wrong | Fragen beantwortet, Endzustand trotzdem falsch. |
 | silent-wrong | Endzustand falsch oder unerwartete Speicherung, ohne Frage. |
@@ -157,6 +177,8 @@ Jeder Lauf erhält genau eine Kategorie. Ein Fehler geht vor, danach der Halt an
 `magic-save-check` zählt magic und die Läufe unter correct-after-answers, deren Fragen alle Speicherfragen waren. Das ist das Ziel des Modus `confirm`: Jev fragt nur, ob gespeichert werden soll. Der Bericht zeigt die Kennzahl in beiden Modi. Im Modus `auto` erscheint keine Speicherfrage, dort entspricht sie magic.
 
 `correct ≤1 question` zählt magic und die Läufe unter correct-after-answers mit genau einer Frage. Die Spalte ist kumulativ und enthält magic. Sie zeigt, wie oft Jev mit höchstens einer Rückfrage ans Ziel kommt.
+
+`one-click` zählt die Läufe unter correct-after-answers und handoff mit genau einer Frage, die ein Klick in Auswahlprüfung oder Freigabe war. Sie zeigt, wie oft ein Klick auf eine angebotene Option zum richtigen Ende führt. `results.json` nennt je Lauf die Zahl der Klicks in `reviewClicks`. Ohne `--answer-review` ist die Spalte 0.
 
 Dazu kommen die Fragen als Mittelwert je Lauf in der Spalte `questions per run` und als Anteil der Läufe mit mindestens einer Frage, die Anbieteraufrufe und die Laufzeit vom Absenden bis zum letzten Halt.
 
@@ -191,7 +213,7 @@ Die Ausgabe ist JSON mit `id`, `endCorrect`, `mismatches`, `unexpectedSaves`, `e
 ## Nicht gemessen
 
 - Verständlichkeit und Qualität der Rückfragen. Der Lauf zählt sie nur.
-- Die richtige Antwort auf eine Auswahlprüfung, Freigabe oder Blockade. Der Lauf endet dort.
+- Die richtige Antwort auf eine Blockade. Der Lauf endet dort. Auswahlprüfung und Freigabe beantwortet er nur mit `--answer-review` und nur entlang des menschlichen Pfads.
 - Sichtbarkeit, Fokus und Lesbarkeit des Endzustands für Menschen.
 - Wirkungen auf Kennzahlen anderer Seiten. Sie folgen aus den gespeicherten Daten.
 - Varianz jenseits der gewählten Stichproben. Ein Lauf pro Szenario zeigt Tendenzen, keine stabilen Raten.
