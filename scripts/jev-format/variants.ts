@@ -344,6 +344,40 @@ const slimSteps = (s: State) => ({
     after: slimObservation(step.after),
   })),
 });
+/**
+ * l8: each step's observation before it is the one after the step before, so
+ * only the first step keeps its `before`.
+ */
+const afterOnly = (s: State) => ({
+  ...s,
+  observedSteps: stepsOf(s).map((step, i) =>
+    i === 0 ? step : omit(step, "before"),
+  ),
+});
+
+/** l10: operation and receipt id lists of each observation as counts. */
+const countedIds = (s: State) => ({
+  ...s,
+  observedSteps: stepsOf(s).map((step) =>
+    Object.fromEntries(
+      Object.entries(step).map(([key, value]) =>
+        key === "before" || key === "after"
+          ? [
+              key,
+              Object.fromEntries(
+                Object.entries(value as State).map(([k, v]) =>
+                  (k === "operations" || k === "receipts") && Array.isArray(v)
+                    ? [k, v.length]
+                    : [k, v],
+                ),
+              ),
+            ]
+          : [key, value],
+      ),
+    ),
+  ),
+});
+
 export const variants = {
   identity: variant({}),
   "f1-meta": variant({ shape: pipe(noSnapshotId, noViewport)() }),
@@ -446,4 +480,7 @@ export const variants = {
   "l5-steplog-noregions": variant({ shape: pipe(leanSteps, noRegions)() }),
   "l6-placed-noregions": variant({ shape: pipe(placedSteps, noRegions)() }),
   "l7-slim-noregions": variant({ shape: pipe(slimSteps, noRegions)() }),
+  "l8-after": variant({ shape: pipe(afterOnly)() }),
+  "l9-slim-after": variant({ shape: pipe(slimSteps, afterOnly)() }),
+  "l10-after-counted": variant({ shape: pipe(countedIds, afterOnly)() }),
 } satisfies Record<string, Variant>;
