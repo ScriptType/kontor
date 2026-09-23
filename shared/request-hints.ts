@@ -28,6 +28,10 @@ export const requestHintsSchema = z.object({
   customers: z.array(mentionSchema),
   pageWordsInOrder: z.array(z.string()),
   listOrdinals: z.array(listOrdinalSchema).optional(),
+  /** What the plan read at run start says remains (shared/plan-todo.ts). */
+  planReading: z
+    .object({ note: z.string(), stillOpen: z.array(z.string()) })
+    .optional(),
 });
 export type RequestHints = z.infer<typeof requestHintsSchema>;
 

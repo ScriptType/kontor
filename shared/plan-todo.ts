@@ -1,11 +1,12 @@
 import type { CaseDraft, CaseFilters, Workspace } from "./domain.js";
 import type { ExpectedEnd } from "./intent.js";
 import { expectedEnd, type PlanWorld, type RunPlan } from "./plan-vote.js";
+import type { RequestHints } from "./request-hints.js";
 
 export const planReadingNote =
   "A machine reading of the request. It can be wrong; the request itself decides.";
 /** What the plan read at run start says the run still has to do. */
-export type PlanReading = { note: string; stillOpen: string[] };
+export type PlanReading = NonNullable<RequestHints["planReading"]>;
 export const nothingRemains = "nothing remains per the reading";
 
 type Names = Pick<Workspace, "customers" | "technicians">;

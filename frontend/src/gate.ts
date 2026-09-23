@@ -4,6 +4,10 @@ import type {
   DecisionInput,
 } from "../../shared/command.js";
 import { effectKey, noChangeKey } from "../../shared/dimensions.js";
+import type { Workspace } from "../../shared/domain.js";
+import { planReading } from "../../shared/plan-todo.js";
+import type { PlanWorld, RunPlan } from "../../shared/plan-vote.js";
+import { requestHints, type RequestHints } from "../../shared/request-hints.js";
 
 /**
  * A draft is a field candidate; set is a button with a fixed effect; bound is
@@ -50,6 +54,11 @@ export type GatePolicy = Read & {
    * done, or the effect check of the picked action.
    */
   planVote: readonly PlanVia[];
+  /**
+   * Whether Jev also reads what the plan says still remains after each step;
+   * it informs and never chooses.
+   */
+  todo: boolean;
 };
 export type PlanVia = "pick" | "completion" | "effect";
 
@@ -84,6 +93,7 @@ export const gates = {
     completion: "verdict",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   g1: {
     read: "pmax",
@@ -95,6 +105,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   "g2-effect": {
     read: "pmax",
@@ -106,6 +117,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   "g2-exits": {
     read: "pmax",
@@ -117,6 +129,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   "g2-pool": {
     read: "pooled",
@@ -129,6 +142,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   g2: {
     read: "pooled",
@@ -141,6 +155,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   "explore-nomem": {
     read: "pmax",
@@ -152,6 +167,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   explore: {
     read: "pmax",
@@ -163,6 +179,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   g3: {
     read: "pooled",
@@ -175,6 +192,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   "g3-focused": {
     read: "pooled",
@@ -187,6 +205,7 @@ export const gates = {
     completion: "perKind",
     prompt: "focused",
     planVote: [],
+    todo: false,
   },
   "g3-compact": {
     read: "pooled",
@@ -199,6 +218,7 @@ export const gates = {
     completion: "perKind",
     prompt: "compact",
     planVote: [],
+    todo: false,
   },
   "g3-mem": {
     read: "pooled",
@@ -211,6 +231,7 @@ export const gates = {
     completion: "perKind",
     prompt: "full",
     planVote: [],
+    todo: false,
   },
   "g3-compact-plan": {
     read: "pooled",
@@ -223,6 +244,7 @@ export const gates = {
     completion: "perKind",
     prompt: "compact",
     planVote: ["pick", "completion"],
+    todo: false,
   },
   "g3-compact-plan-effect": {
     read: "pooled",
@@ -235,6 +257,20 @@ export const gates = {
     completion: "perKind",
     prompt: "compact",
     planVote: ["pick", "completion", "effect"],
+    todo: false,
+  },
+  "g3-cpe-todo": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
+    todo: true,
   },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
@@ -243,6 +279,27 @@ export const gateNames = Object.keys(gates) as GateName[];
 export const defaultGate: GateName = "g3-compact-plan-effect";
 /** Browser key of the stored gate; v1 values are ignored so browsers move to the default. */
 export const gatePreferenceKey = "kontor-jev-gate-v2";
+
+/**
+ * The hints a focused or compact prompt sends Jev; under todo also what the
+ * plan says still remains, once the plan is read and asks for nothing.
+ */
+export function decisionHints(
+  gate: GateName,
+  request: string,
+  workspace: Workspace,
+  ordinals: NonNullable<RequestHints["listOrdinals"]>,
+  plan: { run: RunPlan; world: PlanWorld } | null,
+): RequestHints | undefined {
+  const policy: GatePolicy = gates[gate];
+  if (policy.prompt === "full") return undefined;
+  const reading = policy.todo && plan && planReading(plan.run, plan.world);
+  return {
+    ...requestHints(request, workspace),
+    ...(ordinals.length ? { listOrdinals: ordinals } : {}),
+    ...(reading ? { planReading: reading } : {}),
+  };
+}
 
 export function gateKind(
   choice: string,
