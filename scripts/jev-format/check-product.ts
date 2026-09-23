@@ -47,7 +47,7 @@ function inputOf(state: BenchState, prompt: DecisionInput["prompt"]) {
     request: s.originalRequest,
     snapshotId: s.snapshotId,
     context: JSON.stringify(s.currentFacts),
-    actions: s.availableActions.map(action),
+    actions: state.actions.map(action),
     fields: s.availableFields.map((f) => ({ ...f, jev: { name: f.label } })),
     blockedControls: blocked,
     answers: s.explicitAnswers,

@@ -36,20 +36,29 @@ export const labRoot = join(
   "live-results",
   "question-pipeline-2026-09-21",
 );
-export const formatDir = join(labRoot, "round4", "format");
+/** Bench files of one recording round; JEV_FORMAT_DIR names another, relative to labRoot. */
+export const formatDir = join(
+  labRoot,
+  process.env["JEV_FORMAT_DIR"] ?? join("round4", "format"),
+);
 
-const sentActionSchema = z.object({
+export const sentActionSchema = z.object({
   id: z.string(),
   label: z.string(),
   effect: z.string(),
   kind: z.enum(["view", "draft", "commit", "discard"]),
 });
 export type SentAction = z.infer<typeof sentActionSchema>;
-/** The full g3 decide state exactly as `modelState` in server/jev.ts sends it. */
+/**
+ * The decide state exactly as `modelState` in server/jev.ts sends it: the full
+ * prompt carries snapshotId and availableActions, a focused or compact prompt
+ * carries requestHints and originalRequestAgain instead. Keys in sent order.
+ */
 export const fullStateSchema = z
   .object({
-    snapshotId: z.string(),
+    snapshotId: z.string().optional(),
     originalRequest: z.string(),
+    requestHints: z.record(z.string(), z.unknown()).optional(),
     explicitAnswers: z.array(
       z.object({ fieldId: z.string(), scope: z.string(), value: z.string() }),
     ),
@@ -63,7 +72,7 @@ export const fullStateSchema = z
         after: z.record(z.string(), z.unknown()),
       }),
     ),
-    availableActions: z.array(sentActionSchema),
+    availableActions: z.array(sentActionSchema).optional(),
     availableFields: z.array(
       z.object({
         id: z.string(),
@@ -77,6 +86,7 @@ export const fullStateSchema = z
       }),
     ),
     blockedControls: z.array(z.unknown()),
+    originalRequestAgain: z.string().optional(),
   })
   .strict();
 export type FullState = z.infer<typeof fullStateSchema>;
@@ -126,6 +136,11 @@ export type Payload = {
   state: FullState;
   instructions: string;
   options: Record<string, string>;
+  /**
+   * The offered actions as the product holds them: availableActions when the
+   * state carries them, else rebuilt from the options and the recorded texts.
+   */
+  actions: SentAction[];
 };
 /** A labelled on-path decide state of a recorded g3 run. */
 export type BenchState = Payload & {
@@ -170,11 +185,37 @@ export function recordedDecide(payload: Payload): Sent {
 }
 /** The state the product's `modelState` builds for an effect or completion check. */
 export function assessState(payload: Payload, selected: string) {
-  const action = payload.state.availableActions.find((a) => a.id === selected);
+  const action = payload.actions.find((a) => a.id === selected);
   if (selected !== "done" && !action)
     throw new Error(`${selected} is not an available action`);
-  return { ...payload.state, selected: selected === "done" ? "done" : action };
+  const chosen = { selected: selected === "done" ? "done" : action };
+  const { state } = payload;
+  if (state.availableActions) return { ...state, ...chosen };
+  // A focused decide leaves out the action list and the facts' copy of the
+  // blocked controls; the check gets both back in their sent place.
+  const { originalRequestAgain, ...rest } = state;
+  const facts = Object.entries(state.currentFacts);
+  const at = facts.findIndex(([key]) => factsAfterBlocked.includes(key));
+  facts.splice(at < 0 ? facts.length : at, 0, [
+    "blockedControls",
+    state.blockedControls,
+  ]);
+  return Object.fromEntries(
+    Object.entries({ ...rest, ...chosen, originalRequestAgain }).flatMap(
+      ([key, value]) =>
+        key === "currentFacts"
+          ? [[key, Object.fromEntries(facts)]]
+          : key === "availableFields"
+            ? [
+                ["availableActions", payload.actions],
+                [key, value],
+              ]
+            : [[key, value]],
+    ),
+  );
 }
+/** Facts the frontend writes after blockedControls (CommandRunner.facts). */
+const factsAfterBlocked = ["retainedSelection", "receipts", "message"];
 export function assessQuestion(
   selected: string,
   questions: AssessQuestions,
@@ -233,7 +274,7 @@ export function labelState(input: {
 
 /** Gate input the frontend holds for this state; only kind and value matter to g3. */
 function gateInput(state: BenchState) {
-  const actions: ActionDescription[] = state.state.availableActions.map(
+  const actions: ActionDescription[] = state.actions.map(
     (a) => ({
       ...a,
       jev: { does: a.effect },
@@ -278,9 +319,9 @@ export function checkFor(pickResult: GatePick): "done" | "action" | null {
   return assesses("g3", pickResult.kind) ? "action" : null;
 }
 /** Whether the g3 run guard stops this action before it runs. */
-function guarded(state: Pick<BenchState, "state">, choice: string) {
+function guarded(state: Pick<BenchState, "state" | "actions">, choice: string) {
   const { observedSteps, originalRequest, currentFacts } = state.state;
-  if (!state.state.availableActions.some((a) => a.id === choice)) return false;
+  if (!state.actions.some((a) => a.id === choice)) return false;
   const steps = observedSteps.map((step) => ({
     ...step,
     before: JSON.stringify(step.before),
