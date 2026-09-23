@@ -361,9 +361,10 @@ export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
 /**
  * The app's gate unless the browser stores another: g4 with the slim step
- * history and the effect check on saves only; same decisions at 12 % fewer tokens.
+ * history. Drafts keep their effect check: without it, a request to add minutes
+ * wrote the added amount as the new total.
  */
-export const defaultGate: GateName = "g4-lean-e1";
+export const defaultGate: GateName = "g4-lean";
 /** Browser key of the stored gate; v1 values are ignored so browsers move to the default. */
 export const gatePreferenceKey = "kontor-jev-gate-v2";
 

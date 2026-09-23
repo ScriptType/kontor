@@ -534,11 +534,11 @@ test("g3-cpe-duel-jump is g3-cpe-duel with the case picker, which only it and th
     ["g3-cpe-duel-jump", ...g4Rows],
   );
 });
-test("g4 is g3-cpe-duel with norepeat and the case picker, and g4-lean-e1 is the default", () => {
+test("g4 is g3-cpe-duel with norepeat and the case picker, and g4-lean is the default", () => {
   const { norepeat, jump, ...rest } = gates.g4;
   assert.deepEqual([norepeat, jump], [true, true]);
   assert.deepEqual(rest, gates["g3-cpe-duel"]);
-  assert.equal(defaultGate, "g4-lean-e1");
+  assert.equal(defaultGate, "g4-lean");
 });
 test("each g4 row is g4 with its one change, and g4 keeps the full history", () => {
   for (const [gate, change] of g4Changes)
