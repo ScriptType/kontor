@@ -57,8 +57,9 @@ for (const run of values.runs.split(",").filter(Boolean))
         recorded.data.request.questions["next"]?.criteria ?? {},
       )) {
         if (!id.startsWith("field:")) continue;
+        // A full-state option goes on after the value source with its kind.
         const sent = text.slice(text.indexOf(sourceText) + sourceText.length);
-        const source = sent.split(":")[0]!;
+        const source = /^[^:.]+/.exec(sent)![0];
         const tally = bySource.get(source) ?? {
           sent: 0,
           missing: 0,
@@ -67,7 +68,11 @@ for (const run of values.runs.split(",").filter(Boolean))
         bySource.set(source, tally);
         tally.sent++;
         const found = rebuilt.get(id);
-        if (found?.text === sent) continue;
+        if (
+          found &&
+          (sent === found.text || sent.startsWith(`${found.text}. `))
+        )
+          continue;
         if (found) tally.differs++;
         else tally.missing++;
         if (examples.length < 10)
