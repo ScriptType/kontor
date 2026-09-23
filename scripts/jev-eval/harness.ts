@@ -367,8 +367,8 @@ const providerAnswerSchema = z.object({
       z.string(),
       z
         .object({
-          choice: z.string(),
-          confidence: z.number(),
+          choice: z.string().optional(),
+          confidence: z.number().optional(),
           probabilities: z.record(z.string(), z.number()).optional(),
         })
         .loose(),
