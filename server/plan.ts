@@ -174,6 +174,11 @@ function currentCaseValue(
   }
 }
 
+/** A field whose values the request states literally (numbers, dates, text), not picked from a fixed set. */
+function literal(dim: CaseDimensionId | ListDimensionId) {
+  const entry = dimension(dim);
+  return !("references" in entry) && !("labels" in entry) && dim !== "priority";
+}
 /** Registry-derived value options: candidates, unset, the default for list filters, and ask for literal fields. */
 function valueOptions(
   scene: PlanScene,
@@ -191,9 +196,7 @@ function valueOptions(
     if (!options.some((o) => o.value === reset))
       options.push({ value: reset, label: "Reset to the default (empty)" });
   }
-  const literal =
-    !("references" in entry) && !("labels" in entry) && dim !== "priority";
-  if (literal)
+  if (literal(dim))
     options.push({
       value: ASK,
       label: "None of these values is stated in the request: ask the user",
@@ -482,7 +485,7 @@ async function extractSteps(
         const options = valueOptions(scene, dim, id);
         if (options.length === 1)
           fixed[`s${i}.${id}.val.${dim}`] = options[0]!.value;
-        else if ("references" in d)
+        else if (!literal(dim))
           for (const option of options)
             qb[`s${i}.${id}.is.${dim}.${option.value}`] = noul(
               `${ref}\n\nDoes this part ask to make ${option.label} the value of this field of case ${caseLabel(scene, id)}? ${d.description} ${resolveNote}`,
@@ -514,7 +517,7 @@ async function extractSteps(
         const py = yes(b[`s${i}.${id}.chg.${dim}`]);
         if (py < 0.5) continue;
         const key = `s${i}.${id}.val.${dim}`;
-        // A reference field whose yes/no names nobody keeps its value.
+        // A fixed-set field whose yes/no names no option keeps its value.
         const value =
           fixed[key] ??
           (key in qb
