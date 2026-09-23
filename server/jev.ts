@@ -30,13 +30,14 @@ type Answer = z.infer<typeof answerSchema>["answers"][string];
 export function createClient(
   config: Extract<Config, { mode: "live" }>,
   fetch?: Fetch,
+  timeout = 10000,
 ) {
   return new TypeSafeClient({
     apiKey: config.apiKey,
     defaultModel: config.model,
     baseURL: "https://api.typesafe.ai",
     retry: { maxRetries: 0 },
-    timeout: 10000,
+    timeout,
     logLevel: "off",
     fetch,
   });
