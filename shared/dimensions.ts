@@ -424,8 +424,13 @@ const showFilters = (filters: CaseFilters): ActionEffect[] =>
   }));
 const showCases = (filters: CaseFilters | null): ActionEffect[] | null =>
   filters && [...showFilters(filters), { dimension: "page", value: "cases" }];
+const openCase = (id: string): ActionEffect[] => [
+  { dimension: "cases", value: id },
+  { dimension: "page", value: "cases" },
+];
 const explicitActions: Record<string, ActionEffect[]> = {
   "filter:reset": showFilters(defaultCaseFilters),
+  "menu:open-case": [{ dimension: "cases", value: null }],
   close: [],
   discard: [],
   save: [{ dimension: "save", value: "yes" }],
@@ -442,10 +447,8 @@ const explicitPrefixes: Record<
   string,
   (value: string) => ActionEffect[] | null
 > = {
-  case: (id) => [
-    { dimension: "cases", value: id },
-    { dimension: "page", value: "cases" },
-  ],
+  case: openCase,
+  "open-case": openCase,
   "customer-cases": (id) =>
     showCases({ ...defaultCaseFilters, customerId: id }),
   "technician-cases": (id) =>

@@ -594,3 +594,12 @@ test("only the seen gates send Jev the pages shown so far", () => {
       gate,
     );
 });
+test("only g3-cpe-duel-jump shows the case picker, otherwise it is g3-cpe-duel", () => {
+  const { jump, ...rest } = gates["g3-cpe-duel-jump"];
+  assert.equal(jump, true);
+  assert.deepEqual(rest, gates["g3-cpe-duel"]);
+  assert.deepEqual(
+    gateNames.filter((gate) => "jump" in gates[gate]),
+    ["g3-cpe-duel-jump"],
+  );
+});

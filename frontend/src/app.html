@@ -28,7 +28,33 @@
         >Arbeitsbereich <span>/</span> {{ ui.page() === 'cases' ? 'Vorgänge' :
         ui.page() === 'customers' ? 'Kunden' : ui.page() === 'team' ? 'Team' :
         'Berichte' }}</span
-      ><kontor-palette #palette />
+      >
+      <div class="topbar-tools">
+        @if (runner.jump) {
+        <div class="menu-wrap">
+          <button
+            [kontorAction]="actions.openCaseMenuAction()"
+            (invoked)="actions.execute('menu:open-case', $event)"
+            [attr.aria-expanded]="ui.menu() === 'open-case'"
+          >
+            Vorgang öffnen ⌄
+          </button>
+          @if (ui.menu() === 'open-case') {
+          <div class="popover align-end" aria-label="Vorgang öffnen">
+            @for (c of ui.data()?.cases; track c.id) {
+            <button
+              [kontorAction]="actions.openCaseAction(c)"
+              (invoked)="actions.execute('open-case:' + c.id, $event)"
+            >
+              {{ c.id }} <small>{{ c.title }}</small>
+            </button>
+            }
+          </div>
+          }
+        </div>
+        }
+        <kontor-palette #palette />
+      </div>
     </header>
     <div class="activity" aria-live="polite">
       <span class="activity-dot" [class.running]="runner.running()"></span

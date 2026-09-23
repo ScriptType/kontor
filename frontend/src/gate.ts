@@ -71,6 +71,8 @@ export type GatePolicy = Read & {
   norepeat?: boolean;
   /** Whether the hints also list the pages the run has shown so far. */
   seen?: boolean;
+  /** Whether the header shows the case picker that opens any case, whatever the list filters hide. */
+  jump?: true;
 };
 export type PlanVia = "pick" | "completion" | "effect";
 
@@ -386,6 +388,21 @@ export const gates = {
     duel: 0.75,
     norepeat: true,
     seen: true,
+  },
+  "g3-cpe-duel-jump": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
+    todo: false,
+    duel: 0.75,
+    jump: true,
   },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;

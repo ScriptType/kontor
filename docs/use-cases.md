@@ -10,6 +10,8 @@ Die Oberfläche bleibt manuell bedienbar. Auswählen und Ausfüllen ändern zun�
 
 Die Filter lassen sich kombinieren. **Zurücksetzen** entfernt alle Filter einschließlich der Suche. Kundenverweise öffnen alle Vorgänge des gewählten Kunden. Teamverweise öffnen die offenen Vorgänge der gewählten Person. Die Kennzahlen für offene und abgeschlossene Vorgänge in Berichten führen zur jeweiligen Liste. Diese Verweise ersetzen die bisherigen Filter. In Berichten stehen unter jeder Kundenzeile von „Arbeitszeit nach Kunde“ die Vorgänge dieses Kunden. Ein solcher Vorgang öffnet seine Details auf der Vorgangsseite wie in Kunden- und Teamansicht und lässt die Filter unverändert. Ein Auftrag, der einen Kunden und einen Vorgang nennt, erreicht den Vorgang so direkt aus den Berichten. Ein offener Entwurf bleibt erhalten und verhindert weiterhin das Öffnen eines anderen Vorgangs.
 
+Unter der Regel `g3-cpe-duel-jump` zeigt die Kopfzeile das Menü **Vorgang öffnen**. Es listet alle Vorgänge mit Kennung und Titel, unabhängig von den Listenfiltern. Ein Eintrag öffnet die Details des Vorgangs auf der Vorgangsseite wie ein Klick auf seine Zeile. Die Filter bleiben unverändert. So erreicht ein Auftrag wie „1041 auf hoch, Lindenwerk-Filter stehen lassen“ den Vorgang auch dann, wenn der Filter ihn ausblendet. Ein offener Entwurf verhindert auch hier das Öffnen eines anderen Vorgangs. Unter allen anderen Regeln fehlt das Menü.
+
 Prioritätsänderung, Wiederöffnung und Terminlöschung werden erst durch **Speichern** verbindlich. **Entwurf verwerfen** stellt den gespeicherten Stand wieder her. Arbeitszeit und Prüfbeleg bleiben bei einer Wiederöffnung erhalten. Team und Berichte berücksichtigen die Änderung nach dem Speichern.
 
 ## Aufträge und erwartete Ergebnisse

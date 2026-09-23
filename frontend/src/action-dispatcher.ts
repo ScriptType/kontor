@@ -18,18 +18,54 @@ export class ActionDispatcher {
   readonly ui = inject(WorkspaceUi);
   readonly runner = inject(CommandRunner);
   caseAction(c: ServiceCase) {
-    const open = this.ui.page() === "cases" && this.ui.selectedId() === c.id;
     return action(
       `case:${c.id}`,
       `Details von ${c.id} öffnen`,
       {
         does: `Open the detail editor of case ${c.id} "${c.title}"`,
-        now: `${open ? "its detail is already open; " : ""}status ${c.status}, assignee ${this.ui.technicianName(c.technicianId)}, worked ${c.minutes} min, appointment ${appointmentText(c.appointment)}, priority ${c.priority}`,
+        now: this.caseNow(c),
         reveals:
           "Shows its editor with its fields and actions; view only; changes no case data",
       },
       `Details von ${c.id} auf der Vorgangsseite unterhalb der Tabelle öffnen und in den sichtbaren Bereich bringen`,
     );
+  }
+  openCaseMenuAction() {
+    const hidden = this.hiddenCases();
+    return action("menu:open-case", "Vorgang öffnen", {
+      does: "Open the case picker, which lists every case by id and title whatever the case list filters hide",
+      now: hidden.length
+        ? `the case list filters hide ${hidden.join(", ")}`
+        : "the case list filters hide no case",
+      reveals:
+        "Only opens a list of cases; opens no case yet (a case option follows); changes no filters",
+      notFor: "filtering or searching the case list",
+    });
+  }
+  openCaseAction(c: ServiceCase) {
+    const hidden = this.hiddenCases().includes(c.id);
+    return action(
+      `open-case:${c.id}`,
+      `${c.id} öffnen`,
+      {
+        does: `Open case ${c.id} "${c.title}" in the detail view; works even when the list filter hides it; does not change filters`,
+        now: `the case list filters ${hidden ? "hide" : "show"} it; ${this.caseNow(c)}`,
+        reveals:
+          "Goes to the case list page and shows its editor; the list filters stay as they are; view only; changes no case data",
+        notFor: "filtering the case list to this case",
+      },
+      `Details von ${c.id} auf der Vorgangsseite öffnen; die Listenfilter bleiben unverändert`,
+    );
+  }
+  private caseNow(c: ServiceCase) {
+    const open = this.ui.page() === "cases" && this.ui.selectedId() === c.id;
+    return `${open ? "its detail is already open; " : ""}status ${c.status}, assignee ${this.ui.technicianName(c.technicianId)}, worked ${c.minutes} min, appointment ${appointmentText(c.appointment)}, priority ${c.priority}`;
+  }
+  private hiddenCases() {
+    const listed = new Set(this.ui.filtered().map((c) => c.id));
+    return (this.ui.data()?.cases ?? [])
+      .map((c) => c.id)
+      .filter((id) => !listed.has(id));
   }
   currentPage() {
     return `current page is ${pageNames[this.ui.page()]}`;
@@ -68,7 +104,12 @@ export class ActionDispatcher {
           this.ui.menu() === value
             ? null
             : z
-                .enum(["customer", "filter-technician", "technician"])
+                .enum([
+                  "customer",
+                  "filter-technician",
+                  "technician",
+                  "open-case",
+                ])
                 .parse(value),
         );
         break;
@@ -127,6 +168,7 @@ export class ActionDispatcher {
         );
         break;
       case "case":
+      case "open-case":
         this.ui.navigate("cases", actor);
         this.ui.openCase(value ?? "", actor);
         break;
