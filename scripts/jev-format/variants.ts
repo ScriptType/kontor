@@ -1,7 +1,7 @@
 import { choice, type EntryType } from "@typesafe-ai/sdk";
 import { seedWorkspace } from "../../shared/domain.js";
 import { requestHints } from "../../shared/request-hints.js";
-import { observedChanges } from "../../shared/step-log.js";
+import { observedChanges, stepLog } from "../../shared/step-log.js";
 import {
   assessQuestion,
   assessState,
@@ -288,6 +288,62 @@ const minimal = (s: State): State => {
   };
 };
 
+// l: cost cuts for the compact state of g3-cpe-duel. Most decide input is
+// the history: every step repeats the whole observation before and after.
+/** The recorded steps as the product's step input, effect text taken whole. */
+const productSteps = (s: State) =>
+  stepsOf(s).map((step) => ({
+    snapshotId: "earlier",
+    action: { ...step.action, jev: { does: step.action.effect, reveals: "" } },
+    authorizedBy: step.authorizedBy,
+    outcome: step.outcome,
+    before: JSON.stringify(step.before),
+    after: JSON.stringify(step.after),
+  }));
+/** l1: the lean step log of shared/step-log.ts, one change list per step. */
+const leanSteps = (s: State) => ({
+  ...s,
+  observedSteps: stepLog(productSteps(s)),
+});
+/** l2: the lean step log plus where each step ran: page and open case. */
+const placedSteps = (s: State) => {
+  const log = stepLog(productSteps(s));
+  return {
+    ...s,
+    observedSteps: stepsOf(s).map((step, i) => {
+      const { changes, ...entry } = log[i]!;
+      return {
+        ...entry,
+        at: { page: step.before["page"], caseId: step.before["caseId"] },
+        changes,
+      };
+    }),
+  };
+};
+/**
+ * l3: the snapshots kept, without the saved case record (the facts carry the
+ * current one), id lists as counts, and fields that stay empty.
+ */
+const slimObservation = (observed: Record<string, unknown>) => {
+  const { selected: _, draftOwner: __, ...rest } = observed;
+  return Object.fromEntries(
+    Object.entries(rest).flatMap(([key, value]) =>
+      key === "operations" || key === "receipts"
+        ? [[key, Array.isArray(value) ? value.length : value]]
+        : key === "unknownSave" && value === null
+          ? []
+          : [[key, value]],
+    ),
+  );
+};
+const slimSteps = (s: State) => ({
+  ...s,
+  observedSteps: stepsOf(s).map((step) => ({
+    ...step,
+    before: slimObservation(step.before),
+    after: slimObservation(step.after),
+  })),
+});
 export const variants = {
   identity: variant({}),
   "f1-meta": variant({ shape: pipe(noSnapshotId, noViewport)() }),
@@ -382,4 +438,12 @@ export const variants = {
     decideShape: pipe(noDuplicates, requestLast)(),
     question: reorder(regionOrder),
   }),
+  "l1-steplog": variant({ shape: pipe(leanSteps)() }),
+  "l1d-steplog": variant({ decideShape: pipe(leanSteps)() }),
+  "l2-placed": variant({ shape: pipe(placedSteps)() }),
+  "l3-slim": variant({ shape: pipe(slimSteps)() }),
+  "l4-noregions": variant({ shape: pipe(noRegions)() }),
+  "l5-steplog-noregions": variant({ shape: pipe(leanSteps, noRegions)() }),
+  "l6-placed-noregions": variant({ shape: pipe(placedSteps, noRegions)() }),
+  "l7-slim-noregions": variant({ shape: pipe(slimSteps, noRegions)() }),
 } satisfies Record<string, Variant>;

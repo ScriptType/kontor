@@ -505,7 +505,7 @@ const check = {
       if (!labels) continue;
       states.push({
         ...bench,
-        id: `${scenarioId}:${call}`,
+        id: `${basename(file, ".json")}:${call}`,
         scenarioId,
         persona: scenario.persona,
         holdout: scenario.holdout,
