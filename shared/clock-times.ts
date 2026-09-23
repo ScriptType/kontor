@@ -131,6 +131,12 @@ export const relationOffset = ({ minutes, direction, half }: ClockRelation) =>
   (half ? -halfHour : 0) + (direction === "vor" ? -minutes : minutes);
 /** A clock time code reads without doubt, in minutes after midnight. */
 type ClockTime = Span & { minutes: number };
+const minutesPerDay = 24 * 60;
+/** 24:00 ends the day; other times wrap into it ("10 vor 0" is 23:50). */
+const intoDay = (minutes: number) =>
+  minutes === minutesPerDay
+    ? minutes
+    : (minutes + minutesPerDay) % minutesPerDay;
 function clockTimes(request: string): ClockTime[] {
   const taken = dates(request);
   const times: ClockTime[] = [];
@@ -179,7 +185,9 @@ function clockTimes(request: string): ClockTime[] {
         minutes: hourWords.get(m[1]!.toLowerCase())! * 60,
       });
   }
-  return times.sort((a, b) => a.at - b.at);
+  return times
+    .map((time) => ({ ...time, minutes: intoDay(time.minutes) }))
+    .sort((a, b) => a.at - b.at);
 }
 const rangeSeparator = /(?:\bbis(?:\s+um)?|[-–])\s*$/iu;
 const noon = 12 * 60;
