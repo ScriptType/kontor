@@ -89,3 +89,59 @@ test("an answer outside the offered options or a failed call is a provider error
     { code: "PROVIDER_UNAVAILABLE" },
   );
 });
+
+test("an assignment is read even when a choice over all people would name the current assignee", async () => {
+  const request =
+    "zeig die offenen vorgänge von jonas weber.\nWähle den ersten aus und gib den lea";
+  const sent: Questions[] = [];
+  const asksAbout = (text: string) => (question: { instructions?: string }) =>
+    question.instructions?.includes(text) ?? false;
+  const plan = await createPlanner(live, async (_url, init) => {
+    const { questions } = JSON.parse(String(init?.body)) as {
+      questions: Record<
+        string,
+        {
+          type: string;
+          instructions?: string;
+          criteria?: Record<string, string>;
+        }
+      >;
+    };
+    sent.push(questions);
+    const yes = (question: { instructions?: string }) =>
+      asksAbout("act on case V-1041 (")(question) ||
+      (asksAbout("change this field of case V-1041 (")(question) &&
+        asksAbout("The technician assigned")(question)) ||
+      asksAbout("make Lea Sommer the value of this field of case V-1041 (")(
+        question,
+      );
+    return Response.json({
+      model: "test",
+      answers: Object.fromEntries(
+        Object.entries(questions).map(([key, question]) => {
+          if (question.type === "noul")
+            return [key, { type: "noul", noul: yes(question) ? 0.8 : 0.1 }];
+          const options = Object.keys(question.criteria ?? {});
+          // The recorded model answer: the person the list is filtered by, not the one named for the case.
+          const choice = options.includes("jonas") ? "jonas" : options[0];
+          return [
+            key,
+            {
+              type: "choice",
+              choice,
+              confidence: 0.7,
+              probabilities: Object.fromEntries(
+                options.map((option) => [
+                  option,
+                  option === choice ? 0.7 : 0.3 / (options.length - 1),
+                ]),
+              ),
+            },
+          ];
+        }),
+      ),
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+  })({ ...scene, request });
+  assert.deepEqual(plan?.cases, { "V-1041": { technician: "lea" } });
+});
