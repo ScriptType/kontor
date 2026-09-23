@@ -487,7 +487,7 @@ test("g3-mem is g3 with the lean state for decide only", () => {
 });
 test("only the plan gates let the plan release a check", () => {
   for (const gate of gateNames)
-    if (!gate.startsWith("g3-compact-plan"))
+    if (!gate.startsWith("g3-compact-plan") && gate !== "g3-cpe-duel")
       assert.deepEqual(gates[gate].planVote, [], gate);
   assert.deepEqual(gates["g3-compact-plan"].planVote, ["pick", "completion"]);
   assert.deepEqual(gates["g3-compact-plan-effect"].planVote, [

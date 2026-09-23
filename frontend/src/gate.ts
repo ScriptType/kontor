@@ -50,6 +50,11 @@ export type GatePolicy = Read & {
    * done, or the effect check of the picked action.
    */
   planVote: readonly PlanVia[];
+  /**
+   * Where a pick that does not act gets a second look between the two
+   * strongest effects, and the probability the winner needs to act.
+   */
+  duel?: number;
 };
 export type PlanVia = "pick" | "completion" | "effect";
 
@@ -236,6 +241,19 @@ export const gates = {
     prompt: "compact",
     planVote: ["pick", "completion", "effect"],
   },
+  "g3-cpe-duel": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
+    duel: 0.75,
+  },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
@@ -370,6 +388,39 @@ export function pick(
     total,
     margin,
   };
+}
+
+/**
+ * The two options a second look chooses between when this pick does not act:
+ * the options of the two strongest effects, or null when the gate has no duel,
+ * the pick is done, abstain, a question, a save or a discard, either effect is
+ * abstain, or the runner-up effect has less than 0.15.
+ */
+export function duelPair(
+  gate: GateName,
+  chosen: Pick<GatePick, "choice" | "kind">,
+  decision: Pick<Decision, "probabilities">,
+  input: Pick<DecisionInput, "actions" | "context">,
+): [string, string] | null {
+  const policy: GatePolicy = gates[gate];
+  if (
+    policy.duel === undefined ||
+    chosen.choice === "done" ||
+    chosen.choice === "abstain" ||
+    chosen.kind === "ask" ||
+    chosen.kind === "commit"
+  )
+    return null;
+  const [first, second] = effectGroups(decision.probabilities, input);
+  if (
+    !first ||
+    !second ||
+    second.total < 0.15 ||
+    first.choice === "abstain" ||
+    second.choice === "abstain"
+  )
+    return null;
+  return [first.choice, second.choice];
 }
 
 /** Whether this gate runs the separate effect check for an action of this kind. */
