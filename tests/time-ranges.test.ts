@@ -32,6 +32,7 @@ const lengths: [string, string[]][] = [
   ["von viertel nach neun bis dreiviertel elf", ["90"]],
   ["von 13:15 bis viertel vor 3", []],
   ["2 bis 3 Stunden", []],
+  ["2  bis 3  Stunden", []],
   ["30 bis 45 Minuten", []],
   ["von 15 bis 13", []],
   ["von 9 bis 18 Uhr", []],
