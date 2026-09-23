@@ -343,6 +343,44 @@ for (const [reason, answer] of Object.entries(finishing)) {
   });
 }
 
+test("finishing by hand waits for a receipt of every save", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["nav:customers"],
+    async (store, _held, _arrived, snapshots, _observations, assessed) => {
+      await start(page, "Zeige Kunden");
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      await page.evaluate(() => {
+        const history = JSON.parse(
+          localStorage.getItem("kontor-command-v1") ?? "null",
+        );
+        history.history[0].operations.push("unconfirmed-operation");
+        history.unfinished = true;
+        localStorage.setItem("kontor-command-v1", JSON.stringify(history));
+      });
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Fortsetzen", exact: true })
+        .click();
+      await expect(review(page)).toContainText(
+        "vollständige Erfüllung noch nicht bestätigen",
+      );
+      const calls = { decide: snapshots.length, assess: assessed.length };
+      await choose(page, "Als erledigt abschließen").click();
+      await expect(page.locator(".activity-label")).toHaveText(
+        "Ein Speicherergebnis ist noch nicht bestätigt. Abschluss erst nach der Prüfung möglich.",
+      );
+      await expect(review(page)).toHaveCount(0);
+      expect({ decide: snapshots.length, assess: assessed.length }).toEqual(
+        calls,
+      );
+      expect(store.snapshot().revision).toBe(0);
+    },
+  );
+});
+
 test("an uncertain blocked choice opens the review and a ranked navigation proceeds", async ({
   page,
 }) => {
