@@ -521,6 +521,8 @@ export type CallRecord = {
   confidence: number | null;
   probabilities: Record<string, number> | null;
   ms: number;
+  /** The provider's HTTP status; null while no response has arrived. */
+  status: number | null;
   payload?: { request: unknown; answers: unknown; usage: unknown };
 };
 const providerAnswerSchema = z.object({
@@ -568,6 +570,7 @@ export function recordingFetch(options: {
       confidence: null,
       probabilities: null,
       ms: 0,
+      status: null,
     };
     callLog.push(record);
     const request: unknown = JSON.parse(String(init?.body));
@@ -588,6 +591,7 @@ export function recordingFetch(options: {
       confidence: first?.confidence ?? null,
       probabilities: first?.probabilities ?? null,
       ms: Date.now() - began,
+      status: response.status,
       ...(options.recordPayloads
         ? {
             payload: {

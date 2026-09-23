@@ -71,6 +71,7 @@ test("a recorded call keeps the exact request body, the provider's answers and i
         choice: "save",
         confidence: 0.62,
         probabilities: { save: 0.62, done: 0.38 },
+        status: 200,
         payload: {
           request: {
             state: '{"page":"cases"}',
@@ -89,6 +90,16 @@ test("without recording the call log holds no payload", async () => {
   assert.equal(callLog.length, 1);
   assert.equal("payload" in callLog[0]!, false);
   assert.equal(callLog[0]!.choice, "save");
+});
+test("a failed call keeps the provider's status, so a rate limit reads apart from a bad request", async () => {
+  for (const status of [400, 402, 429, 503]) {
+    const recording = recorder({
+      respond: () => Response.json({ error: "failed" }, { status }),
+    });
+    await assert.rejects(recording.ask());
+    assert.equal(recording.callLog[0]?.status, status);
+    assert.equal(recording.callLog[0]?.choice, null);
+  }
 });
 test("a call past the eval budget is refused unsent and the refusal is kept for the sample", async () => {
   const recording = recorder({ limit: 1 });
