@@ -155,7 +155,7 @@ const spokenDurations: Record<string, { words: string; minutes: number }> = {
   ...Object.fromEntries(
     Array.from({ length: 100 }, (_, i) => [
       `m${i + 1}`,
-      { words: `${germanWord(i + 1)} (Minuten)`, minutes: i + 1 },
+      { words: `${germanWord(i + 1).join(" / ")} (Minuten)`, minutes: i + 1 },
     ]),
   ),
   hq: { words: "eine Viertelstunde", minutes: 15 },
@@ -166,7 +166,10 @@ const spokenDurations: Record<string, { words: string; minutes: number }> = {
   ...Object.fromEntries(
     Array.from({ length: 11 }, (_, i) => [
       `h${i + 2}`,
-      { words: `${germanWord(i + 2)} Stunden`, minutes: (i + 2) * 60 },
+      {
+        words: `${germanWord(i + 2).join(" / ")} Stunden`,
+        minutes: (i + 2) * 60,
+      },
     ]),
   ),
   h2h: { words: "zweieinhalb Stunden", minutes: 150 },
@@ -419,7 +422,7 @@ const dateTimeReader: Reader = {
           ...Object.fromEntries(
             writtenHours(request).map((hour) => [
               String(hour),
-              hour ? `${hour} (${germanWord(hour).split(" / ")[0]})` : "0",
+              hour ? `${hour} (${germanWord(hour)[0]})` : "0",
             ]),
           ),
           none: "der Auftrag nennt keine Stunde",

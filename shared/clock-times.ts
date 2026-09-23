@@ -3,9 +3,7 @@ import { germanWord } from "./number-words.js";
 const numberWords = (upTo: number) =>
   new Map(
     Array.from({ length: upTo }, (_, i) =>
-      germanWord(i + 1)
-        .split(" / ")
-        .map((word) => [word, i + 1] as const),
+      germanWord(i + 1).map((word) => [word, i + 1] as const),
     ).flat(),
   );
 const hourWords = numberWords(24);

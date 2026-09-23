@@ -34,13 +34,15 @@ const tens = [
   "achtzig",
   "neunzig",
 ];
-export function germanWord(n: number): string {
-  if (n === 100) return "hundert";
-  if (n < 10) return n === 1 ? "eins / ein / eine" : ones[n]!;
-  if (n < 20) return teens[n - 10]!;
+/** The words for n from 1 to 100; 1 has three ("eins", "ein", "eine"). */
+export function germanWord(n: number): string[] {
+  if (n === 100) return ["hundert"];
+  if (n === 1) return ["eins", "ein", "eine"];
+  if (n < 10) return [ones[n]!];
+  if (n < 20) return [teens[n - 10]!];
   const unit = n % 10;
   const ten = tens[Math.floor(n / 10)]!;
-  return unit ? `${unit === 1 ? "ein" : ones[unit]}und${ten}` : ten;
+  return [unit ? `${unit === 1 ? "ein" : ones[unit]}und${ten}` : ten];
 }
 const clockBefore = /(?:\bum|\bgegen|\bhalb|\bviertel)\s$/iu;
 /** "zehn nach drei", "zwanzig vor elf": minutes before or after an hour on the clock. */
@@ -55,7 +57,9 @@ const minuteUnit = /^\s?(?:min|minuten?)\b/iu;
  */
 export function spokenNumbers(request: string) {
   const words = new Map(
-    Array.from({ length: 91 }, (_, i) => [germanWord(i + 10), i + 10]),
+    Array.from({ length: 91 }, (_, i) =>
+      germanWord(i + 10).map((word) => [word, i + 10] as const),
+    ).flat(),
   );
   const found = [...request.matchAll(/\p{L}+/gu)].map((m, i) => ({
     i,
