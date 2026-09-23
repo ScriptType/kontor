@@ -90,13 +90,17 @@ test("an answer outside the offered options or a failed call is a provider error
   );
 });
 
-test("an assignment is read even when a choice over all people would name the current assignee", async () => {
+/**
+ * Reads the user's request with the answers the model gave on it: the case and
+ * its assignee change, a choice over all people names jonas, the person the
+ * list is filtered by, and the yes/no for Lea is `lea`.
+ */
+function readAssignment(lea: number) {
   const request =
     "zeig die offenen vorgänge von jonas weber.\nWähle den ersten aus und gib den lea";
-  const sent: Questions[] = [];
   const asksAbout = (text: string) => (question: { instructions?: string }) =>
     question.instructions?.includes(text) ?? false;
-  const plan = await createPlanner(live, async (_url, init) => {
+  return createPlanner(live, async (_url, init) => {
     const { questions } = JSON.parse(String(init?.body)) as {
       questions: Record<
         string,
@@ -107,22 +111,23 @@ test("an assignment is read even when a choice over all people would name the cu
         }
       >;
     };
-    sent.push(questions);
     const yes = (question: { instructions?: string }) =>
       asksAbout("act on case V-1041 (")(question) ||
       (asksAbout("change this field of case V-1041 (")(question) &&
-        asksAbout("The technician assigned")(question)) ||
-      asksAbout("make Lea Sommer the value of this field of case V-1041 (")(
-        question,
-      );
+        asksAbout("The technician assigned")(question))
+        ? 0.8
+        : asksAbout("make Lea Sommer the value of this field of case V-1041 (")(
+              question,
+            )
+          ? lea
+          : 0.1;
     return Response.json({
       model: "test",
       answers: Object.fromEntries(
         Object.entries(questions).map(([key, question]) => {
           if (question.type === "noul")
-            return [key, { type: "noul", noul: yes(question) ? 0.8 : 0.1 }];
+            return [key, { type: "noul", noul: yes(question) }];
           const options = Object.keys(question.criteria ?? {});
-          // The recorded model answer: the person the list is filtered by, not the one named for the case.
           const choice = options.includes("jonas") ? "jonas" : options[0];
           return [
             key,
@@ -143,5 +148,14 @@ test("an assignment is read even when a choice over all people would name the cu
       usage: { input_tokens: 1, output_tokens: 1 },
     });
   })({ ...scene, request });
-  assert.deepEqual(plan?.cases, { "V-1041": { technician: "lea" } });
+}
+
+test("an assignment is read even when a choice over all people would name the current assignee", async () => {
+  assert.deepEqual((await readAssignment(0.8))?.cases, {
+    "V-1041": { technician: "lea" },
+  });
+});
+
+test("an assignee change that names no person changes nobody", async () => {
+  assert.deepEqual((await readAssignment(0.1))?.cases, { "V-1041": {} });
 });
