@@ -18,8 +18,10 @@ import {
 } from "./action-dispatcher";
 import type { FieldDescription } from "../../shared/command";
 import {
+  availability,
   blockers,
   defaultCaseFilters,
+  type Availability,
   type CaseDraft,
   type CaseFilters,
   type ServiceCase,
@@ -27,6 +29,7 @@ import {
 } from "../../shared/domain";
 type Customer = Workspace["customers"][number];
 type Technician = Workspace["technicians"][number];
+type Member = Technician & { free: Availability };
 const statusNames: Record<CaseFilters["status"], string> = {
   all: "all statuses",
   open: "open",
@@ -110,6 +113,17 @@ export class Cases {
       d = this.ui.draft();
     return workspace && c && d
       ? blockers(workspace, { ...c, ...d, status: "done" })
+      : [];
+  });
+  readonly team = computed((): Member[] => {
+    const workspace = this.ui.data(),
+      c = this.ui.selected(),
+      d = this.ui.draft();
+    return workspace && c && d
+      ? workspace.technicians.map((t) => ({
+          ...t,
+          free: availability(workspace, { ...c, ...d }, t.id),
+        }))
       : [];
   });
   readonly String = String;
@@ -248,26 +262,55 @@ export class Cases {
     );
   }
   technicianMenuAction(c: ServiceCase, draft: CaseDraft) {
+    const names = (kind: Availability["kind"]) =>
+      this.team()
+        .filter((t) => t.free.kind === kind)
+        .map(
+          (t) =>
+            `${t.name}${t.id === draft.technicianId ? " (current)" : ""}${t.free.kind === "busy" ? ` (${t.free.cases.join(", ")})` : ""}`,
+        )
+        .join(", ");
+    const available = names("available") || "nobody",
+      busy = names("busy"),
+      lacking = names("unqualified");
     return action("menu:technician", "Zuständigkeit öffnen", {
       does: `Open the assignee picker of case ${c.id}`,
-      now: `assignee is ${this.ui.technicianName(draft.technicianId)}`,
+      now: [
+        `assignee is ${this.ui.technicianName(draft.technicianId)}`,
+        draft.appointment
+          ? `available for ${c.id} at ${draft.appointment.start.replace("T", " ").slice(0, 16)}: ${available}`
+          : `qualified for ${c.id} (skill ${c.skill}; no appointment in the draft, times not checked): ${available}`,
+        busy && `busy then: ${busy}`,
+        lacking && `lacking skill ${c.skill}: ${lacking}`,
+      ]
+        .filter(Boolean)
+        .join("; "),
       reveals:
         "Only opens a list of technicians to assign; assigns nothing yet (a technician option follows)",
       notFor:
         "filtering the case list by technician (that is the technician filter menu)",
     });
   }
-  technicianAction(t: Technician, c: ServiceCase, draft: CaseDraft) {
+  technicianAction(t: Member, c: ServiceCase, draft: CaseDraft) {
     const current = this.ui.technicianName(draft.technicianId);
+    const free =
+      t.free.kind === "unqualified"
+        ? `${t.name} lacks skill ${t.free.skill}`
+        : t.free.kind === "busy"
+          ? `${t.name} is busy then with ${t.free.cases.join(", ")}`
+          : t.free.at
+            ? `${t.name} is available`
+            : "no appointment in the draft, times not checked";
     return action(
       `technician:${t.id}`,
       `${t.name} zuweisen`,
       {
         does: `Assign ${t.name} to case ${c.id}`,
-        now:
+        now: `${
           draft.technicianId === t.id
             ? `${t.name} is already the assignee; no change`
-            : `assignee ${current} → ${t.name}`,
+            : `assignee ${current} → ${t.name}`
+        }; ${free}`,
         notFor: `filtering the case list to ${t.name} (that is the technician filter)`,
       },
       draft.technicianId === t.id
@@ -275,6 +318,16 @@ export class Cases {
         : `${c.id}: Zuständigkeit von ${current} auf ${t.name} im Entwurf ändern`,
       "draft",
     );
+  }
+  technicianNote(t: Member) {
+    const skills = t.skills.join(", ");
+    return t.free.kind === "unqualified"
+      ? `${skills} · ohne Qualifikation ${t.free.skill}`
+      : t.free.kind === "busy"
+        ? `${skills} · belegt durch ${t.free.cases.join(", ")}`
+        : t.free.at
+          ? `${skills} · verfügbar`
+          : skills;
   }
   removeAppointmentAction(c: ServiceCase, draft: CaseDraft) {
     return action(

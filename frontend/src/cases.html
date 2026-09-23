@@ -195,13 +195,13 @@
         </button>
         @if (ui.menu() === 'technician') {
         <div class="popover">
-          @for (t of ui.data()?.technicians; track t.id) {
+          @for (t of team(); track t.id) {
           <button
-            [disabled]="!t.skills.includes(selected.skill)"
+            [disabled]="t.free.kind === 'unqualified'"
             [kontorAction]="technicianAction(t, selected, draft)"
             (invoked)="actions.execute('technician:' + t.id, $event)"
           >
-            {{ t.name }} <small>{{ t.skills.join(', ') }}</small>
+            {{ t.name }} <small>{{ technicianNote(t) }}</small>
           </button>
           }
         </div>

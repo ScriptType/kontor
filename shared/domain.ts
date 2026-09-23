@@ -94,57 +94,61 @@ export type Availability =
   | { kind: "available"; at: ServiceCase["appointment"] }
   | { kind: "unqualified"; skill: string }
   | { kind: "busy"; cases: string[] };
+function busyWith(
+  workspace: Workspace,
+  value: ServiceCase,
+  technicianId: string,
+) {
+  const appointment = value.appointment;
+  return appointment
+    ? workspace.cases
+        .filter(
+          (c) =>
+            c.id !== value.id &&
+            c.status === "open" &&
+            c.technicianId === technicianId &&
+            c.appointment &&
+            overlaps(appointment, c.appointment),
+        )
+        .map((c) => c.id)
+    : [];
+}
 export function availability(
-  _workspace: Workspace,
-  _value: ServiceCase,
-  _technicianId: string,
+  workspace: Workspace,
+  value: ServiceCase,
+  technicianId: string,
 ): Availability {
-  throw new Error("not implemented");
+  const technician = workspace.technicians.find((t) => t.id === technicianId);
+  if (!technician?.skills.includes(value.skill))
+    return { kind: "unqualified", skill: value.skill };
+  const cases = busyWith(workspace, value, technicianId);
+  return cases.length
+    ? { kind: "busy", cases }
+    : { kind: "available", at: value.appointment };
 }
 export function blockers(workspace: Workspace, value: ServiceCase): Blocker[] {
   const result: Blocker[] = [];
   const technician = workspace.technicians.find(
     (t) => t.id === value.technicianId,
   );
-  if (!technician?.skills.includes(value.skill))
+  const alternatives = (fits: (a: Availability) => boolean) =>
+    workspace.technicians
+      .filter((t) => fits(availability(workspace, value, t.id)))
+      .map((t) => t.id);
+  if (availability(workspace, value, value.technicianId).kind === "unqualified")
     result.push({
       kind: "qualification",
       message:
         "Die zuständige Person benötigt die Qualifikation " + value.skill + ".",
-      alternatives: workspace.technicians
-        .filter((t) => t.skills.includes(value.skill))
-        .map((t) => t.id),
+      alternatives: alternatives((a) => a.kind !== "unqualified"),
     });
-  if (value.appointment) {
-    const appointment = value.appointment;
-    const conflicts = workspace.cases.filter(
-      (c) =>
-        c.id !== value.id &&
-        c.status === "open" &&
-        c.appointment &&
-        c.technicianId === value.technicianId &&
-        overlaps(appointment, c.appointment),
-    );
-    if (conflicts.length)
-      result.push({
-        kind: "conflict",
-        message: `${technician?.name} ist durch ${conflicts.map((c) => c.id).join(", ")} belegt.`,
-        alternatives: workspace.technicians
-          .filter(
-            (t) =>
-              t.skills.includes(value.skill) &&
-              !workspace.cases.some(
-                (c) =>
-                  c.id !== value.id &&
-                  c.status === "open" &&
-                  c.technicianId === t.id &&
-                  c.appointment &&
-                  overlaps(appointment, c.appointment),
-              ),
-          )
-          .map((t) => t.id),
-      });
-  }
+  const conflicts = busyWith(workspace, value, value.technicianId);
+  if (conflicts.length)
+    result.push({
+      kind: "conflict",
+      message: `${technician?.name} ist durch ${conflicts.join(", ")} belegt.`,
+      alternatives: alternatives((a) => a.kind === "available"),
+    });
   if (value.status === "done") {
     if (value.minutes === 0)
       result.push({
