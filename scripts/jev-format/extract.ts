@@ -18,6 +18,7 @@ import {
   isDuel,
   labelState,
   labRoot,
+  offersSavedArithmetic,
   recordedCallSchema,
   sentActionSchema,
   sha256,
@@ -303,6 +304,9 @@ const check = {
     const scenario = meta.get(scenarioId);
     if (!scenario) throw new Error(`${scenarioId} has no replay path`);
     const workspace = seededStore(sample.scenario.start).snapshot();
+    const savedArithmetic = offersSavedArithmetic(
+      sample.callLog.flatMap(({ payload }) => (payload ? [payload] : [])),
+    );
     const executed = sample.result.steps.map(stepId);
     for (const [call, record] of sample.callLog.entries()) {
       const payload = record.payload;
@@ -399,7 +403,7 @@ const check = {
       const kinds = optionKinds(
         actions,
         options,
-        fieldCandidates(state, workspace),
+        fieldCandidates(state, workspace, savedArithmetic),
       );
       const bench = {
         state,

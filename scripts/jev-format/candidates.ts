@@ -8,6 +8,7 @@ import {
   fieldCandidates,
   fullStateSchema,
   isDuel,
+  offersSavedArithmetic,
   recordedCallSchema,
 } from "./bench.js";
 
@@ -34,14 +35,18 @@ for (const run of values.runs.split(",").filter(Boolean))
       JSON.parse(await readFile(join(run, "samples", file), "utf8")),
     );
     const start = seededStore(sample.scenario.start).snapshot();
-    for (const [call, { question, payload }] of sample.callLog.entries()) {
-      if (question !== "next") continue;
+    const answered = sample.callLog.flatMap(({ question, payload }, call) => {
+      if (question !== "next") return [];
       const recorded = recordedCallSchema.safeParse(payload);
-      if (!recorded.success) {
-        unanswered++;
-        continue;
-      }
-      if (isDuel(recorded.data)) continue;
+      if (recorded.success) return [{ call, recorded: recorded.data }];
+      unanswered++;
+      return [];
+    });
+    const savedArithmetic = offersSavedArithmetic(
+      answered.map(({ recorded }) => recorded),
+    );
+    for (const { call, recorded } of answered) {
+      if (isDuel(recorded)) continue;
       const rebuilt = fieldCandidates(
         fullStateSchema
           .pick({
@@ -50,11 +55,12 @@ for (const run of values.runs.split(",").filter(Boolean))
             availableFields: true,
           })
           .loose()
-          .parse(JSON.parse(recorded.data.request.state)),
+          .parse(JSON.parse(recorded.request.state)),
         start,
+        savedArithmetic,
       );
       for (const [id, text] of Object.entries(
-        recorded.data.request.questions["next"]?.criteria ?? {},
+        recorded.request.questions["next"]?.criteria ?? {},
       )) {
         if (!id.startsWith("field:")) continue;
         // A full-state option goes on after the value source with its kind.

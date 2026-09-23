@@ -26,7 +26,7 @@ const state = {
 };
 
 test("the bench rebuilds a sum and a difference from the minutes saved at the run's start", () => {
-  assert.deepEqual(Object.fromEntries(fieldCandidates(state, start)), {
+  assert.deepEqual(Object.fromEntries(fieldCandidates(state, start, true)), {
     "field:minutes:15": {
       source: "number",
       bound: false,
@@ -41,6 +41,16 @@ test("the bench rebuilds a sum and a difference from the minutes saved at the ru
       source: "difference",
       bound: false,
       text: "difference: saved 50 minus 15 from the request = 35",
+    },
+  });
+});
+
+test("a run recorded before sums and differences keeps the request number bound", () => {
+  assert.deepEqual(Object.fromEntries(fieldCandidates(state, start, false)), {
+    "field:minutes:15": {
+      source: "number",
+      bound: true,
+      text: "literal number from the request",
     },
   });
 });

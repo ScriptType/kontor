@@ -21,7 +21,8 @@ import {
 import { readConfig } from "../../server/config.js";
 import { createClient } from "../../server/jev.js";
 import type { ActionDescription } from "../../shared/command.js";
-import type { Workspace } from "../../shared/domain.js";
+import { savedMinutes } from "../../shared/dimensions.js";
+import { draftOf, type Workspace } from "../../shared/domain.js";
 import { describeSource, fieldValues } from "../../shared/field-values.js";
 import { guardStop } from "../../shared/run-guard.js";
 
@@ -130,10 +131,24 @@ export const isDuel = (payload: RecordedCall) =>
   ) ?? false;
 
 /**
+ * Whether a recorded run offered sums and differences of saved minutes. Since
+ * they came in, the app offers them for every request number of a number field
+ * with saved minutes and names the saved value in their source; older
+ * recordings have none.
+ */
+export const offersSavedArithmetic = (calls: RecordedCall[]) =>
+  calls.some((call) =>
+    Object.values(call.request.questions["next"]?.criteria ?? {}).some(
+      (text) => /Value source: (sum|difference): saved /.test(text),
+    ),
+  );
+/**
  * The value candidates the app offered on a decide state, keyed by action id,
  * recomputed with fieldValues from the run's start workspace: its cases and
- * customers are the existing values a request can name. `text` is the value
- * source as Jev reads it.
+ * customers are the existing values a request can name. With
+ * `savedArithmetic`, its saved records give the minutes a sum or difference
+ * starts from, as the run's `records` hold them. `text` is the value source
+ * as Jev reads it.
  */
 export function fieldCandidates(
   state: Pick<
@@ -141,18 +156,24 @@ export function fieldCandidates(
     "originalRequest" | "explicitAnswers" | "availableFields"
   >,
   start: Workspace,
+  savedArithmetic: boolean,
 ) {
   const existing = [
     ...start.cases.flatMap((c) => [c.id, c.title]),
     ...start.customers.map((c) => c.name),
   ];
+  const records = new Map(start.cases.map((c) => [c.id, draftOf(c)]));
   return new Map(
-    state.availableFields.flatMap((field) =>
-      fieldValues(
-        { ...field, jev: { name: field.label } },
+    state.availableFields.flatMap((field) => {
+      const described = { ...field, jev: { name: field.label } };
+      return fieldValues(
+        described,
         state.originalRequest,
         state.explicitAnswers,
         existing,
+        savedArithmetic
+          ? savedMinutes(described, records.get(field.scope))
+          : undefined,
       ).map(({ value, bound, ...found }) => [
         `field:${field.id}:${value}`,
         {
@@ -160,8 +181,8 @@ export function fieldCandidates(
           bound,
           text: describeSource(found, value, "en"),
         },
-      ]),
-    ),
+      ]);
+    }),
   );
 }
 
