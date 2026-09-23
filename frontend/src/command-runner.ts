@@ -1309,12 +1309,16 @@ export class CommandRunner {
     }
     return true;
   }
-  /** Binds each request ordinal naming the row of the case this step opens, so a later shift of the list does not move it. */
+  /** Binds each request ordinal naming the row of the case this step opens, by row or through the case picker, so a later shift of the list does not move it. */
   private bindOrdinals(action: ActionDescription, runId: string | null) {
     const run = this.history().find((r) => r.id === runId);
-    if (!run || !action.id.startsWith("case:") || this.ui.page() !== "cases")
+    const [kind, caseId = ""] = action.id.split(":");
+    if (
+      !run ||
+      (kind !== "case" && kind !== "open-case") ||
+      this.ui.page() !== "cases"
+    )
       return;
-    const caseId = action.id.slice("case:".length);
     const rows = this.ui.filtered().map((c) => c.id);
     const openedAtRow = rows.indexOf(caseId) + 1;
     const bound = requestOrdinals(run.request).filter(
