@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { seedWorkspace } from "../shared/domain.js";
-import { requestHints } from "../shared/request-hints.js";
+import { requestHints, requestOrdinals } from "../shared/request-hints.js";
 
 const workspace = seedWorkspace();
 test("request hints bind hour phrases and field words to numbers and name cases in request order", () => {
@@ -37,5 +37,24 @@ test("request hints list page words in the order the request names them", () => 
     requestHints("erst Berichte, dann Kunden und zuletzt das Team", workspace)
       .pageWordsInOrder,
     ["reports", "customers", "team"],
+  );
+});
+test("request ordinals name list rows with an article and skip 'erst' as an order word", () => {
+  assert.deepEqual(
+    requestOrdinals(
+      "zeig die offenen vorgänge von jonas weber.\nWähle den ersten aus und gib den lea",
+    ),
+    [{ mention: "den ersten", row: 1 }],
+  );
+  assert.deepEqual(
+    requestOrdinals("Nimm die zweite und danach den letzten Vorgang"),
+    [
+      { mention: "die zweite", row: 2 },
+      { mention: "den letzten", row: -1 },
+    ],
+  );
+  assert.deepEqual(
+    requestOrdinals("erst die Berichte, zuerst 1042, als erstes Lea"),
+    [],
   );
 });
