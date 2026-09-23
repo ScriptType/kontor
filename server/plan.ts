@@ -27,7 +27,7 @@ import {
   type CaseValues,
 } from "../shared/intent.js";
 import { ASK, type Plan, type PlanInput } from "../shared/plan.js";
-import { spokenNumbers } from "../shared/value-reading.js";
+import { spokenNumbers } from "../shared/number-words.js";
 import type { Config } from "./config.js";
 import { createClient } from "./jev.js";
 
