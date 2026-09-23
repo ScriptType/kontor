@@ -244,6 +244,9 @@ const hourChoices: [string, string[]][] = [
   ["am 24.09.2026 um 9", ["9", "none"]],
   ["termin 29.09. 10 uhr nee 11, 45 min", ["10", "11", "none"]],
   ["termin 2026-09-25 10:00", ["10", "none"]],
+  ["Termin um 9.10.", ["9", "10", "none"]],
+  ["Termin gegen 9.10.", ["9", "10", "none"]],
+  ["Termin am 9.10.", ["none"]],
 ];
 test("the hour is one the request writes, in digits or words, or none", () => {
   for (const [request, hours] of hourChoices)
@@ -261,6 +264,8 @@ const minuteChoices: [request: string, options: string[]][] = [
   ["um 9.45", ["0", "45", "other"]],
   ["um 9.45.", ["0", "45", "other"]],
   ["Termin 24.09.", ["0", "other"]],
+  ["Termin um 9.10.", ["0", "10", "other"]],
+  ["Termin am 9.10.", ["0", "other"]],
   ["um 9:20", ["0", "20", "other"]],
   ["um 9 Uhr 30", ["0", "30", "other"]],
   ["um neun Uhr dreißig", ["0", "30", "other"]],
