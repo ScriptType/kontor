@@ -3,6 +3,13 @@ import { start, withLive } from "./live-fixture.js";
 
 const report =
   "Setze V-1042 auf einen am 06.09 und setzt wen anderes vom team dort ein als gerade gegeben der verfügbar ist";
+/** Jev reads the day of the report and no time. */
+const readSixthOfSeptember = {
+  "f0.mode": "absolute",
+  "f0.month": "9",
+  "f0.day": "6",
+  "f0.year": "none",
+};
 
 test("a date without a time is prefilled, the time is asked, and the answer saves both", async ({
   page,
@@ -58,6 +65,7 @@ test("a date without a time is prefilled, the time is asked, and the answer save
             : (after[index - answeredAt] ?? "done"),
         confidence: 1,
       }),
+      read: readSixthOfSeptember,
     },
   );
 });
@@ -114,6 +122,7 @@ test("a noted question waits for the save while Jev assigns another technician",
         "field:appointment:2026-09-06T10:00",
         "save",
       ]),
+      read: readSixthOfSeptember,
     },
   );
 });
@@ -191,5 +200,52 @@ test("an unsure step after a noted question raises the question, not a review", 
             }
           : { choice: choices[index] ?? "done", confidence: 1 },
     },
+  );
+});
+
+const correction =
+  "V-1041: zwei Stunden is zu lang, mach mal neunzig Minuten draus";
+test("the duration answer is prefilled with the value Jev reads as the new one, not the old one", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    [],
+    async () => {
+      await start(page, correction);
+      const panel = page.locator(".answer-panel");
+      await expect(panel).toContainText("Aus dem Auftrag: 90. Bitte prüfen.");
+      await expect(
+        panel.getByLabel("V-1041 · Termindauer in Minuten"),
+      ).toHaveValue("90");
+    },
+    {
+      nextAnswer: script(["case:V-1041", "ask:duration", "done"]),
+      read: {
+        "f0.field": "duration",
+        "f0.span": "word",
+        "f0.word": "90",
+        "f0.unit": "minutes",
+      },
+    },
+  );
+});
+
+test("the answer stays empty when Jev reads no new value, though the request names the old one", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    [],
+    async () => {
+      await start(page, correction);
+      const panel = page.locator(".answer-panel");
+      await expect(panel).toContainText("Antwort ausstehend");
+      await expect(
+        panel.getByLabel("V-1041 · Termindauer in Minuten"),
+      ).toHaveValue("");
+      await expect(panel).not.toContainText("Aus dem Auftrag");
+    },
+    { nextAnswer: script(["case:V-1041", "ask:duration", "done"]) },
   );
 });

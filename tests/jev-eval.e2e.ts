@@ -18,6 +18,13 @@ import {
   type Scenario,
 } from "../scripts/jev-eval/scenarios.js";
 import { scriptedProvider } from "./live-fixture.js";
+/** Jev reads the day of the request "am 06.09" and no time. */
+const readSixthOfSeptember = {
+  "f0.mode": "absolute",
+  "f0.month": "9",
+  "f0.day": "6",
+  "f0.year": "none",
+};
 
 const done: Stop = {
   kind: "done",
@@ -106,6 +113,7 @@ const answerSample = (browser: Browser, s: Scenario) =>
           ][index] ?? "done",
         confidence: 1,
       }),
+      read: readSixthOfSeptember,
     }).fetch,
   });
 
@@ -206,9 +214,9 @@ test("a value question without a single value in the scenario is left unanswered
       caseId: "V-1042",
     },
   ]);
-  expect(result.steps.some((step) => step.startsWith("field:appointment"))).toBe(
-    false,
-  );
+  expect(
+    result.steps.some((step) => step.startsWith("field:appointment")),
+  ).toBe(false);
   expect(result.observed?.receipts).toEqual([]);
 });
 

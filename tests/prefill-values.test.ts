@@ -1,246 +1,305 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { FieldDescription } from "../shared/command.js";
+import { seedWorkspace } from "../shared/domain.js";
 import {
-  describeSource,
-  fieldValues,
-  partialAnswer,
-  partialNotes,
-  requestNumbers,
-} from "../shared/field-values.js";
-import { requestHints } from "../shared/request-hints.js";
+  numberSpans,
+  prefillFrom,
+  readers,
+  readingKind,
+  type PartPick,
+} from "../shared/value-reading.js";
+import { readValues } from "../server/reader.js";
 
-const ids = ["V-1041", "V-1042"];
-const numberField = (id: "minutes" | "duration"): FieldDescription => ({
+const field = (
+  id: "minutes" | "duration" | "appointment" | "search",
+): FieldDescription => ({
   id,
   scope: "V-1042",
-  label: id,
+  label: `V-1042 · ${id}`,
   kind: "draft",
-  type: "number",
+  type:
+    id === "appointment"
+      ? "datetime-local"
+      : id === "search"
+        ? "text"
+        : "number",
   current: "",
-  min: id === "duration" ? 15 : 0,
-  max: id === "duration" ? 480 : 10000,
+  ...(id === "duration"
+    ? { min: 15, max: 480 }
+    : id === "minutes"
+      ? { min: 0, max: 10000 }
+      : {}),
   jev: { name: id },
 });
-const appointment: FieldDescription = {
-  id: "appointment",
-  scope: "V-1042",
-  label: "V-1042 · Termin",
-  kind: "draft",
-  type: "datetime-local",
-  current: "",
-  jev: { name: "appointment start date and time (Termin)" },
-};
 // The demo reference day, a Tuesday.
 const today = "2026-09-22";
-const prefill = (id: "minutes" | "duration", request: string) => {
-  const partial = partialAnswer(numberField(id), request, today, ids);
-  return partial.type === "datetime-local" ? undefined : partial.value;
+const sure = (choice: string, confidence = 1): PartPick => ({
+  choice,
+  confidence,
+});
+const picks = (parts: Record<string, string>) =>
+  Object.fromEntries(
+    Object.entries(parts).map(([part, choice]) => [part, sure(choice)]),
+  );
+const minutesOf = (
+  id: "minutes" | "duration",
+  request: string,
+  parts: Record<string, string>,
+) => {
+  const reading = readers.minutes.assemble(
+    picks({ field: id, ...parts }),
+    field(id),
+    request,
+    today,
+  );
+  return reading.type === "number" ? reading.value.value : undefined;
 };
-const dateParts = (request: string) => {
-  const partial = partialAnswer(appointment, request, today, ids);
-  return partial.type === "datetime-local"
-    ? [partial.date?.day ?? null, partial.time]
+const dateTimeOf = (parts: Record<string, string>) => {
+  const reading = readers.dateTime.assemble(
+    picks({
+      mode: "none",
+      hour: "none",
+      relation: "none",
+      minute: "none",
+      daypart: "none",
+      ...parts,
+    }),
+    field("appointment"),
+    "",
+    today,
+  );
+  return reading.type === "datetime-local"
+    ? [reading.date.value, reading.time.value]
     : undefined;
 };
 
-// request, value and source span requestNumbers reads from a number word
-const numberWords: [string, [string, string][]][] = [
-  ["mach mal neunzig Minuten draus", [["90", "neunzig Minuten"]]],
-  ["fünfundvierzig Minuten gearbeitet", [["45", "fünfundvierzig Minuten"]]],
-  ["zwanzig min dran", [["20", "zwanzig min"]]],
-  ["Dreißig Minuten", [["30", "Dreißig Minuten"]]],
-  ["dreissig minuten", [["30", "dreissig minuten"]]],
-  ["einundzwanzig Minuten", [["21", "einundzwanzig Minuten"]]],
-  ["elf Minuten", [["11", "elf Minuten"]]],
-  ["hundert Minuten", [["100", "hundert Minuten"]]],
-  ["hundertzwanzig Minuten", [["120", "hundertzwanzig Minuten"]]],
-  ["Termin auf neunzig", [["90", "neunzig"]]],
-  ["fünf Minuten", [["5", "fünf Minuten"]]],
-  ["fünf Stunden", [["300", "fünf Stunden"]]],
-  ["zweieinhalb Stunden", [["150", "zweieinhalb Stunden"]]],
-  ["anderthalb Std", [["90", "anderthalb Std"]]],
-  ["eine halbe Stunde", [["30", "eine halbe Stunde"]]],
-  ["ne dreiviertel Stunde", [["45", "dreiviertel Stunde"]]],
-  ["eine Stunde", [["60", "eine Stunde"]]],
-  ["zwei Stunden", [["120", "zwei Stunden"]]],
-];
-// requests whose number words are no quantity
-const noQuantity = [
-  "die zwei Fälle von Jonas",
-  "ein Termin für Lea",
-  "um zehn Uhr",
-  "gegen elf Uhr",
-  "halb elf",
-  "die zweite Zeile",
-  "eins nach dem anderen",
-  "Vierzehntägig prüfen",
-];
-
-test("number words are read as quantities with their source span", () => {
-  for (const [request, expected] of numberWords)
-    assert.deepEqual(
-      requestNumbers(request, ids).map((n) => [n.value, n.span]),
-      expected,
-      request,
-    );
-});
-test("number words that name no quantity are no number", () => {
-  for (const request of noQuantity)
-    assert.deepEqual(requestNumbers(request, ids), [], request);
-});
-test("a number word is a candidate from its own source, and Jev sees its span", () => {
+test("every number is enumerated exactly as written", () => {
   assert.deepEqual(
-    fieldValues(numberField("duration"), "Termin neunzig Minuten", [], ids),
-    [{ value: "90", source: "words", span: "neunzig Minuten", bound: true }],
-  );
-  assert.equal(
-    describeSource({ source: "words", span: "neunzig Minuten" }, "90", "de"),
-    "Zahlwort aus Auftrag: „neunzig Minuten“ = 90 Minuten",
-  );
-  const hints = requestHints("Termin neunzig Minuten", {
-    cases: [],
-    technicians: [],
-    customers: [],
-  });
-  assert.deepEqual(
-    hints.numbers.map(({ value, from }) => ({ value, from })),
-    [{ value: 90, from: "neunzig Minuten" }],
-  );
-});
-test("a correction offers Jev both values and binds neither", () => {
-  assert.deepEqual(
-    fieldValues(
-      numberField("duration"),
-      "zwei Stunden is zu lang, mach mal neunzig Minuten draus",
-      [],
-      ids,
-    ).map((v) => [v.value, v.bound]),
+    numberSpans(
+      "1,3h und 1.25 std, dann 37 min, 2h15, 1 std 20 und 3/4 bei V-1042",
+    ).map((s) => [s.text, s.amounts]),
     [
-      ["120", false],
-      ["90", false],
+      ["1,3", [1.3]],
+      ["1.25", [1.25]],
+      ["37", [37]],
+      ["2h15", [2, 15]],
+      ["1 std 20", [1, 20]],
+      ["3/4", [0.75]],
+      ["1042", [1042]],
     ],
   );
 });
 
-// request, prefilled duration: the value the request asks for, never the one
-// it names as current, wrong or replaced, and nothing when that is unclear
-const durations: [string, string | null][] = [
-  ["zwei Stunden is zu lang, mach mal neunzig Minuten draus", "90"],
-  ["zwei Stunden is zu lang", null],
-  ["2 Stunden sind zu lang", null],
-  ["Termin 120 Minuten ist zu lang, mach 90 draus", "90"],
-  ["Termin 30 Minuten ist zu kurz, lieber 45", "45"],
-  ["Dauer 90 statt 120", "90"],
-  ["statt 120 Minuten lieber 90", "90"],
-  ["anstatt 60 Minuten bitte 45", "45"],
-  ["nicht 60 sondern 45 Minuten", "45"],
-  ["60 Minuten ist falsch, richtig sind 45", "45"],
-  ["die 60 Minuten stimmen nicht, 45", "45"],
-  ["Termin 60, nee 90", "90"],
-  ["Termin 60 Minuten, nein, 90", "90"],
-  ["45 äh 50 Minuten", "50"],
-  ["Termin 60 min, ich meine 75", "75"],
-  ["Termin 60, sorry, 75 Minuten", "75"],
-  ["Termin von 120 auf 60 min kürzen", "60"],
-  ["Termin 120 → 90 Minuten", "90"],
-  ["aktuell 120 Minuten, bitte 90", "90"],
-  ["bisher 60 Minuten, neu 90", "90"],
-  ["mach neunzig draus", "90"],
-  ["Termin 60 Minuten", "60"],
-  ["Termin eine Stunde, nee, fünfundvierzig Minuten", "45"],
-  ["den Termin um 30 min kürzen", null],
-  ["Termin 30 Minuten länger", null],
-  ["45 oder 50 Minuten", null],
-  ["bisher 60 Minuten", null],
+// request, field, picks, minutes code computes from them
+const minuteReadings: [
+  string,
+  "minutes" | "duration",
+  Record<string, string>,
+  string | null,
+][] = [
+  ["1,3h gearbeitet", "minutes", { span: "s0", unit: "hours" }, "78"],
+  ["1.25 std dran", "minutes", { span: "s0", unit: "hours" }, "75"],
+  ["37 min Arbeit", "minutes", { span: "s0", unit: "minutes" }, "37"],
+  ["Arbeitszeit 2h15", "minutes", { span: "s0", unit: "minutes" }, "135"],
+  ["Arbeitszeit 1 std 20", "minutes", { span: "s0", unit: "none" }, "80"],
+  [
+    "ne halbe stunde",
+    "minutes",
+    { span: "word", word: "halbe", unit: "hours" },
+    "30",
+  ],
+  [
+    "anderthalb",
+    "minutes",
+    { span: "word", word: "anderthalb", unit: "hours" },
+    "90",
+  ],
+  [
+    "zwei stunden is zu lang, mach neunzig draus",
+    "duration",
+    { span: "word", word: "90", unit: "minutes" },
+    "90",
+  ],
+  ["Termin 120, nee 90", "duration", { span: "s1", unit: "minutes" }, "90"],
+  ["zwei Stunden is zu lang", "duration", { span: "none" }, null],
+  ["az 50 min", "duration", { span: "elsewhere" }, null],
+  ["10 Stunden", "duration", { span: "s0", unit: "hours" }, null],
+  ["45 Minuten", "duration", { span: "s0", unit: "none" }, null],
+  ["neunzig", "duration", { span: "word", word: "none" }, null],
 ];
-
-test("the duration prefill takes the value the request asks for", () => {
-  for (const [request, value] of durations)
-    assert.equal(prefill("duration", request), value, request);
+test("code computes whole minutes from the picked span, word and unit", () => {
+  for (const [request, id, parts, value] of minuteReadings)
+    assert.equal(minutesOf(id, request, parts), value, request);
 });
-test("a correction for one field leaves the other field's value", () => {
-  const request = "Arbeitszeit 45 Minuten, Termin 60, nee 90";
-  assert.equal(prefill("minutes", request), "45");
-  assert.equal(prefill("duration", request), "90");
-});
-test("the panel names the corrected value, not the old one", () => {
-  assert.deepEqual(
-    partialNotes(
-      partialAnswer(
-        numberField("duration"),
-        "zwei Stunden is zu lang, mach mal neunzig Minuten draus",
-        today,
-        ids,
-      ),
-    ),
-    ["Aus dem Auftrag: 90. Bitte prüfen."],
+test("a value the model gives to another field is no value for this one", () => {
+  const reading = readers.minutes.assemble(
+    picks({ field: "minutes", span: "s0", unit: "minutes" }),
+    field("duration"),
+    "az 50 min",
+    today,
   );
+  assert.deepEqual(reading, {
+    type: "number",
+    value: { value: null, confidence: 1 },
+  });
+});
+test("a reading's confidence is the lowest of the parts it used", () => {
+  const reading = readers.minutes.assemble(
+    {
+      field: sure("duration", 0.9),
+      span: sure("s1", 0.8),
+      unit: sure("minutes", 0.7),
+      word: sure("none", 0.1),
+    },
+    field("duration"),
+    "Termin 60, nee 90",
+    today,
+  );
+  assert.deepEqual(reading, {
+    type: "number",
+    value: { value: "90", confidence: 0.7 },
+  });
 });
 
-// request, prefilled day and time, read against the run's start day
-const relativeDays: [string, string | null, string | null][] = [
-  ["Termin morgen", "2026-09-23", null],
-  ["Termin morgen um 10 Uhr", "2026-09-23", "10:00"],
-  ["Morgen um 9", "2026-09-23", "09:00"],
-  ["morgen früh", "2026-09-23", null],
-  ["übermorgen um 14:30", "2026-09-24", "14:30"],
-  ["heute um 15 Uhr", "2026-09-22", "15:00"],
-  ["heute morgen", "2026-09-22", null],
-  ["am Donnerstag um 9", "2026-09-24", "09:00"],
-  ["Donnerstag", "2026-09-24", null],
-  ["am Montag", "2026-09-28", null],
-  ["Dienstag", "2026-09-29", null],
-  ["nächsten Dienstag", "2026-09-29", null],
-  ["nächsten Donnerstag", "2026-09-24", null],
-  ["kommenden Freitag", "2026-09-25", null],
-  ["übernächsten Donnerstag", "2026-10-01", null],
-  ["Donnerstag nächster Woche", "2026-10-01", null],
-  ["nächste Woche Donnerstag", "2026-10-01", null],
-  ["nächste Woche am Montag", "2026-09-28", null],
-  ["am 3.", "2026-10-03", null],
-  ["am 3. um 10 Uhr", "2026-10-03", "10:00"],
-  ["am 30.", "2026-09-30", null],
-  ["am 22.", "2026-09-22", null],
-  ["am 31.", "2026-10-31", null],
-  ["am 3. Oktober", "2026-10-03", null],
-  ["am 3. Dezember", "2026-12-03", null],
-  ["am 24. Sept. um 8 Uhr", "2026-09-24", "08:00"],
-  ["morgen, also am 23.09.", "2026-09-23", null],
-  ["am Donnerstag, den 24.9.", "2026-09-24", null],
-  ["am Donnerstag, den 25.9.", null, null],
-  ["morgen oder übermorgen", null, null],
-  ["am Morgen", null, null],
-  ["guten Morgen, Termin für V-1042", null, null],
-  ["letzten Donnerstag", null, null],
-  ["donnerstags", null, null],
-  ["Ende der Woche", null, null],
+// date parts, day code assembles against Tuesday 2026-09-22
+const dates: [Record<string, string>, string | null][] = [
+  [{ mode: "relative", anchor: "today" }, "2026-09-22"],
+  [{ mode: "relative", anchor: "tomorrow" }, "2026-09-23"],
+  [{ mode: "relative", anchor: "day_after" }, "2026-09-24"],
+  [
+    { mode: "relative", anchor: "weekday", weekday: "3", week: "none" },
+    "2026-09-24",
+  ],
+  [
+    { mode: "relative", anchor: "weekday", weekday: "0", week: "none" },
+    "2026-09-28",
+  ],
+  [
+    { mode: "relative", anchor: "weekday", weekday: "1", week: "none" },
+    "2026-09-22",
+  ],
+  [
+    { mode: "relative", anchor: "weekday", weekday: "3", week: "next" },
+    "2026-10-01",
+  ],
+  [
+    { mode: "relative", anchor: "weekday", weekday: "0", week: "current" },
+    "2026-09-21",
+  ],
+  [{ mode: "relative", anchor: "weekday", weekday: "none" }, null],
+  [{ mode: "absolute", month: "10", day: "3", year: "none" }, "2026-10-03"],
+  [{ mode: "absolute", month: "9", day: "6", year: "none" }, "2026-09-06"],
+  [{ mode: "absolute", month: "1", day: "5", year: "none" }, "2027-01-05"],
+  [{ mode: "absolute", month: "9", day: "6", year: "2025" }, "2025-09-06"],
+  [{ mode: "absolute", month: "2", day: "30", year: "none" }, null],
+  [{ mode: "absolute", month: "none", day: "3", year: "none" }, null],
+  [{ mode: "absolute", month: "9", day: "6", year: "out_of_range" }, null],
+  [{ mode: "none", anchor: "tomorrow" }, null],
 ];
+test("code assembles the day from the date parts as the date cookbook does", () => {
+  for (const [parts, day] of dates)
+    assert.equal(dateTimeOf(parts)?.[0], day, JSON.stringify(parts));
+});
 
-test("relative days and weekdays prefill the day, read against the run's start day", () => {
-  for (const [request, day, time] of relativeDays)
-    assert.deepEqual(dateParts(request), [day, time], request);
+// time parts ("halb 10" is hour 10, half), clock time code assembles
+const times: [Record<string, string>, string | null][] = [
+  [{ hour: "9", relation: "exact", minute: "none" }, "09:00"],
+  [{ hour: "9", relation: "exact", minute: "30" }, "09:30"],
+  [{ hour: "10", relation: "half" }, "09:30"],
+  [{ hour: "11", relation: "half" }, "10:30"],
+  [{ hour: "8", relation: "quarter_to" }, "07:45"],
+  [{ hour: "2", relation: "quarter_past", daypart: "afternoon" }, "14:15"],
+  [{ hour: "14", relation: "exact", minute: "0", daypart: "morning" }, "14:00"],
+  [{ hour: "3", relation: "exact", minute: "0" }, "15:00"],
+  [{ hour: "3", relation: "exact", daypart: "afternoon" }, "15:00"],
+  [{ hour: "8", relation: "exact", daypart: "evening" }, "20:00"],
+  [{ hour: "12", relation: "exact", daypart: "noon" }, "12:00"],
+  [{ hour: "1", relation: "half" }, "12:30"],
+  [{ hour: "9", relation: "exact", minute: "other" }, null],
+  [{ hour: "none", relation: "exact" }, null],
+];
+test("code assembles the clock time from hour, relation, minutes and day part", () => {
+  for (const [parts, time] of times)
+    assert.equal(dateTimeOf(parts)?.[1], time, JSON.stringify(parts));
 });
-test("a relative day is never a date Jev can set on its own", () => {
-  for (const request of [
-    "Termin morgen um 10 Uhr",
-    "am Donnerstag um 09:00",
-    "am 3. um 10:00",
-  ])
-    assert.deepEqual(fieldValues(appointment, request, [], ids), [], request);
-});
-test("a relative day is not in the past and reads against another start day", () => {
-  assert.deepEqual(partialAnswer(appointment, "morgen", "2026-12-31", ids), {
-    type: "datetime-local",
-    date: { day: "2027-01-01", past: false },
-    time: null,
+
+test("a part prefills only at the bar's confidence, and a past day says so", () => {
+  const read = (value: string | null, confidence: number) => ({
+    value,
+    confidence,
   });
   assert.deepEqual(
-    partialAnswer(appointment, "Donnerstag", "2026-09-24", ids),
+    prefillFrom({ type: "number", value: read("90", 0.59) }, today),
+    { type: "number", value: null },
+  );
+  assert.deepEqual(
+    prefillFrom({ type: "number", value: read("90", 0.6) }, today),
+    { type: "number", value: "90" },
+  );
+  assert.deepEqual(
+    prefillFrom(
+      {
+        type: "datetime-local",
+        date: read("2026-09-06", 0.9),
+        time: read("10:00", 0.3),
+      },
+      today,
+    ),
     {
       type: "datetime-local",
-      date: { day: "2026-10-01", past: false },
+      date: { day: "2026-09-06", past: true },
       time: null,
     },
   );
+});
+
+test("the registry names which fields the model reads and how", () => {
+  assert.equal(readingKind(field("minutes")), "minutes");
+  assert.equal(readingKind(field("duration")), "minutes");
+  assert.equal(readingKind(field("appointment")), "dateTime");
+  assert.equal(readingKind(field("search")), null);
+});
+
+test("all fields are read in one call, each from its own parts", async () => {
+  const calls: string[][] = [];
+  const readings = await readValues(
+    {
+      request:
+        "Termin morgen um 9, zwei Stunden is zu lang, mach neunzig draus",
+      today,
+      fields: [field("appointment"), field("search"), field("duration")],
+    },
+    seedWorkspace(),
+    async ({ questions }) => {
+      calls.push(Object.keys(questions));
+      const answer = (key: string, choice: string) => [
+        key,
+        { type: "choice" as const, choice, confidence: 0.9, probabilities: {} },
+      ];
+      return Object.fromEntries([
+        answer("f0.mode", "relative"),
+        answer("f0.anchor", "tomorrow"),
+        answer("f0.hour", "9"),
+        answer("f0.relation", "exact"),
+        answer("f0.minute", "0"),
+        answer("f0.daypart", "none"),
+        answer("f2.field", "duration"),
+        answer("f2.span", "word"),
+        answer("f2.word", "90"),
+        answer("f2.unit", "minutes"),
+      ]);
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0]?.every((key) => /^f[02]\./.test(key)));
+  assert.deepEqual(readings, [
+    {
+      type: "datetime-local",
+      date: { value: "2026-09-23", confidence: 0.9 },
+      time: { value: "09:00", confidence: 0.9 },
+    },
+    null,
+    { type: "number", value: { value: "90", confidence: 0.9 } },
+  ]);
 });

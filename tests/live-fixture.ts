@@ -51,6 +51,8 @@ export type ScriptOptions = {
     choose?: Record<string, string>;
     calls: string[][];
   };
+  /** Picks for value reading parts by question key ("f0.day"); an unscripted part reads "none", a request that states nothing. */
+  read?: Record<string, string>;
 };
 export function scriptedProvider(
   sequence: string[],
@@ -90,8 +92,12 @@ export function scriptedProvider(
                 key,
                 { type: "noul", noul: plan.yes.includes(key) ? 1 : 0 },
               ];
-            const options = Object.keys(question.criteria ?? {});
-            const choice = plan.choose?.[key] ?? options[0] ?? "";
+            const labels = Object.keys(question.criteria ?? {});
+            const reading = /^f\d+\./.test(key);
+            const choice =
+              (reading ? options.read?.[key] : plan.choose?.[key]) ??
+              (reading && labels.includes("none") ? "none" : labels[0]) ??
+              "";
             return [
               key,
               {
@@ -99,10 +105,7 @@ export function scriptedProvider(
                 choice,
                 confidence: 1,
                 probabilities: Object.fromEntries(
-                  options.map((option) => [
-                    option,
-                    option === choice ? 1 : 0,
-                  ]),
+                  labels.map((label) => [label, label === choice ? 1 : 0]),
                 ),
               },
             ];
