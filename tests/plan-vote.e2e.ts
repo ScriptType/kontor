@@ -5,8 +5,13 @@ const request = "Weise V-1042 Lea Sommer zu und speichere.";
 const sequence = ["case:V-1042", "menu:technician", "technician:lea", "save"];
 // One work step on V-1042 that sets its technician to Lea.
 const plan = {
-  yes: ["g0", "g4", "s0.case.V-1042", "s0.V-1042.chg.technician"],
-  choose: { "s0.V-1042.val.technician": "lea" },
+  yes: [
+    "g0",
+    "g4",
+    "s0.case.V-1042",
+    "s0.V-1042.chg.technician",
+    "s0.V-1042.is.technician.lea",
+  ],
 };
 
 for (const run of [
