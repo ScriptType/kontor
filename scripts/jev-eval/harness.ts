@@ -326,6 +326,11 @@ async function answerReview(
   const offered = await options.evaluateAll((buttons) =>
     buttons.map((button) => button.getAttribute("data-review-option") ?? ""),
   );
+  const [fromPlan] = await page
+    .locator("[data-review-plan] [data-review-option]:visible")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("data-review-option")),
+    );
   const executed = (await storedRun(page))?.steps ?? [];
   const last = executed.at(-1);
   const after = last ? stepAfterSchema.parse(JSON.parse(last.after)) : null;
@@ -346,7 +351,7 @@ async function answerReview(
     prefix: executed.map((step) => step.action.id),
     steps,
   });
-  const shown = `offered ${offered.join(", ") || "nothing"}`;
+  const shown = `offered ${offered.join(", ") || "nothing"}${fromPlan ? ` · plan row ${fromPlan}` : ""}`;
   if (pick.option === null)
     return {
       ...stop,
