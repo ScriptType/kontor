@@ -16,6 +16,8 @@ export type SampleResult = Verdict & {
   steps: string[];
   coverageProbability: number | null;
   unmappedActions: string[];
+  /** Review and approval options the harness clicked. */
+  reviewClicks: number;
   calls: number;
   wallMs: number;
   error: string | null;
@@ -26,6 +28,7 @@ export type Summary = {
   handoff: number;
   correctAfterAnswers: number;
   correctWithinOne: number;
+  oneClick: number;
   stoppedUnanswered: number;
   stoppedUnansweredEndCorrect: number;
   askedWrong: number;
@@ -54,6 +57,12 @@ export function summarize(results: SampleResult[]): Summary {
       (r) =>
         r.outcome === "magic" ||
         (r.outcome === "correct-after-answers" && r.questions <= 1),
+    ).length,
+    oneClick: results.filter(
+      (r) =>
+        (r.outcome === "correct-after-answers" || r.outcome === "handoff") &&
+        r.questions === 1 &&
+        r.reviewClicks === 1,
     ).length,
     stoppedUnanswered: count(results, "stopped-unanswered"),
     stoppedUnansweredEndCorrect: results.filter(
@@ -101,21 +110,21 @@ export function markdown(
 ) {
   const rows = Object.entries(summaries(results)).map(
     ([group, s]) =>
-      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.magicSaveCheck, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterAnswers, s.samples)} | ${share(s.correctWithinOne, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
+      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.magicSaveCheck, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterAnswers, s.samples)} | ${share(s.correctWithinOne, s.samples)} | ${share(s.oneClick, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
   );
   const samples = results.map(
     (r) =>
-      `| ${r.scenarioId} #${r.sample} | ${r.outcome} | ${r.endCorrect ? "yes" : "no"} | ${r.questions} | ${cell(r.stops.map((s) => `${s.kind}${s.dimension ? `:${s.dimension}` : ""}`).join(", "))} | ${cell([...r.mismatches, ...r.unexpectedSaves.map((s) => `unexpected save: ${s}`), ...(r.error ? [`error: ${r.error}`] : [])].join("; "))} | ${r.coverageProbability?.toFixed(2) ?? ""} | ${r.calls} | ${(r.wallMs / 1000).toFixed(1)} |`,
+      `| ${r.scenarioId} #${r.sample} | ${r.outcome} | ${r.endCorrect ? "yes" : "no"} | ${r.questions} | ${cell(r.stops.map((s) => `${s.kind}${s.dimension ? `:${s.dimension}` : ""}${s.kind === "review-answer" ? `:${String(s.value)}` : ""}`).join(", "))} | ${cell([...r.mismatches, ...r.unexpectedSaves.map((s) => `unexpected save: ${s}`), ...(r.error ? [`error: ${r.error}`] : [])].join("; "))} | ${r.coverageProbability?.toFixed(2) ?? ""} | ${r.calls} | ${(r.wallMs / 1000).toFixed(1)} |`,
   );
   return [
     `# Jev eval · ${variant}`,
     "",
     ...Object.entries(meta).map(([key, value]) => `- ${key}: ${value}`),
     "",
-    "Magic: end state correct, no question and no handoff. Handoff: end state correct and the run stopped for the expected human handoff. Correct after answers: end state correct and the harness answered every question, a chip or a value in the answer panel. Correct ≤1 question: magic, or correct after answers with a single question. Stopped unanswered: the run ended at a question the harness cannot answer; the number in brackets ended there with a correct state. Asked, still wrong: questions answered, end state wrong. Silent-wrong: end state wrong or an unexpected save, and no question. Magic-save-check: magic, or correct after answers where every question asked whether to save; in auto save mode no save chip appears and it equals magic. Rates count every sample; errors are provider or harness failures.",
+    "Magic: end state correct, no question and no handoff. Handoff: end state correct and the run stopped for the expected human handoff. Correct after answers: end state correct and the harness answered every question, a chip or a value in the answer panel. Correct ≤1 question: magic, or correct after answers with a single question. One-click: end state correct, as correct after answers or handoff, after exactly one question, a click on a review or approval option. Stopped unanswered: the run ended at a question the harness cannot answer; the number in brackets ended there with a correct state. Asked, still wrong: questions answered, end state wrong. Silent-wrong: end state wrong or an unexpected save, and no question. Magic-save-check: magic, or correct after answers where every question asked whether to save; in auto save mode no save chip appears and it equals magic. Rates count every sample; errors are provider or harness failures.",
     "",
-    "| group | samples | magic | magic-save-check | handoff | correct after answers | correct ≤1 question | stopped unanswered (end correct) | asked, still wrong | silent-wrong | errors | questions per run | ≥1 question | calls mean (total) | wall mean |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| group | samples | magic | magic-save-check | handoff | correct after answers | correct ≤1 question | one-click | stopped unanswered (end correct) | asked, still wrong | silent-wrong | errors | questions per run | ≥1 question | calls mean (total) | wall mean |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...rows,
     "",
     "| sample | outcome | end correct | questions | stops | mismatches | coverage | calls | wall s |",

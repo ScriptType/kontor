@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "@playwright/test";
@@ -38,6 +38,8 @@ const { values } = parseArgs({
     threshold: { type: "string" },
     gate: { type: "string", default: "threshold" },
     "record-payloads": { type: "boolean", default: false },
+    "answer-review": { type: "boolean", default: false },
+    meta: { type: "string" },
   },
 });
 const whole = z.coerce.number().int();
@@ -59,6 +61,11 @@ const budget: Budget = {
   limit: whole.min(1).parse(values["max-calls"]),
 };
 const only = values.only?.split(",");
+const humanSteps = values.meta
+  ? z
+      .record(z.string(), z.looseObject({ steps: z.array(z.string()) }))
+      .parse(JSON.parse(await readFile(values.meta, "utf8")))
+  : {};
 const out =
   values.out ??
   join(
@@ -106,6 +113,8 @@ const meta = {
   gate,
   "save mode": saveMode,
   "record payloads": values["record-payloads"] ? "yes" : "no",
+  "answer review": values["answer-review"] ? "yes" : "no",
+  ...(values.meta ? { meta: values.meta } : {}),
   started: new Date().toISOString(),
 };
 await mkdir(join(out, "samples"), { recursive: true });
@@ -146,6 +155,8 @@ try {
           gate,
           budget,
           recordPayloads: values["record-payloads"],
+          answerReview: values["answer-review"],
+          humanSteps: humanSteps[job.scenario.id]?.steps,
           ...job,
         });
         results.push(result);

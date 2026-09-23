@@ -220,6 +220,115 @@ test("a value question without a single value in the scenario is left unanswered
   expect(result.observed?.receipts).toEqual([]);
 });
 
+const assignLea = scenario({
+  id: "review-assign",
+  source: "authored",
+  request: "Weise V-1042 Lea Sommer zu und speichere.",
+  intent: {
+    cases: { "V-1042": { technician: "lea" } },
+    flags: { save: true },
+  },
+});
+const humanAssign = [
+  "case:V-1042",
+  "menu:technician",
+  "technician:lea",
+  "save",
+];
+/** Runs the human path with full confidence except the picks in `unsure`. */
+const reviewSample = (
+  browser: Browser,
+  unsure: Record<
+    number,
+    { choice: string; probabilities: Record<string, number> }
+  >,
+  humanSteps?: string[],
+  forbidCommit = false,
+) =>
+  runSample({
+    browser,
+    config: { mode: "live", apiKey: "test", model: "jev-latest" },
+    scenario: assignLea,
+    sample: 1,
+    variant: "test",
+    saveMode: "auto",
+    budget: { used: 0, limit: 40 },
+    answerReview: true,
+    humanSteps,
+    fetch: scriptedProvider([], {
+      nextAnswer: (index) =>
+        unsure[index]
+          ? { ...unsure[index], confidence: 0.4 }
+          : { choice: humanAssign[index] ?? "done", confidence: 1 },
+      forbidCommit,
+    }).fetch,
+  });
+
+test("a review is answered with the offered option on the human path and the run goes on", async ({
+  browser,
+}) => {
+  const result = await reviewSample(
+    browser,
+    { 3: { choice: "save", probabilities: { save: 0.6, done: 0.4 } } },
+    humanAssign,
+  );
+  expect(result.outcome).toBe("correct-after-answers");
+  expect(result.questions).toBe(1);
+  expect(result.reviewClicks).toBe(1);
+  expect(result.stops).toEqual([
+    {
+      kind: "review-answer",
+      message: expect.stringContaining("offered save, done · clicked save"),
+      value: "save",
+    },
+    expect.objectContaining({ kind: "done" }),
+  ]);
+});
+
+test("a forbidden step on the human path is run with Trotzdem ausführen in one click", async ({
+  browser,
+}) => {
+  const result = await reviewSample(browser, {}, humanAssign, true);
+  expect(result.outcome).toBe("correct-after-answers");
+  expect(result.reviewClicks).toBe(1);
+  expect(result.stops[0]).toEqual({
+    kind: "review-answer",
+    message: expect.stringContaining("clicked save with Trotzdem ausführen"),
+    value: "save",
+  });
+});
+
+test("a review is finished with done only once the state judges correct", async ({
+  browser,
+}) => {
+  const result = await reviewSample(
+    browser,
+    { 4: { choice: "done", probabilities: { done: 0.6, save: 0.4 } } },
+    humanAssign,
+  );
+  expect(result.outcome).toBe("correct-after-answers");
+  expect(result.stops).toEqual([
+    expect.objectContaining({ kind: "review-answer", value: "done" }),
+    {
+      kind: "done",
+      message: "Vom Nutzer als erledigt abgeschlossen",
+    },
+  ]);
+  const early = await reviewSample(browser, {
+    3: { choice: "done", probabilities: { done: 0.6, save: 0.4 } },
+  });
+  expect(early.outcome).toBe("stopped-unanswered");
+  expect(early.reviewClicks).toBe(0);
+  expect(early.stops).toEqual([
+    {
+      kind: "review",
+      message: expect.stringMatching(
+        /offered done, save · no click: done: .*V-1042 was not saved.*; no human steps$/,
+      ),
+    },
+  ]);
+});
+
 test("the repeat start state applies through the UI and reads back as its expected end", async ({
   page,
 }) => {

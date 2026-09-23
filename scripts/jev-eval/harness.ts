@@ -12,6 +12,7 @@ import {
   caseFiltersSchema,
   caseSchema,
   draftOf,
+  editableSchema,
   pageSchema,
   type CaseDraft,
   type Page as View,
@@ -28,6 +29,7 @@ import {
   type Stop,
 } from "./judge.js";
 import type { SampleResult } from "./report.js";
+import { reviewChoice } from "./review.js";
 import { startWorkspace, type Scenario, type StartState } from "./scenarios.js";
 
 export const confidencePercent = 75;
@@ -122,7 +124,9 @@ async function awaitStop(page: Page, timeout: number): Promise<Stop> {
     )
       .replace(/\s+/g, " ")
       .slice(0, 400);
-  if (/^(Jev meldet|Entwurf vorbereitet)/.test(message))
+  if (
+    /^(Jev meldet|Entwurf vorbereitet|Vom Nutzer als erledigt)/.test(message)
+  )
     return { kind: "done", message };
   if (pending)
     return {
@@ -270,6 +274,97 @@ type Run = {
   plan: unknown;
   votes: unknown;
 };
+const stepAfterSchema = z.object({
+  page: pageSchema,
+  filters: caseFiltersSchema,
+  caseId: z.string().nullable(),
+  draft: editableSchema.nullable(),
+  dirty: z.boolean(),
+});
+const storedRun = async (page: Page) =>
+  historySchema.parse(
+    await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}"),
+    ),
+  ).history[0];
+const visited = (steps: { after: string }[]) =>
+  steps.flatMap((step) => {
+    const parsed = pageSchema.safeParse(JSON.parse(step.after).page);
+    return parsed.success ? [parsed.data as View] : [];
+  });
+const recordsOf = (saved: Workspace) =>
+  Object.fromEntries(saved.cases.map((c) => [c.id, draftOf(c)]));
+const receiptsOf = (receipts: Receipt[]) =>
+  receipts.map((r) => ({ caseId: r.caseId, saved: draftOf(r.saved) }));
+
+/**
+ * Answers a review or approval stop with the option a person who knows the
+ * scenario clicks. The state comes from the last step's observation, since
+ * reading the screen would close the palette and change the page.
+ */
+async function answerReview(
+  page: Page,
+  stop: Stop,
+  scenario: Scenario,
+  store: RecordingStore,
+  steps: string[] | undefined,
+): Promise<Stop> {
+  const options = page.locator("[data-review-option]:visible");
+  await options
+    .first()
+    .waitFor({ timeout: 2000 })
+    .catch(() => undefined);
+  if (!(await options.count())) {
+    await page.locator(".activity .text-button").click();
+    await options
+      .first()
+      .waitFor({ timeout: 5000 })
+      .catch(() => undefined);
+  }
+  const offered = await options.evaluateAll((buttons) =>
+    buttons.map((button) => button.getAttribute("data-review-option") ?? ""),
+  );
+  const executed = (await storedRun(page))?.steps ?? [];
+  const last = executed.at(-1);
+  const after = last ? stepAfterSchema.parse(JSON.parse(last.after)) : null;
+  const pick = reviewChoice({
+    scenario,
+    observed: {
+      page: viewOf(page),
+      filters: after?.filters ?? scenario.start.filters,
+      records: recordsOf(store.snapshot()),
+      receipts: receiptsOf(store.receipts),
+      draft:
+        after?.caseId && after.draft && after.dirty
+          ? { caseId: after.caseId, values: after.draft, dirty: true }
+          : null,
+      pagesVisited: visited(executed),
+    },
+    offered,
+    prefix: executed.map((step) => step.action.id),
+    steps,
+  });
+  const shown = `offered ${offered.join(", ") || "nothing"}`;
+  if (pick.option === null)
+    return {
+      ...stop,
+      message: `${stop.message} · ${shown} · no click: ${pick.reason}`,
+    };
+  const button = page
+    .locator(`[data-review-option=${JSON.stringify(pick.option)}]:visible`)
+    .first();
+  const forced = (await button.getAttribute("data-review-force")) !== null;
+  const label = page.locator(".activity-label");
+  const before = (await label.innerText()).trim();
+  await button.click();
+  await expect(label).not.toHaveText(before, { timeout: 15000 });
+  return {
+    kind: "review-answer",
+    message: `${stop.message} · ${shown} · clicked ${pick.option}${forced ? " with Trotzdem ausführen" : ""}`,
+    value: pick.option,
+  };
+}
+
 export async function readEnd(
   page: Page,
   workspace: Workspace,
@@ -355,25 +450,15 @@ export async function readEnd(
       };
     }
   }
-  const stored = historySchema.parse(
-    await page.evaluate(() =>
-      JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}"),
-    ),
-  ).history[0];
+  const stored = await storedRun(page);
   const steps = stored?.steps ?? [];
   return {
     page: view,
     filters,
-    records: Object.fromEntries(saved.cases.map((c) => [c.id, draftOf(c)])),
-    receipts: receipts.map((r) => ({
-      caseId: r.caseId,
-      saved: draftOf(r.saved),
-    })),
+    records: recordsOf(saved),
+    receipts: receiptsOf(receipts),
     draft,
-    pagesVisited: steps.flatMap((step) => {
-      const parsed = pageSchema.safeParse(JSON.parse(step.after).page);
-      return parsed.success ? [parsed.data as View] : [];
-    }),
+    pagesVisited: visited(steps),
     stops,
     steps: steps.map((step) => `${step.action.id}:${step.outcome}`),
     coverageProbability: stored?.coverageProbability ?? null,
@@ -513,6 +598,9 @@ export async function runSample(options: {
   maxCalls?: number;
   timeoutMs?: number;
   recordPayloads?: boolean;
+  /** Answer review and approval stops along the human path in `humanSteps`. */
+  answerReview?: boolean;
+  humanSteps?: string[];
   fetch?: Fetch;
 }): Promise<
   SampleResult & { observed: Observed | null; callLog: CallRecord[] }
@@ -550,6 +638,25 @@ export async function runSample(options: {
     await submit(page, scenario.request);
     while (true) {
       const stop = await awaitStop(page, Math.max(1000, deadline - Date.now()));
+      if (
+        options.answerReview &&
+        (stop.kind === "review" || stop.kind === "approval")
+      ) {
+        const answered = await answerReview(
+          page,
+          stop,
+          scenario,
+          store,
+          options.humanSteps,
+        );
+        stops.push(answered);
+        if (
+          answered.kind === "review-answer" &&
+          stops.length <= maxConfirmations
+        )
+          continue;
+        break;
+      }
       if (stop.kind === "input") {
         const answered = (await answerValue(page, scenario)) ?? stop;
         stops.push(answered);
@@ -611,6 +718,7 @@ export async function runSample(options: {
     unmappedActions: (observed?.steps ?? [])
       .map((step) => step.slice(0, step.lastIndexOf(":")))
       .filter((id) => actionEffects(id) === null),
+    reviewClicks: stops.filter((stop) => stop.kind === "review-answer").length,
     calls: callLog.length,
     wallMs: ended - began,
     error,

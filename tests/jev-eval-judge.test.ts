@@ -208,6 +208,29 @@ test("a final blocked handoff after the reachable work is a handoff, not magic a
   assert.equal(early.outcome, "stopped-unanswered");
   assert.equal(early.endCorrect, false);
 });
+test("a clicked review option is an answered question, and the run goes on to its end", () => {
+  const clicked: Stop = {
+    kind: "review-answer",
+    message: "clicked done",
+    value: "done",
+  };
+  const s = byId("user-fresh");
+  assert.deepEqual(
+    [judge(s, asExpected(s, [clicked, done]))].map((v) => [
+      v.outcome,
+      v.questions,
+    ]),
+    [["correct-after-answers", 1]],
+  );
+  const handoff = byId("use-15");
+  const handed = judge(handoff, asExpected(handoff, [clicked, blocked]));
+  assert.equal(handed.outcome, "handoff");
+  assert.equal(handed.questions, 1);
+  assert.equal(
+    judge(s, asExpected(s, [clicked, review])).outcome,
+    "stopped-unanswered",
+  );
+});
 test("ordered intermediate states are checked, not only the end", () => {
   const sequence = byId("use-11");
   const observed = asExpected(sequence, [done]);
@@ -289,6 +312,7 @@ const sample = (
   outcome: SampleResult["outcome"],
   questions: number,
   calls: number,
+  reviewClicks = 0,
 ): SampleResult => ({
   outcome,
   endCorrect: ["magic", "handoff", "correct-after-answers"].includes(outcome),
@@ -306,6 +330,7 @@ const sample = (
   steps: [],
   coverageProbability: null,
   unmappedActions: [],
+  reviewClicks,
   calls,
   wallMs: calls * 1000,
   error: null,
@@ -363,6 +388,20 @@ test("correct within one question counts magic and runs correct after a single a
       sample("handoff", 0, 1),
       sample("asked-wrong", 1, 1),
     ]).correctWithinOne,
+    2,
+  );
+});
+test("one-click counts correct runs whose single question was a review click", () => {
+  assert.equal(
+    summarize([
+      sample("correct-after-answers", 1, 1, 1),
+      sample("handoff", 1, 1, 1),
+      sample("correct-after-answers", 1, 1),
+      sample("correct-after-answers", 2, 1, 2),
+      sample("magic", 0, 1),
+      sample("asked-wrong", 1, 1, 1),
+      sample("stopped-unanswered", 2, 1, 1),
+    ]).oneClick,
     2,
   );
 });

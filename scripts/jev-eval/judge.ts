@@ -16,6 +16,7 @@ export type Stop = {
     | "blocked"
     | "confirm"
     | "answer"
+    | "review-answer"
     | "unanswerable"
     | "error"
     | "timeout";
@@ -31,6 +32,7 @@ const questionKinds = new Set<Stop["kind"]>([
   "blocked",
   "confirm",
   "answer",
+  "review-answer",
   "unanswerable",
 ]);
 export type Observed = ObservedEnd & { stops: Stop[] };
@@ -84,6 +86,7 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
     final !== undefined &&
     final.kind !== "confirm" &&
     final.kind !== "answer" &&
+    final.kind !== "review-answer" &&
     questionKinds.has(final.kind);
   const outcome: Outcome = observed.stops.some(
     (stop) => stop.kind === "error" || stop.kind === "timeout",
