@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { slimObservations } from "../shared/step-log.js";
 import {
   actsAfterCheck,
+  callLogEntrySchema,
   fullStateSchema,
   type BenchState,
   type FullState,
@@ -84,3 +85,37 @@ test("the g3 run guard reads the slim history like the full one", () => {
   }
 });
 
+test("a call the provider never answered is skipped, not read as a decision", () => {
+  const request = {
+    state: slimSent,
+    questions: {
+      next: {
+        type: "choice",
+        instructions: "Choose",
+        criteria: { done: "Done" },
+      },
+    },
+    model: "jev",
+  };
+  assert.deepEqual(
+    callLogEntrySchema.parse({
+      question: "next",
+      payload: { request, answers: null, usage: null },
+    }),
+    { question: "next", unanswered: true, payload: undefined },
+  );
+  const answers = {
+    next: { choice: "done", confidence: 0.9, probabilities: { done: 0.9 } },
+  };
+  assert.deepEqual(
+    callLogEntrySchema.parse({
+      question: "next",
+      payload: { request, answers, usage: null },
+    }),
+    {
+      question: "next",
+      unanswered: false,
+      payload: { request, answers, usage: null },
+    },
+  );
+});
