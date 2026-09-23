@@ -14,6 +14,7 @@ import {
 } from "../shared/contract.js";
 import { scoreCriteria } from "../shared/questions.js";
 import type { Config } from "./config.js";
+import { providerUnavailable } from "./jev.js";
 
 const questions = {
   category: choice("Welche sprachliche Form überwiegt im Text?", {
@@ -72,11 +73,11 @@ export function createEvaluator(config: Config, fetch?: Fetch) {
         { state: input.text, questions },
         { signal },
       );
-    } catch {
-      throw new ORPCError("PROVIDER_UNAVAILABLE", {
-        message:
-          "TypeSafe ist gerade nicht erreichbar. Bitte erneut versuchen.",
-      });
+    } catch (cause) {
+      throw providerUnavailable(
+        cause,
+        "TypeSafe ist gerade nicht erreichbar. Bitte erneut versuchen.",
+      );
     }
     const parsed = providerSchema.safeParse(raw);
     if (!parsed.success)

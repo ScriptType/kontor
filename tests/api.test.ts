@@ -8,6 +8,7 @@ import { WebSocket } from "ws";
 import { createRpcConnection } from "../frontend/src/rpc-connection.js";
 import type { Fetch } from "@typesafe-ai/sdk";
 import { z } from "zod";
+import type { DecisionInput } from "../shared/command.js";
 import { contract } from "../shared/contract.js";
 import { createApp } from "../server/app.js";
 import { readConfig, type Config } from "../server/config.js";
@@ -201,3 +202,56 @@ for (const [name, upstream, code] of [
     assert.equal(requests, 1);
   });
 }
+test("an unreachable provider keeps the user's message and names the failure by error class and HTTP status", async () => {
+  const decision: DecisionInput = {
+    doneBeforeFirstStep: true,
+    state: "full",
+    prompt: "full",
+    history: "full",
+    request: "Zeig Kunden",
+    context: "{}",
+    snapshotId: "fresh",
+    actions: [
+      {
+        id: "nav:customers",
+        label: "Kunden",
+        effect: "Kunden anzeigen",
+        kind: "view",
+        jev: { does: "Go to the customer overview page" },
+      },
+    ],
+    fields: [],
+    blockedControls: [],
+    answers: [],
+    steps: [],
+  };
+  for (const [upstream, data] of [
+    [
+      async () => Response.json({ error: "slow down" }, { status: 429 }),
+      { error: "RateLimitError", status: 429 },
+    ],
+    [
+      async () => Response.json({ error: "no credits" }, { status: 402 }),
+      { error: "APIError", status: 402 },
+    ],
+    [
+      async () => {
+        throw new Error("offline");
+      },
+      { error: "APIConnectionError", status: null },
+    ],
+  ] satisfies [Fetch, unknown][])
+    await withApi(live, upstream, async (api) => {
+      await assert.rejects(api.decide(decision), {
+        code: "PROVIDER_UNAVAILABLE",
+        message:
+          "Jev ist nicht erreichbar. Es wurde keine Entscheidung ausgeführt.",
+        data,
+      });
+      await assert.rejects(api.evaluate({ text: "Hello" }), {
+        code: "PROVIDER_UNAVAILABLE",
+        message: "TypeSafe ist gerade nicht erreichbar. Bitte erneut versuchen.",
+        data,
+      });
+    });
+});

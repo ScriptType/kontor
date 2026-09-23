@@ -29,7 +29,7 @@ import {
 import { ASK, type Plan, type PlanInput } from "../shared/plan.js";
 import { spokenNumbers } from "../shared/number-words.js";
 import type { Config } from "./config.js";
-import { createClient } from "./jev.js";
+import { createClient, providerUnavailable } from "./jev.js";
 
 /** What the plan is read from: the request and the screen it was given on. */
 export type PlanScene = PlanInput & { workspace: Workspace };
@@ -78,11 +78,11 @@ export function createPlanner(config: Config, fetch?: Fetch) {
       let raw: unknown;
       try {
         raw = await client.systemOne(sent, { signal });
-      } catch {
-        throw new ORPCError("PROVIDER_UNAVAILABLE", {
-          message:
-            "Jev ist nicht erreichbar. Es wurde keine Entscheidung ausgeführt.",
-        });
+      } catch (cause) {
+        throw providerUnavailable(
+          cause,
+          "Jev ist nicht erreichbar. Es wurde keine Entscheidung ausgeführt.",
+        );
       }
       return readAnswers(sent.questions, raw);
     });

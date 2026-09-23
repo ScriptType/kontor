@@ -1,4 +1,9 @@
-import { TypeSafeClient, choice, type Fetch } from "@typesafe-ai/sdk";
+import {
+  APIError,
+  TypeSafeClient,
+  choice,
+  type Fetch,
+} from "@typesafe-ai/sdk";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import {
@@ -42,6 +47,21 @@ export function createClient(
     fetch,
   });
 }
+/**
+ * A failed provider call: the user sees `message`; `data` names the SDK error
+ * and the HTTP status when a response arrived, so a rate limit, a payment
+ * error and a rejected request read apart. The upstream body stays out.
+ */
+export function providerUnavailable(cause: unknown, message: string) {
+  return new ORPCError("PROVIDER_UNAVAILABLE", {
+    message,
+    data: {
+      error: cause instanceof Error ? cause.name : "unknown",
+      status: cause instanceof APIError ? cause.status : null,
+    },
+    cause,
+  });
+}
 export function createJev(config: Config, fetch?: Fetch) {
   const client = config.mode === "live" ? createClient(config, fetch) : null;
   async function ask(
@@ -67,11 +87,11 @@ export function createJev(config: Config, fetch?: Fetch) {
         },
         { signal },
       );
-    } catch {
-      throw new ORPCError("PROVIDER_UNAVAILABLE", {
-        message:
-          "Jev ist nicht erreichbar. Es wurde keine Entscheidung ausgeführt.",
-      });
+    } catch (cause) {
+      throw providerUnavailable(
+        cause,
+        "Jev ist nicht erreichbar. Es wurde keine Entscheidung ausgeführt.",
+      );
     }
     const parsed = answerSchema.safeParse(raw);
     if (!parsed.success) throw new ORPCError("PROVIDER_INVALID_RESPONSE");

@@ -1,5 +1,4 @@
 import { choice, type Fetch, type Questions } from "@typesafe-ai/sdk";
-import { ORPCError } from "@orpc/server";
 import type { Workspace } from "../shared/domain.js";
 import {
   readers,
@@ -9,7 +8,7 @@ import {
   type ValueReading,
 } from "../shared/value-reading.js";
 import type { Config } from "./config.js";
-import { createClient } from "./jev.js";
+import { createClient, providerUnavailable } from "./jev.js";
 import { readAnswers, type Ask } from "./plan.js";
 
 /** Reads each field's new value from the request in one call; a field without a reading kind reads as null. */
@@ -71,10 +70,11 @@ export function createReader(config: Config, fetch?: Fetch) {
       let raw: unknown;
       try {
         raw = await client.systemOne(sent, { signal });
-      } catch {
-        throw new ORPCError("PROVIDER_UNAVAILABLE", {
-          message: "Jev ist nicht erreichbar. Der Wert wurde nicht gelesen.",
-        });
+      } catch (cause) {
+        throw providerUnavailable(
+          cause,
+          "Jev ist nicht erreichbar. Der Wert wurde nicht gelesen.",
+        );
       }
       return readAnswers(sent.questions, raw);
     });
