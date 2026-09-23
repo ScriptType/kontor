@@ -385,11 +385,23 @@ async function segment(scene: PlanScene, ask: AskAll): Promise<Segment[]> {
   const gaps = overSplit(request, toks);
   if (!gaps.length) return whole;
   const parts = segmentsFromEnds(request, toks, gaps);
+  // A sentence that ends a line always ends its part.
+  const hard = parts
+    .slice(0, -1)
+    .filter(
+      (part) =>
+        /[.!?…]$/.test(toks[part.to]!.text) &&
+        request
+          .slice(toks[part.to]!.to, toks[part.to + 1]!.from)
+          .includes("\n"),
+    )
+    .map((part) => part.to);
   const questions: Questions = {};
   for (let i = 0; i < parts.length - 1; i++)
-    questions[`g${parts[i]!.to}`] = noul(
-      `Teil ${i + 1}: „${parts[i]!.text}“\nTeil ${i + 2}: „${parts[i + 1]!.text}“\n\nGehören Teil ${i + 1} und Teil ${i + 2} zum selben Arbeitsschritt?`,
-    );
+    if (!hard.includes(parts[i]!.to))
+      questions[`g${parts[i]!.to}`] = noul(
+        `Teil ${i + 1}: „${parts[i]!.text}“\nTeil ${i + 2}: „${parts[i + 1]!.text}“\n\nGehören Teil ${i + 1} und Teil ${i + 2} zum selben Arbeitsschritt?`,
+      );
   const answers = await ask(
     { ...worldState(scene), arbeitsschritt: definition },
     questions,
@@ -397,7 +409,7 @@ async function segment(scene: PlanScene, ask: AskAll): Promise<Segment[]> {
   const ends = Object.keys(questions)
     .filter((key) => 1 - yes(answers[key]) >= 0.5)
     .map((key) => Number(key.slice(1)));
-  return segmentsFromEnds(request, toks, ends);
+  return segmentsFromEnds(request, toks, [...hard, ...ends]);
 }
 
 type Step = {
