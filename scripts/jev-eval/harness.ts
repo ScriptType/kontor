@@ -256,6 +256,7 @@ const historySchema = z.object({
         checklist: z.unknown().optional(),
         plan: z.unknown().optional(),
         votes: z.unknown().optional(),
+        duels: z.unknown().optional(),
         steps: z.array(
           z.object({
             action: z.object({ id: z.string() }),
@@ -273,6 +274,7 @@ type Run = {
   checklist: unknown;
   plan: unknown;
   votes: unknown;
+  duels: unknown;
 };
 const stepAfterSchema = z.object({
   page: pageSchema,
@@ -465,6 +467,7 @@ export async function readEnd(
     checklist: stored?.checklist ?? null,
     plan: stored?.plan ?? null,
     votes: stored?.votes ?? null,
+    duels: stored?.duels ?? null,
   };
 }
 
