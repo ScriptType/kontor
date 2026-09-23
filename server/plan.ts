@@ -560,6 +560,20 @@ async function extractSteps(
         const pd = changeP.appointmentDuration ?? 0;
         delete values[pm >= pd ? "appointmentDuration" : "workedMinutes"];
       }
+      // A case without an appointment has no slot length: a minutes value read for it is the worked minutes.
+      const length = values.appointmentDuration;
+      if (
+        length !== undefined &&
+        (values.appointmentStart ??
+          currentCaseValue(scene, id, "appointmentStart")) === "none"
+      ) {
+        delete values.appointmentDuration;
+        if (
+          values.workedMinutes === undefined &&
+          length !== currentCaseValue(scene, id, "workedMinutes")
+        )
+          values.workedMinutes = length;
+      }
       (perCase[id] ??= []).push({ seg: i, values });
     }
   });

@@ -22,6 +22,18 @@ function provider(
   sent: Questions[],
   choose = (options: string[]) => options[0] ?? "",
 ): Fetch {
+  return scripted(
+    Object.fromEntries(yes.map((key) => [key, 1])),
+    sent,
+    (_key, options) => choose(options),
+  );
+}
+/** Answers each yes/no with its number in `yes` (else 0) and each choice with the option `choose` names for its key. */
+function scripted(
+  yes: Record<string, number>,
+  sent: Questions[],
+  choose = (_key: string, options: string[]) => options[0] ?? "",
+): Fetch {
   return async (_url, init) => {
     const { questions } = JSON.parse(String(init?.body)) as {
       questions: Questions;
@@ -32,9 +44,9 @@ function provider(
       answers: Object.fromEntries(
         Object.entries(questions).map(([key, question]) => {
           if (question.type === "noul")
-            return [key, { type: "noul", noul: yes.includes(key) ? 1 : 0 }];
+            return [key, { type: "noul", noul: yes[key] ?? 0 }];
           const options = Object.keys(question.criteria ?? {});
-          const choice = choose(options);
+          const choice = choose(key, options);
           return [
             key,
             {
@@ -195,4 +207,26 @@ test("a sentence that ends a line ends its part without asking", async () => {
     sent.flatMap((questions) => Object.keys(questions)).includes("g6"),
     false,
   );
+});
+
+/** Plans the request with the scripted answers. */
+function planOf(
+  request: string,
+  yes: Record<string, number>,
+  choices: Record<string, string> = {},
+  sent: Questions[] = [],
+) {
+  return createPlanner(
+    live,
+    scripted(yes, sent, (key, options) => choices[key] ?? options[0] ?? ""),
+  )({ ...scene, request });
+}
+
+test("a slot length read for a case without an appointment is its worked minutes", async () => {
+  const plan = await planOf(
+    "1037 bitte 75 min eintragen",
+    { "s0.case.V-1037": 1, "s0.V-1037.chg.appointmentDuration": 1 },
+    { "s0.V-1037.val.appointmentDuration": "75" },
+  );
+  assert.deepEqual(plan?.cases, { "V-1037": { workedMinutes: "75" } });
 });
