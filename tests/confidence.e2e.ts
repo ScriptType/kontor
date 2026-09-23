@@ -21,6 +21,22 @@ async function chooseConfidence(page: Page, percent: number) {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
+test("under the threshold gate the settings say the percent decides actions and completion", async ({
+  page,
+}) => {
+  await storeGate(page, "threshold");
+  await withLive(page, [], async () => {
+    await page.getByRole("button", { name: /Jev · Befehl eingeben/ }).click();
+    await openSettings(page);
+    const help = page.locator("#jev-confidence-help");
+    await expect(help).toContainText(
+      "Unter 75 % fragt Jev vor Aktionen nach und bestätigt den Abschluss nicht.",
+    );
+    await expect(help).toContainText("Ab diesem Wert");
+    await expect(help).not.toContainText("feste Schwellen");
+  });
+});
+
 test("raw confidence input rejects invalid values and Enter cannot submit a command", async ({
   page,
 }) => {
@@ -39,10 +55,7 @@ test("raw confidence input rejects invalid values and Enter cannot submit a comm
       path: "live-results/confidence/settings-desktop.png",
     });
     await expect(page.locator("#jev-confidence-help")).toContainText(
-      "Unter 75 %",
-    );
-    await expect(page.locator("#jev-confidence-help")).toContainText(
-      "Ab diesem Wert",
+      "nach festen Schwellen je Art des Schritts aus. Unter 75 % legt Jev eine eigene Rückfrage",
     );
     await page
       .getByRole("textbox", { name: "Auftrag an Jev" })

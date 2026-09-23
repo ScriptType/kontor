@@ -69,10 +69,18 @@
           </button>
         </div>
         <p id="jev-confidence-help" class="muted">
+          @if (runner.percentPicks) {
           Unter {{ runner.confidencePercent() }} % fragt Jev vor Aktionen nach
           und bestätigt den Abschluss nicht. Ab diesem Wert gelten weiterhin
-          die Auftrags- und Prüfregeln. Änderungen pausieren den Auftrag bis
-          zum ausdrücklichen Fortsetzen.
+          die Auftrags- und Prüfregeln.
+          } @else {
+          Jev führt Ansichten, Entwürfe, Speichern und den Abschluss nach
+          festen Schwellen je Art des Schritts aus. Unter
+          {{ runner.confidencePercent() }} % legt Jev eine eigene Rückfrage
+          oder einen Schritt, dessen Zugehörigkeit zum Auftrag nicht sicher
+          ist, zur Prüfung vor.
+          }
+          Änderungen pausieren den Auftrag bis zum ausdrücklichen Fortsetzen.
         </p>
         <div id="jev-confidence-feedback" role="status">
           @if (runner.confidenceError()) {
@@ -107,7 +115,11 @@
         <p>Jev hat „{{ runner.describeChoice(state.capture.decision.choice, state.capture).label }}“ gewählt.
           Auswahlkonfidenz {{ (state.capture.decision.confidence * 100).toFixed(0) }} %.</p>
         <p class="muted">Die Optionswahrscheinlichkeit stammt aus derselben Jev-Antwort.
-          Die Bestätigungsschwelle von {{ runner.confidencePercent() }} % gilt für die Auswahlkonfidenz und die separate Effektprüfung.</p>
+          @if (runner.percentPicks) {
+          Die Bestätigungsschwelle von {{ runner.confidencePercent() }} % gilt für die Auswahlkonfidenz und die separate Effektprüfung.
+          } @else {
+          Die Auswahl hat feste Schwellen je Art des Schritts. Die Bestätigungsschwelle von {{ runner.confidencePercent() }} % gilt für Rückfragen und die separate Effektprüfung.
+          }</p>
         <ol class="ranked-choices" aria-label="Jevs zwei wahrscheinlichste Optionen">
           @for (row of state.capture.decision.ranked; track row.choice) {
           <li>

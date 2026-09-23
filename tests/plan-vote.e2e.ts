@@ -24,7 +24,9 @@ for (const run of [
       async (store) => {
         await start(page, request);
         await expect(page.locator(".activity-label")).toContainText(
-          run.finishes ? "Jev meldet" : "Auswahlkonfidenz unter",
+          run.finishes
+            ? "Jev meldet"
+            : "Auswahl unter der Schwelle für diese Art von Schritt",
         );
         const saved = store.snapshot().cases.find((c) => c.id === "V-1042");
         expect(saved?.technicianId).toBe(run.finishes ? "lea" : "jonas");
