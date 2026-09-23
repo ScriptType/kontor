@@ -198,7 +198,7 @@ test("code assembles the day from the date parts as the date cookbook does", () 
 
 // time parts ("halb 10" is hour 10, half), clock time code assembles
 const times: [Record<string, string>, string | null][] = [
-  [{ hour: "9", relation: "exact", minute: "none" }, "09:00"],
+  [{ hour: "9", relation: "exact", minute: "0" }, "09:00"],
   [{ hour: "9", relation: "exact", minute: "30" }, "09:30"],
   [{ hour: "10", relation: "half" }, "09:30"],
   [{ hour: "11", relation: "half" }, "10:30"],
@@ -206,11 +206,15 @@ const times: [Record<string, string>, string | null][] = [
   [{ hour: "2", relation: "quarter_past", daypart: "afternoon" }, "14:15"],
   [{ hour: "14", relation: "exact", minute: "0", daypart: "morning" }, "14:00"],
   [{ hour: "3", relation: "exact", minute: "0" }, "15:00"],
-  [{ hour: "3", relation: "exact", daypart: "afternoon" }, "15:00"],
-  [{ hour: "8", relation: "exact", daypart: "evening" }, "20:00"],
-  [{ hour: "12", relation: "exact", daypart: "noon" }, "12:00"],
+  [
+    { hour: "3", relation: "exact", minute: "0", daypart: "afternoon" },
+    "15:00",
+  ],
+  [{ hour: "8", relation: "exact", minute: "0", daypart: "evening" }, "20:00"],
+  [{ hour: "12", relation: "exact", minute: "0", daypart: "noon" }, "12:00"],
   [{ hour: "1", relation: "half" }, "12:30"],
   [{ hour: "9", relation: "exact", minute: "other" }, null],
+  [{ hour: "9", relation: "exact" }, null],
   [{ hour: "none", relation: "exact" }, null],
 ];
 test("code assembles the clock time from hour, relation, minutes and day part", () => {
@@ -237,6 +241,32 @@ const hourChoices: [string, string[]][] = [
 test("the hour is one the request writes, in digits or words, or none", () => {
   for (const [request, hours] of hourChoices)
     assert.deepEqual(hourOptions(request), hours, request);
+});
+
+const minuteOptions = (request: string) =>
+  Object.keys(
+    readers.dateTime.parts(field("appointment"), scene(request))["minute"]!
+      .options,
+  );
+const minuteChoices: [request: string, options: string[]][] = [
+  ["Termin 9 uhr", ["0", "other"]],
+  ["Termin 9:30", ["0", "30", "other"]],
+  ["um 9.45", ["0", "45", "other"]],
+  ["um 9:20", ["0", "20", "other"]],
+  ["um 9 Uhr 30", ["0", "30", "other"]],
+  ["um neun Uhr dreißig", ["0", "30", "other"]],
+  ["Termin 9 Uhr 30 Minuten", ["0", "other"]],
+  ["Termin 11 Uhr 45  min", ["0", "other"]],
+  ["Uhr 20", ["0", "other"]],
+  ["Termin halb 10", ["0", "other"]],
+  ["termin 2026-09-25 10:00", ["0", "other"]],
+  ["termin 10:15, 30 min", ["0", "15", "other"]],
+  ["termin 29.09. 10 uhr nee 11, 45 min", ["0", "other"]],
+  ["am 24.9. um 14 uhr 90 min termin", ["0", "other"]],
+];
+test("the minutes are :00, ones the request writes behind an hour, or other", () => {
+  for (const [request, minutes] of minuteChoices)
+    assert.deepEqual(minuteOptions(request), minutes, request);
 });
 
 test("a part prefills only at the bar's confidence, and a past day says so", () => {

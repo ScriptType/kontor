@@ -136,6 +136,15 @@ export const phrasings: Phrasing[] = [
     "am dienstag lieber schon um halb 12 anfangen, dann bis 14 uhr",
     "150",
   ),
+  {
+    ...appointment(
+      "1037 termin 29.09. 10 uhr nee 11, 45 min, nur eintragen nicht speichern",
+      "2026-09-29",
+      "11:00",
+    ),
+    scope: "V-1037",
+  },
+  appointment("am 24.9. um 14 uhr 90 min termin", "2026-09-24", "14:00"),
   duration("von 9 bis 11", "120"),
   duration("9-11 Uhr", "120"),
   duration("zwei Stunden", "120"),
