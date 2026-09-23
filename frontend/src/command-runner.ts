@@ -20,7 +20,12 @@ import {
   type Decision,
   type FieldDescription,
 } from "../../shared/command";
-import { validFieldValue } from "../../shared/field-values";
+import {
+  localToday,
+  partialAnswer,
+  validFieldValue,
+  type PartialAnswer,
+} from "../../shared/field-values";
 import { changingActions } from "../../shared/dimensions";
 import { requestHints } from "../../shared/request-hints";
 import { guardStop, type GuardStop } from "../../shared/run-guard";
@@ -72,7 +77,7 @@ export type RunState =
       message: string;
       cause: { kind: "unknown" } | { kind: "control"; control: BlockedControl };
     }
-  | { kind: "needs_input"; field: FieldDescription }
+  | { kind: "needs_input"; field: FieldDescription; partial: PartialAnswer }
   | {
       kind: "review";
       capture: DecisionCapture;
@@ -613,14 +618,18 @@ export class CommandRunner {
       message: this.ui.message(),
     });
   }
+  private existing() {
+    const data = this.ui.data();
+    return [
+      ...(data?.cases.flatMap((c) => [c.id, c.title]) ?? []),
+      ...(data?.customers.map((c) => c.name) ?? []),
+    ];
+  }
   private snapshot(): DecisionInput {
     const run = this.run();
     if (!run) throw new Error("Kein Auftrag");
     const data = this.ui.data();
-    const existing = [
-      ...(data?.cases.flatMap((c) => [c.id, c.title]) ?? []),
-      ...(data?.customers.map((c) => c.name) ?? []),
-    ];
+    const existing = this.existing();
     const blockedControls = this.registry.blockedSnapshot();
     const policy = gates[this.gate];
     const context = this.facts(blockedControls);
@@ -727,11 +736,26 @@ export class CommandRunner {
     if (choice.startsWith("ask:")) {
       const field = input.fields.find((field) => `ask:${field.id}` === choice);
       if (!field) throw new Error("Unbekannte Rückfrage.");
-      this.state.set({ kind: "needs_input", field });
-      this.attention.update((n) => n + 1);
+      this.raise(field);
       return true;
     }
     return false;
+  }
+  /** Asks the user, prefilled with what the request gives, read on the run's start day. */
+  private raise(field: FieldDescription) {
+    const run = this.run();
+    if (!run) throw new Error("Kein Auftrag");
+    this.state.set({
+      kind: "needs_input",
+      field,
+      partial: partialAnswer(
+        field,
+        run.request,
+        localToday(new Date(run.createdAt)),
+        this.existing(),
+      ),
+    });
+    this.attention.update((n) => n + 1);
   }
   /** Reads the plan once for the run on the screen it starts from; a failure leaves the run without one. */
   private async readPlan(runId: string): Promise<RunPlan | null> {

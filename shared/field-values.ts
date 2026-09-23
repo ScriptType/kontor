@@ -321,24 +321,106 @@ export type PartialAnswer =
       time: string | null;
     }
   | { type: "number" | "text"; value: string | null };
+const pad = (n: number) => String(n).padStart(2, "0");
 /** Today's date in the browser's local time zone, not UTC. */
-export function localToday(_now = new Date()): string {
-  throw new Error("not implemented");
+export function localToday(now = new Date()): string {
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
+const isoDay = /(?<!\p{N})(\d{4})-(\d{2})-(\d{2})(?!\p{N})/gu;
+// A d.m that an hour, minute or clock unit follows ("1.5 Stunden", "9.30 Uhr")
+// is a quantity or a time, not a day.
+const germanDay =
+  /(?<![\p{N}.,:/-])(\d{1,2})\.(\d{1,2})(?:\.(\d{4}|\d{2})?)?(?!\p{N}|[.,]\p{N}|\s?(?:h|std|stunden?|uhr|min|minuten)(?!\p{L}))/giu;
+const clockTimes = [
+  /(?<![\p{N}.:])(\d{1,2}):(\d{2})(?!\p{N})/gu,
+  /(?<![\p{N}.,:])(\d{1,2})(?:\.(\d{2}))?\s?uhr(?!\p{L})/giu,
+  /(?<!\p{L})um\s(\d{1,2})(?!\p{N}|[.:,]\p{N}|\s?(?:uhr|h|std|stunden?|min|minuten)(?!\p{L}))/giu,
+];
+/** Every real calendar day the request names; a day without a year is in `year`. */
+function days(request: string, year: number) {
+  return [
+    ...[...request.matchAll(isoDay)].map((m) => [m[1], m[2], m[3]]),
+    ...[...request.matchAll(germanDay)].map((m) => [
+      m[3]?.length === 2 ? `20${m[3]}` : (m[3] ?? String(year)),
+      m[2],
+      m[1],
+    ]),
+  ].flatMap(([y, m, d]) => {
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    return date.getMonth() === Number(m) - 1 && date.getDate() === Number(d)
+      ? [localToday(date)]
+      : [];
+  });
+}
+function single(values: string[]) {
+  const distinct = new Set(values);
+  return distinct.size === 1 ? ([...distinct][0] ?? null) : null;
+}
+/**
+ * What the request gives for a field, read by the field's type alone. A day
+ * or time is kept only when the request names exactly one distinct value; a
+ * day without a year takes today's year. Number and text fields take the
+ * single value fieldValues() offers. Adds no field candidate.
+ */
 export function partialAnswer(
-  _field: FieldDescription,
-  _request: string,
-  _today: string,
-  _existing: string[],
+  field: FieldDescription,
+  request: string,
+  today: string,
+  existing: string[],
 ): PartialAnswer {
-  throw new Error("not implemented");
+  if (field.type !== "datetime-local") {
+    const values = fieldValues(field, request, [], existing);
+    return {
+      type: field.type,
+      value: values.length === 1 ? (values[0]?.value ?? null) : null,
+    };
+  }
+  const day = single(days(request, Number(today.slice(0, 4))));
+  const time = single(
+    clockTimes.flatMap((pattern) =>
+      [...request.matchAll(pattern)].flatMap((m) => {
+        const hours = Number(m[1]),
+          minutes = Number(m[2] ?? 0);
+        return hours < 24 && minutes < 60
+          ? [`${pad(hours)}:${pad(minutes)}`]
+          : [];
+      }),
+    ),
+  );
+  return {
+    type: field.type,
+    date: day === null ? null : { day, past: day < today },
+    time,
+  };
 }
-export function partialNotes(_partial: PartialAnswer): string[] {
-  throw new Error("not implemented");
+/** The answer panel's lines for a prefill, in order; empty when nothing is given. */
+export function partialNotes(partial: PartialAnswer): string[] {
+  if (partial.type !== "datetime-local")
+    return partial.value === null
+      ? []
+      : [`Aus dem Auftrag: ${partial.value}. Bitte prüfen.`];
+  const { date, time } = partial;
+  const day = date && date.day.split("-").reverse().join(".");
+  const given =
+    day && time
+      ? [`Aus dem Auftrag: ${day}, ${time}. Bitte prüfen.`]
+      : day
+        ? [`Datum aus dem Auftrag: ${day}. Bitte die Uhrzeit ergänzen.`]
+        : time
+          ? [`Uhrzeit aus dem Auftrag: ${time}. Bitte das Datum ergänzen.`]
+          : [];
+  return date?.past ? [...given, `${day} liegt in der Vergangenheit.`] : given;
 }
+/** The field's value from the answer control's parts; null when incomplete or invalid. */
 export function composeAnswer(
-  _field: FieldDescription,
-  _parts: { date?: string; time?: string; value?: string },
+  field: FieldDescription,
+  parts: { date?: string; time?: string; value?: string },
 ): string | null {
-  throw new Error("not implemented");
+  const value =
+    field.type === "datetime-local"
+      ? parts.date && parts.time
+        ? `${parts.date}T${parts.time}`
+        : ""
+      : (parts.value ?? "");
+  return validFieldValue(field, value) ? value : null;
 }

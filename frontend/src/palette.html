@@ -98,14 +98,49 @@
       <section #attentionPanel class="answer-panel">
         <h3>Antwort ausstehend</h3>
         <p>{{ state.field.label }}</p>
+        @for (note of partialNotes(state.partial); track note) {
+        <p>{{ note }}</p>
+        } @if (state.field.scope === runner.ui.selectedId() && runner.ui.dirty()) {
+        <p>
+          Entwurf von {{ state.field.scope }} ist vorbereitet und noch nicht
+          gespeichert.
+        </p>
+        } @if (state.partial.type === 'datetime-local') {
+        <input
+          #answerDate
+          type="date"
+          [value]="state.partial.date?.day ?? ''"
+          [attr.aria-label]="state.field.label + ' · Datum'"
+          [attr.data-answer-focus]="state.partial.date && !state.partial.time ? null : ''"
+        />
+        <input
+          #answerTime
+          type="time"
+          [value]="state.partial.time ?? ''"
+          [attr.aria-label]="state.field.label + ' · Uhrzeit'"
+          [attr.data-answer-focus]="state.partial.date && !state.partial.time ? '' : null"
+        />
+        <button
+          (click)="answer(state.field, { date: answerDate.value, time: answerTime.value })"
+        >
+          Wert bestätigen
+        </button>
+        } @else {
         <input
           #answerValue
           [type]="state.field.type"
+          [value]="state.partial.value ?? ''"
           [attr.min]="state.field.min"
           [attr.max]="state.field.max"
           [attr.aria-label]="state.field.label"
+          data-answer-focus
         />
-        <button (click)="answer(answerValue.value)">Wert bestätigen</button>
+        <button (click)="answer(state.field, { value: answerValue.value })">
+          Wert bestätigen
+        </button>
+        } @if (answerError()) {
+        <p class="blocker" role="alert">{{ answerError() }}</p>
+        }
         <button (click)="runner.stop()">Auftrag stoppen</button>
       </section>
       } @if (state.kind === 'review') {

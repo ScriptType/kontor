@@ -6,6 +6,7 @@ import {
   effect,
   untracked,
   computed,
+  linkedSignal,
   afterRenderEffect,
   afterNextRender,
   Injector,
@@ -16,7 +17,8 @@ import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { BrnDialogImports } from "@spartan-ng/brain/dialog";
 import { CommandRunner, type RunState } from "./command-runner";
-import { demos } from "../../shared/command";
+import { demos, type FieldDescription } from "../../shared/command";
+import { composeAnswer, partialNotes } from "../../shared/field-values";
 @Component({
   selector: "kontor-palette",
   imports: [FormsModule, BrnDialogImports, DatePipe],
@@ -26,6 +28,12 @@ export class Palette {
   readonly runner = inject(CommandRunner);
   readonly confidenceInput = signal(String(this.runner.confidencePercent()));
   readonly demos = demos;
+  readonly partialNotes = partialNotes;
+  /** Why the last confirm was refused; cleared by the next run state. */
+  readonly answerError = linkedSignal({
+    source: this.runner.state,
+    computation: () => "",
+  });
   private readonly injector = inject(Injector);
   readonly attentionPanel =
     viewChild<ElementRef<HTMLElement>>("attentionPanel");
@@ -34,8 +42,9 @@ export class Palette {
     null;
   readonly focusTarget = computed(() => {
     const state = this.runner.state();
-    return state.kind === "needs_input" ||
-      state.kind === "needs_approval" ||
+    if (state.kind === "needs_input")
+      return ".answer-panel [data-answer-focus]";
+    return state.kind === "needs_approval" ||
       state.kind === "review" ||
       state.kind === "blocked" ||
       state.kind === "completion_unconfirmed"
@@ -49,10 +58,10 @@ export class Palette {
     });
     afterRenderEffect(() => {
       const attention = this.runner.attention();
+      const panel = this.attentionPanel()?.nativeElement;
       const control =
-        this.attentionPanel()?.nativeElement.querySelector<HTMLElement>(
-          "input, button",
-        );
+        panel?.querySelector<HTMLElement>("[data-answer-focus]") ??
+        panel?.querySelector<HTMLElement>("input, button");
       if (this.open() && attention > this.focusedAttention && control) {
         this.focusedAttention = attention;
         control.focus();
@@ -134,8 +143,19 @@ export class Palette {
   continueRun() {
     this.closeThen(() => void this.runner.resume());
   }
-  answer(id: string) {
-    if (!this.runner.answer(id)) return;
+  answer(
+    field: FieldDescription,
+    parts: { date?: string; time?: string; value?: string },
+  ) {
+    const value = composeAnswer(field, parts);
+    if (value === null || !this.runner.answer(value)) {
+      this.answerError.set(
+        field.type === "datetime-local"
+          ? "Bitte Datum und Uhrzeit angeben."
+          : "Bitte einen gültigen Wert angeben.",
+      );
+      return;
+    }
     this.closeThen(() => void this.runner.resume());
   }
   approve() {
