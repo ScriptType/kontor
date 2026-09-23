@@ -160,3 +160,36 @@ test("a noted question comes before the run leaves its case", async ({
     { nextAnswer: script(["case:V-1042", "ask:minutes", "nav:reports"]) },
   );
 });
+
+test("an unsure step after a noted question raises the question, not a review", async ({
+  page,
+}) => {
+  const choices = ["case:V-1042", "ask:minutes"];
+  await withLive(
+    page,
+    [],
+    async (store, _held, _arrived, snapshots) => {
+      await start(page, "Erfasse Arbeitszeit für V-1042 und speichere.");
+      await expect(page.locator(".answer-panel")).toContainText(
+        "V-1042 · Arbeitszeit",
+      );
+      await expect(page.locator(".choice-review")).toHaveCount(0);
+      expect(snapshots).toHaveLength(3);
+      expect(store.snapshot().revision).toBe(0);
+    },
+    {
+      nextAnswer: (index) =>
+        choices[index] === undefined
+          ? {
+              choice: "priority:Normal",
+              confidence: 0.4,
+              probabilities: {
+                "priority:Normal": 0.4,
+                "nav:team": 0.35,
+                abstain: 0.25,
+              },
+            }
+          : { choice: choices[index] ?? "done", confidence: 1 },
+    },
+  );
+});
