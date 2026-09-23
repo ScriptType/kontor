@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { appointmentSchema } from "./domain.js";
+import { timeRanges } from "./clock-times.js";
 import type { DecisionInput, FieldDescription } from "./command.js";
 import { spokenNumbers } from "./number-words.js";
 export const valueSourceSchema = z.enum([
@@ -12,6 +13,7 @@ export const valueSourceSchema = z.enum([
   "word",
   "sum",
   "difference",
+  "range",
 ]);
 export type ValueSource = z.infer<typeof valueSourceSchema>;
 export const valueSources = {
@@ -45,6 +47,7 @@ export const valueSources = {
   },
   sum: { de: "Summe", en: "sum" },
   difference: { de: "Differenz", en: "difference" },
+  range: { de: "Zeitspanne", en: "time range" },
 } as const satisfies Record<ValueSource, { de: string; en: string }>;
 const requestSources: ReadonlySet<ValueSource> = new Set([
   "number",
@@ -52,6 +55,7 @@ const requestSources: ReadonlySet<ValueSource> = new Set([
   "word",
   "sum",
   "difference",
+  "range",
   "dateTime",
 ]);
 
@@ -253,13 +257,24 @@ export function requestNumbers(
     .sort((a, b) => a.at - b.at)
     .map(({ at: _, ...number }) => number);
 }
-/** Where a candidate comes from: the source, a converted hour phrase or number word, or the arithmetic on the saved value. */
+/** Where a candidate comes from: the source, a converted hour phrase or number word, or the arithmetic on the saved value or a time range. */
 export function describeSource(
-  found: { source: ValueSource; span?: string; saved?: number },
+  found: {
+    source: ValueSource;
+    span?: string;
+    saved?: number;
+    times?: { from: string; to: string };
+  },
   value: string,
   language: "de" | "en",
 ) {
   const text = valueSources[found.source][language];
+  if (found.times) {
+    const { from, to } = found.times;
+    return language === "de"
+      ? `${text}: „${found.span}“ = ${to} − ${from} = ${value} Minuten`
+      : `${text}: "${found.span}" = ${to} − ${from} = ${value} min`;
+  }
   if (found.saved !== undefined) {
     const amount = Math.abs(Number(value) - found.saved);
     const plus = found.source === "sum";
@@ -304,13 +319,37 @@ export function savedArithmetic(saved: number, numbers: RequestNumber[]) {
     })),
   );
 }
+const clock = (minutes: number) =>
+  `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+/**
+ * The appointment length each time range in the request gives ("von 13 bis 15
+ * uhr" = 120), when the field accepts it. Code offers it; Jev reads whether
+ * the range is the appointment.
+ */
+export function rangeDurations(field: FieldDescription, request: string) {
+  if (field.id !== "duration") return [];
+  return timeRanges(request).flatMap(({ text, from, to }) => {
+    const value = String(to - from);
+    return validFieldValue(field, value)
+      ? [
+          {
+            value,
+            source: "range" as const,
+            span: text,
+            times: { from: clock(from), to: clock(to) },
+          },
+        ]
+      : [];
+  });
+}
 /**
  * Value candidates for one field. A candidate is bound when the request ties it
  * to this field alone (a field word, or the field type for a date and time) and
  * it is the only request value offered to this field on this case. A
  * correction or a sequence offers two values, so neither is bound. With the
  * field's saved minutes, the sums and differences count as request values too,
- * so the number they come from is not bound.
+ * so the number they come from is not bound. So does the length of a time
+ * range for the appointment length.
  */
 export function fieldValues(
   field: FieldDescription,
@@ -323,6 +362,7 @@ export function fieldValues(
     source: ValueSource;
     span?: string;
     saved?: number;
+    times?: { from: string; to: string };
     bound: boolean;
   };
   const values = new Map<string, Found>();
@@ -351,6 +391,8 @@ export function fieldValues(
       for (const { value, ...found } of savedArithmetic(saved, numbers))
         if (!values.has(value) && validFieldValue(field, value))
           values.set(value, { ...found, bound: false });
+    for (const { value, ...found } of rangeDurations(field, request))
+      if (!values.has(value)) values.set(value, { ...found, bound: false });
   } else if (field.type === "datetime-local") {
     for (const match of request.matchAll(
       /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
@@ -434,7 +476,8 @@ function single(values: string[]) {
  * What the request gives for a field, read by the field's type alone. A day
  * or time is kept only when the request names exactly one distinct value; a
  * day without a year takes today's year. Number and text fields take the
- * single value fieldValues() offers. Adds no field candidate.
+ * single value fieldValues() offers, without the length of a time range,
+ * which code computes and does not read literally. Adds no field candidate.
  */
 export function partialAnswer(
   field: FieldDescription,
@@ -443,7 +486,9 @@ export function partialAnswer(
   existing: string[],
 ): PartialAnswer {
   if (field.type !== "datetime-local") {
-    const values = fieldValues(field, request, [], existing);
+    const values = fieldValues(field, request, [], existing).filter(
+      ({ source }) => source !== "range",
+    );
     return {
       type: field.type,
       value: values.length === 1 ? (values[0]?.value ?? null) : null,

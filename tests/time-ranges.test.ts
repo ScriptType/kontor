@@ -1,0 +1,79 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import type { FieldDescription } from "../shared/command.js";
+import { seedWorkspace } from "../shared/domain.js";
+import { fieldValues, partialAnswer } from "../shared/field-values.js";
+import { readers } from "../shared/value-reading.js";
+
+const ids = ["V-1042", "V-1041", "V-1039"];
+const number = (id: "minutes" | "duration"): FieldDescription => ({
+  id,
+  scope: "V-1039",
+  label: id,
+  kind: "draft",
+  type: "number",
+  current: "",
+  min: id === "duration" ? 15 : 0,
+  max: id === "duration" ? 480 : 10000,
+  jev: { name: id },
+});
+const ranges = (id: "minutes" | "duration", request: string) =>
+  fieldValues(number(id), request, [], ids)
+    .filter(({ source }) => source === "range")
+    .map(({ value, bound }) => [value, bound]);
+
+// request, the appointment lengths its time ranges give
+const lengths: [string, string[]][] = [
+  ["1039 übermorgen von 13 bis 15 uhr eintragen", ["120"]],
+  ["am dienstag lieber schon um halb 12 anfangen, dann bis 14 uhr", ["150"]],
+  ["9-11 Uhr", ["120"]],
+  ["9 Uhr – 11 Uhr", ["120"]],
+  ["von 8.30 bis 9.45 Uhr", ["75"]],
+  ["von viertel nach neun bis dreiviertel elf", ["90"]],
+  ["von 13:15 bis viertel vor 3", []],
+  ["2 bis 3 Stunden", []],
+  ["30 bis 45 Minuten", []],
+  ["von 15 bis 13", []],
+  ["von 9 bis 18 Uhr", []],
+  ["um 9 und um 11", []],
+  ["am 2026-09-10 um 9", []],
+  ["am 24.09. bis 15 uhr", []],
+];
+test("a time range offers its length to the appointment length, unbound", () => {
+  for (const [request, values] of lengths)
+    assert.deepEqual(
+      ranges("duration", request),
+      values.map((v) => [v, false]),
+      request,
+    );
+});
+test("a time range gives no worked minutes", () => {
+  assert.deepEqual(ranges("minutes", "von 13 bis 15 uhr gearbeitet"), []);
+});
+test("the reader offers the range's length with its arithmetic", () => {
+  const scene = {
+    request: "1039 übermorgen von 13 bis 15 uhr eintragen",
+    today: "2026-09-22",
+    cases: seedWorkspace().cases,
+  };
+  const options = readers.minutes.parts(number("duration"), scene)["value"]!
+    .options;
+  const key = Object.keys(options).find(
+    (k) => options[k] === "Zeitspanne: „13 bis 15“ = 15:00 − 13:00 = 120 Minuten",
+  );
+  assert.ok(key, JSON.stringify(options));
+  assert.deepEqual(
+    readers.minutes.assemble(
+      { value: { choice: key, confidence: 0.8 } },
+      number("duration"),
+      scene,
+    ),
+    { type: "number", value: { value: "120", confidence: 0.8 } },
+  );
+});
+test("without the live model, a range's length is no literal prefill", () => {
+  assert.deepEqual(
+    partialAnswer(number("duration"), "von 9 bis 11", "2026-09-22", ids),
+    { type: "number", value: null },
+  );
+});

@@ -11,6 +11,7 @@ import type { ServiceCase } from "./domain.js";
 import {
   describeSource,
   fieldNumbers,
+  rangeDurations,
   savedArithmetic,
   type PartialAnswer,
 } from "./field-values.js";
@@ -178,8 +179,9 @@ const maxBareHours = 12;
 /**
  * Every value in minutes the request can give this field, by option key: each
  * written number in each unit it can have (its written unit, else minutes or
- * hours), each spoken duration, and the saved minutes plus and minus each
- * number the field's candidates offer; only values the field accepts.
+ * hours), each spoken duration, the saved minutes plus and minus each
+ * number the field's candidates offer, and for the appointment length each
+ * time range's length; only values the field accepts.
  */
 function minuteOptions(field: FieldDescription, scene: ReadingScene) {
   const fits = (minutes: number) =>
@@ -207,7 +209,9 @@ function minuteOptions(field: FieldDescription, scene: ReadingScene) {
           all.findIndex((other) => other.value === found.value) === i,
       )
     : [];
-  const room = choiceLimit - 2 - words.length - arithmetic.length;
+  const ranges = rangeDurations(field, scene.request);
+  const room =
+    choiceLimit - 2 - words.length - arithmetic.length - ranges.length;
   for (const [i, span] of numberSpans(scene.request, caseIds).entries()) {
     const [first = 0, second] = span.amounts;
     // [option key suffix, how the label reads the number, minutes]
@@ -240,6 +244,11 @@ function minuteOptions(field: FieldDescription, scene: ReadingScene) {
   }
   for (const found of arithmetic)
     options[`s${found.value}`] = {
+      label: describeSource(found, found.value, "de"),
+      minutes: Number(found.value),
+    };
+  for (const [i, found] of ranges.entries())
+    options[`r${i}`] = {
       label: describeSource(found, found.value, "de"),
       minutes: Number(found.value),
     };
