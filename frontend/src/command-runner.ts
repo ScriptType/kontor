@@ -27,6 +27,7 @@ import {
   type PartialAnswer,
 } from "../../shared/field-values";
 import { changingActions } from "../../shared/dimensions";
+import { prefillFrom, readingKind } from "../../shared/value-reading";
 import {
   dueQuestion,
   notedQuestionSchema,
@@ -802,21 +803,44 @@ export class CommandRunner {
       ],
     }));
   }
-  /** Asks the user, prefilled with what the request gives, read on the run's start day. */
+  /** Asks the user, prefilled with the value Jev reads from the request on the run's start day. */
   private raise(field: FieldDescription) {
     const run = this.run();
     if (!run) throw new Error("Kein Auftrag");
-    this.state.set({
-      kind: "needs_input",
+    const epoch = this.epoch;
+    void this.prefill(
       field,
-      partial: partialAnswer(
-        field,
-        run.request,
-        localToday(new Date(run.createdAt)),
-        this.existing(),
-      ),
+      run.request,
+      localToday(new Date(run.createdAt)),
+    ).then((partial) => {
+      if (epoch !== this.epoch) return;
+      this.state.set({ kind: "needs_input", field, partial });
+      this.attention.update((n) => n + 1);
     });
-    this.attention.update((n) => n + 1);
+  }
+  /**
+   * The model's reading when the field has a reading kind, or nothing when it
+   * cannot read it with confidence; the literal reading without a live model.
+   */
+  private async prefill(
+    field: FieldDescription,
+    request: string,
+    today: string,
+  ): Promise<PartialAnswer> {
+    const literal = partialAnswer(field, request, today, this.existing());
+    if (!readingKind(field)) return literal;
+    try {
+      const readings = await this.ui.api.readValues.call(
+        { request, today, fields: [field] },
+        { signal: this.abort?.signal },
+      );
+      const reading = readings?.[0];
+      return reading ? prefillFrom(reading, today) : literal;
+    } catch {
+      return field.type === "datetime-local"
+        ? { type: field.type, date: null, time: null }
+        : { type: field.type, value: null };
+    }
   }
   /** Reads the plan once for the run on the screen it starts from; a failure leaves the run without one. */
   private async readPlan(runId: string): Promise<RunPlan | null> {
