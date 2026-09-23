@@ -24,7 +24,7 @@ type Technician = Workspace["technicians"][number];
       <div class="cards">
         @for (customer of ui.data()?.customers; track customer.id) {
           <article class="card" [kontorRegion]="{ id: 'customer:' + customer.id, kind: 'section', label: customer.name }">
-            <div class="card-icon">{{ customer.name.slice(0, 1) }}</div>
+            <div class="card-icon" aria-hidden="true">{{ customer.name.slice(0, 1) }}</div>
             <h2>{{ customer.name }}</h2>
             <p class="muted">{{ customer.contact }}</p>
             <p>
@@ -73,7 +73,7 @@ type Technician = Workspace["technicians"][number];
       <div class="cards">
         @for (t of ui.data()?.technicians; track t.id) {
           <article class="card" [kontorRegion]="{ id: 'technician:' + t.id, kind: 'section', label: t.name }">
-            <span class="avatar">{{ t.name.slice(0, 1) }}</span>
+            <span class="avatar" aria-hidden="true">{{ t.name.slice(0, 1) }}</span>
             <h2>{{ t.name }}</h2>
             <p class="muted">{{ t.skills.join(" · ") }}</p>
             <p>{{ assigned(t.id).length }} offene Vorgänge</p>

@@ -281,6 +281,37 @@ test("hidden and inert regions and controls stay absent from provider observatio
   );
 });
 
+test("name initials stay out of accessible names and Jev's screen text", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["nav:team", "nav:customers"],
+    async (_store, _held, _arrived, _snapshots, observations) => {
+      await expect(
+        page.getByRole("cell", { name: "Jonas Weber", exact: true }),
+      ).toHaveCount(2);
+      expect(await page.locator(".nav-foot").ariaSnapshot()).not.toMatch(
+        /\bAS\b/,
+      );
+      await start(page, "Öffne Team und danach Kunden.");
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      const screens = observations.map(
+        (observation) =>
+          z
+            .object({ currentFacts: z.object({ currentScreen: z.string() }) })
+            .parse(observation).currentFacts.currentScreen,
+      );
+      expect(screens).toHaveLength(3);
+      expect(screens[0]).toContain("\tJonas Weber\t");
+      expect(screens[1]).toContain("Team & Kapazität");
+      expect(screens[1]).not.toMatch(/\n[JLM]\n(Lea|Mara|Jonas)/);
+      expect(screens[2]).toContain("Nordwerk GmbH");
+      expect(screens[2]).not.toMatch(/\n[NHL]\n(Nordwerk|Hafen|Linden)/);
+    },
+  );
+});
+
 test("held decision cannot execute after stop and menu children remain hidden", async ({
   page,
 }) => {

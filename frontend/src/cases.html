@@ -131,7 +131,7 @@
         </td>
         <td [class.urgent]="c.priority === 'Hoch'">{{ c.priority }}</td>
         <td>
-          <span class="avatar mini"
+          <span class="avatar mini" aria-hidden="true"
             >{{ ui.technicianName(c.technicianId).slice(0, 1) }}</span
           >{{ ui.technicianName(c.technicianId) }}
         </td>

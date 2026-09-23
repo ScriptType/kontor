@@ -578,11 +578,20 @@ export class CommandRunner {
       message: detailMounted ? this.ui.message() : undefined,
     });
   }
+  /** The visible text of the page as a screen reader gets it: innerText ignores aria-hidden, so those parts are hidden while it is read. */
   private screenText() {
     const content = document.querySelector(".content");
-    return content instanceof HTMLElement
-      ? content.innerText.slice(0, 12000)
-      : "";
+    if (!(content instanceof HTMLElement)) return "";
+    const hidden = [
+      ...content.querySelectorAll<HTMLElement>('[aria-hidden="true"]'),
+    ].map((element) => ({ element, display: element.style.display }));
+    for (const { element } of hidden) element.style.display = "none";
+    try {
+      return content.innerText.slice(0, 12000);
+    } finally {
+      for (const { element, display } of hidden)
+        element.style.display = display;
+    }
   }
   private observed(draftAssignment = false) {
     return JSON.stringify({
