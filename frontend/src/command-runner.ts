@@ -36,6 +36,7 @@ import {
 } from "../../shared/open-questions";
 import {
   listOrdinalSchema,
+  requestHints,
   requestOrdinals,
 } from "../../shared/request-hints";
 import {
@@ -66,7 +67,6 @@ import {
 import {
   assesses,
   completes,
-  decisionHints,
   defaultGate,
   duelPair,
   gateKind,
@@ -245,12 +245,8 @@ export class CommandRunner {
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
   readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
   private activeId: string | null = null;
-  /** The plan of the active run; run is set once a todo gate awaited it. */
-  private planned: {
-    runId: string;
-    ready: Promise<RunPlan | null>;
-    run?: RunPlan | null;
-  } | null = null;
+  private planned: { runId: string; ready: Promise<RunPlan | null> } | null =
+    null;
   private epoch = 0;
   private abort: AbortController | null = null;
   constructor() {
@@ -448,11 +444,9 @@ export class CommandRunner {
         ...h,
       ].slice(0, 20),
     );
-    const policy: GatePolicy = gates[this.gate];
-    this.planned =
-      policy.planVote.length || policy.todo
-        ? { runId: this.activeId, ready: this.readPlan(this.activeId) }
-        : null;
+    this.planned = gates[this.gate].planVote.length
+      ? { runId: this.activeId, ready: this.readPlan(this.activeId) }
+      : null;
     await this.resume();
   }
   async resume() {
@@ -696,17 +690,6 @@ export class CommandRunner {
     const policy: GatePolicy = gates[this.gate];
     const context = this.facts(blockedControls);
     const actions = this.registry.snapshot(run.request, run.answers, existing);
-    const plan = this.awaitedPlan();
-    const world = plan && this.planWorld();
-    const hints =
-      data &&
-      decisionHints(
-        this.gate,
-        run.request,
-        data,
-        run.ordinals,
-        plan && world ? { run: plan, world } : null,
-      );
     const changing =
       policy.memory === "off" ? actions : changingActions({ actions, context });
     const shown = withheld(
@@ -730,7 +713,14 @@ export class CommandRunner {
       doneBeforeFirstStep: policy.doneBeforeFirstStep,
       state: leanStates[policy.memory],
       prompt: policy.prompt,
-      ...(hints ? { hints } : {}),
+      ...(policy.prompt !== "full" && data
+        ? {
+            hints: {
+              ...requestHints(run.request, data),
+              ...(run.ordinals.length ? { listOrdinals: run.ordinals } : {}),
+            },
+          }
+        : {}),
     };
   }
   private capture(input: DecisionInput, decision: Decision): DecisionCapture {
@@ -933,17 +923,6 @@ export class CommandRunner {
     );
     return plan && workspace ? { plan, start: { ...start, workspace } } : null;
   }
-  /** The active run's plan once a todo gate awaited it, else null. */
-  private awaitedPlan() {
-    const planned = this.planned;
-    return planned?.runId === this.activeId ? (planned.run ?? null) : null;
-  }
-  /** Waits for the plan under a todo gate so Jev reads what remains from step 1. */
-  private async awaitPlan() {
-    const planned = this.planned;
-    if (gates[this.gate].todo && planned?.runId === this.activeId)
-      planned.run = await planned.ready;
-  }
   private planWorld(): PlanWorld | null {
     const run = this.run(),
       data = this.ui.data();
@@ -1113,7 +1092,6 @@ export class CommandRunner {
   private async loop(epoch: number) {
     for (let count = 0; count < 40 && epoch === this.epoch; count++) {
       this.state.set({ kind: "deciding" });
-      await this.awaitPlan();
       await this.render();
       if (epoch !== this.epoch || this.registry.modal) return;
       const input = this.snapshot();
