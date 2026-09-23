@@ -42,6 +42,8 @@ Ob ein Feldwert an den Auftrag gebunden ist, sendet die App nicht an Jev. Der Be
 - Nach genau den Entscheidungen, nach denen die Bank eine Prüfung erwartet, folgt in der Aufnahme eine Prüfung.
 - Genau die Aktionen, die die Bank ausführen würde, hat der Lauf ausgeführt.
 
+Ein Aufruf ohne Antwort des Anbieters (`answers: null`, etwa nach einem 503) enthält keine Entscheidung. Der Befehl überspringt ihn und gibt aus, wie viele solche Aufrufe in den gelesenen Läufen und im Katalog lagen. Der Befehl für Runde 6 unten überspringt 232, alle im Katalog.
+
 Vor einer Bank auf neuen Aufnahmen prüft `scripts/jev-format/candidates.ts`, ob die Neuberechnung jede gesendete Feldoption samt Wertquelle trifft:
 
 ```sh
@@ -53,6 +55,8 @@ Der Befehl zählt je Wertquelle die gesendeten, die fehlenden und die abweichend
 ### Aufnahmen mit kompaktem Zustand
 
 Unter `"focused"` und `"compact"` fehlen der Entscheidung `snapshotId` und `availableActions`. Dafür enthält sie `requestHints` und am Ende `originalRequestAgain`. Die Bank liest beide Formen. Die Art jeder Aktion braucht sie für das Gate, Label und vollen Text für die Prüfung. Folgt der Entscheidung eine Prüfung, nimmt die Bank deren `availableActions`. Sonst baut sie die Aktionen aus einem Katalog. Der Katalog kennt je Kennung und Wirkungstext Label, Art und den Text nach dem Optionstext. Er lernt aus allen Prüfungen, Zweikämpfen und bisherigen Schritten der gelesenen Läufe und der Läufe unter `--catalog <Ordner,…>`. Eine Kennung kann zwei Bedienelemente benennen, etwa `technician:mara` in der Zuweisung und im Filter. Deshalb gehört der Wirkungstext zum Schlüssel. Kennt der Katalog eine Option nicht, bricht der Befehl ab.
+
+Unter `g4-lean` und `g4-lean-e1` sendet die App den schlanken Verlauf (`history: "slim"`, `slimObservations` in `shared/step-log.ts`). Ein Schritt trägt `before` dort nur, wo es vom `after` des Schritts davor abweicht. `fullStateSchema` liest beide Verläufe. Für den Wächter, die Varianten und `check-product.ts` ergänzt `stepsWithBefore` ein fehlendes `before` aus dem `after` des Schritts davor.
 
 Aufrufe eines Zweikampfs (`duel`) zählt `calls.json` mit, sie werden aber keine Zustände. Plan-Freigaben, Zweikampf und Lenkung bildet die Bank nicht nach. Die beiden letzten Prüfungen oben melden deshalb unter `g3-cpe-duel` Abweichungen, die der Plan erklärt.
 
@@ -116,6 +120,4 @@ Die Grundlinie mittelt alle Stichproben von `identity` und die aufgenommenen Ant
 - Die Beschriftung kennt einen richtigen Weg. Öffnet Jev einen Vorgang vor einer Navigation, die der menschliche Pfad zuerst macht, zählt das als falsch, auch wenn der Lauf danach richtig endet.
 - Eine Variante sieht nur den aufgenommenen Zustand. Folgen für spätere Schritte, etwa ein kürzerer Verlauf, zeigt erst ein ganzer Lauf.
 - Die Nachfrage nach der Ursache einer Blockade (`cause`) stellt die Bank nicht.
-- `extract.ts` liest nur Entscheidungen mit vollem Verlauf. Unter `g4-lean` und `g4-lean-e1` fehlt bisherigen Schritten `before`, und der Befehl bricht ab. Alle Eval-Läufe der Runde 6 mit Summen und Differenzen liefen unter einer dieser beiden Regeln. Vor einer Bank auf ihnen müssen `fullStateSchema` und die Größenzählung in `extract.ts` den schlanken Verlauf lesen.
-- Ein aufgenommener Aufruf ohne Antwort des Anbieters (`answers: null`, etwa nach 503) bricht `extract.ts` ab. In Runde 6 liegen solche Aufrufe in `k1clock-*`, `k1rows-*`, `f3arith-d6`, `k2clock-d6` und `s1lean-h2`.
-- Beide Abbrüche gelten auch für Läufe in einem Ordner unter `--catalog`. Der Befehl für Runde 6 oben bricht deshalb inzwischen mit `<lab>/round6` ab. `--catalog <lab>/round4/format` läuft.
+- Als `--runs` bricht `extract.ts` auf den Läufen der Runde 6 mit Summen und Differenzen weiter ab. Der Katalog kennt die Art einer Option nur, wenn eine Aufnahme sie mit genau dieser Kennung und diesem Wirkungstext zeigt. Auf den 20 Läufen `f3arith`, `k1clock`, `k1rows`, `k2clock`, `k2rows`, `m2cand`, `r1arith`, `r1rows`, `s1le1` und `s1lean` (je `h1` und `h2`) fehlt sie an 174 Stellen. Es sind Feldoptionen von `minutes`, `duration` und `appointment` mit Werten, die keine Aufnahme mit ihrem Text zeigt, und Optionen `open-case:` der Fallauswahl. Als `--catalog` liest der Befehl alle Läufe der Runde 6.
