@@ -91,14 +91,14 @@ const yes = (answer: Answer | undefined) => {
   if (answer?.type !== "noul") throw new Error("missing noul answer");
   return answer.noul;
 };
-/** The option whose own yes/no question under this prefix is likeliest. */
+/** The option whose own yes/no question under this prefix is likeliest, if its yes holds. */
 const likeliest = (answers: Record<string, Answer>, prefix: string) =>
   Object.entries(answers)
-    .filter(([key]) => key.startsWith(prefix))
-    .reduce<[string, number]>(
+    .filter(([key]) => key.startsWith(prefix) && yes(answers[key]) >= 0.5)
+    .reduce<[string | null, number]>(
       (best, [key, answer]) =>
         yes(answer) > best[1] ? [key.slice(prefix.length), yes(answer)] : best,
-      [ASK, -1],
+      [null, -1],
     )[0];
 const picked = (answer: Answer | undefined) => {
   if (answer?.type !== "choice") throw new Error("missing choice answer");
@@ -514,9 +514,13 @@ async function extractSteps(
         const py = yes(b[`s${i}.${id}.chg.${dim}`]);
         if (py < 0.5) continue;
         const key = `s${i}.${id}.val.${dim}`;
+        // A reference field whose yes/no names nobody keeps its value.
         const value =
           fixed[key] ??
-          (key in qb ? picked(b[key]) : likeliest(b, `s${i}.${id}.is.${dim}.`));
+          (key in qb
+            ? picked(b[key])
+            : (likeliest(b, `s${i}.${id}.is.${dim}.`) ??
+              currentCaseValue(scene, id, dim)));
         // Setting a field to its current value is no change.
         if (value === currentCaseValue(scene, id, dim)) continue;
         values[dim] = value;
