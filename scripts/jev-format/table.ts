@@ -162,7 +162,7 @@ const section = (group: Group) => {
   return [
     `## ${group} (${states} states)`,
     "",
-    `Identity baseline (${baseline.length} samples incl. the recorded answers): act-correct ${fmt(b.correct)}, act-wrong ${fmt(b.wrong)} (not a view ${fmt(b.hardWrong)}), stop ${fmt(b.stop)}, top1-safe ${fmt(b.top1)}, decide input tokens ${Math.round(baseTokens[group]!)}. Noise (largest leave-one-out gap of one identity sample): act-correct ±${fmt(n.correct)}, act-wrong ±${fmt(n.wrong)}, not a view ±${fmt(n.hardWrong)}, stop ±${fmt(n.stop)}, top1-safe ±${fmt(n.top1)}, safe mass ±${n.mass.toFixed(1)} points (baseline ${b.mass.toFixed(1)} %). Bold: beyond that gap.`,
+    `Identity baseline (${baseline.length} samples${runs.has("recorded") ? " incl. the recorded answers" : ""}): act-correct ${fmt(b.correct)}, act-wrong ${fmt(b.wrong)} (not a view ${fmt(b.hardWrong)}), stop ${fmt(b.stop)}, top1-safe ${fmt(b.top1)}, decide input tokens ${Math.round(baseTokens[group]!)}. Noise (largest leave-one-out gap of one identity sample): act-correct ±${fmt(n.correct)}, act-wrong ±${fmt(n.wrong)}, not a view ±${fmt(n.hardWrong)}, stop ±${fmt(n.stop)}, top1-safe ±${fmt(n.top1)}, safe mass ±${n.mass.toFixed(1)} points (baseline ${b.mass.toFixed(1)} %). Bold: beyond that gap.`,
     "",
     ...header,
     ...lines
