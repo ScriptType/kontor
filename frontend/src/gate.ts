@@ -44,7 +44,14 @@ export type GatePolicy = Read & {
   completion: "verdict" | "perKind";
   /** How the full state and the options are written for Jev. */
   prompt: DecisionInput["prompt"];
+  /**
+   * Checks below their bar that the plan read at run start may release when
+   * it agrees with the exact choice: the step pick, the completion check on
+   * done, or the effect check of the picked action.
+   */
+  planVote: readonly PlanVia[];
 };
+export type PlanVia = "pick" | "completion" | "effect";
 
 // Bars fitted on holdout-1 by the Jev bench (bench/gate-table.json).
 const g1Bars = {
@@ -76,6 +83,7 @@ export const gates = {
     guard: false,
     completion: "verdict",
     prompt: "full",
+    planVote: [],
   },
   g1: {
     read: "pmax",
@@ -86,6 +94,7 @@ export const gates = {
     guard: false,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   "g2-effect": {
     read: "pmax",
@@ -96,6 +105,7 @@ export const gates = {
     guard: false,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   "g2-exits": {
     read: "pmax",
@@ -106,6 +116,7 @@ export const gates = {
     guard: false,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   "g2-pool": {
     read: "pooled",
@@ -117,6 +128,7 @@ export const gates = {
     guard: false,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   g2: {
     read: "pooled",
@@ -128,6 +140,7 @@ export const gates = {
     guard: false,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   "explore-nomem": {
     read: "pmax",
@@ -138,6 +151,7 @@ export const gates = {
     guard: true,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   explore: {
     read: "pmax",
@@ -148,6 +162,7 @@ export const gates = {
     guard: true,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   g3: {
     read: "pooled",
@@ -159,6 +174,7 @@ export const gates = {
     guard: true,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
   },
   "g3-focused": {
     read: "pooled",
@@ -170,6 +186,7 @@ export const gates = {
     guard: true,
     completion: "perKind",
     prompt: "focused",
+    planVote: [],
   },
   "g3-compact": {
     read: "pooled",
@@ -181,6 +198,7 @@ export const gates = {
     guard: true,
     completion: "perKind",
     prompt: "compact",
+    planVote: [],
   },
   "g3-mem": {
     read: "pooled",
@@ -192,6 +210,31 @@ export const gates = {
     guard: true,
     completion: "perKind",
     prompt: "full",
+    planVote: [],
+  },
+  "g3-compact-plan": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion"],
+  },
+  "g3-compact-plan-effect": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
   },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;

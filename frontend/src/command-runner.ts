@@ -24,7 +24,14 @@ import { validFieldValue } from "../../shared/field-values";
 import { changingActions } from "../../shared/dimensions";
 import { requestHints } from "../../shared/request-hints";
 import { guardStop, type GuardStop } from "../../shared/run-guard";
-import { blockers, receiptSchema } from "../../shared/domain";
+import {
+  blockers,
+  draftOf,
+  pageSchema,
+  receiptSchema,
+} from "../../shared/domain";
+import { planSchema, type Plan } from "../../shared/plan";
+import { stepVote, type PlanWorld, type RunPlan } from "../../shared/plan-vote";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
 import {
@@ -40,6 +47,7 @@ import {
   pick,
   workKind,
   type GatePolicy,
+  type PlanVia,
 } from "./gate";
 export type RunState =
   | {
@@ -86,6 +94,19 @@ const historySchema = z.object({
   steps: z.array(stepSchema),
   createdAt: z.string(),
   outcome: z.string(),
+  /** The plan read at run start under a plan-voting gate, recorded for measurement. */
+  plan: z.union([planSchema, z.object({ failed: z.string() })]).optional(),
+  /** Each check the plan released, with the slot it agreed on. */
+  votes: z
+    .array(
+      z.object({
+        step: z.number(),
+        choice: z.string(),
+        via: z.enum(["pick", "completion", "effect"]),
+        slot: z.string(),
+      }),
+    )
+    .optional(),
 });
 const persistedSchema = z.object({
   version: z.literal(3),
@@ -172,6 +193,8 @@ export class CommandRunner {
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
   readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
   private activeId: string | null = null;
+  private planned: { runId: string; ready: Promise<RunPlan | null> } | null =
+    null;
   private epoch = 0;
   private abort: AbortController | null = null;
   constructor() {
@@ -363,6 +386,9 @@ export class CommandRunner {
         ...h,
       ].slice(0, 20),
     );
+    this.planned = gates[this.gate].planVote.length
+      ? { runId: this.activeId, ready: this.readPlan(this.activeId) }
+      : null;
     await this.resume();
   }
   async resume() {
@@ -695,6 +721,81 @@ export class CommandRunner {
     }
     return false;
   }
+  /** Reads the plan once for the run on the screen it starts from; a failure leaves the run without one. */
+  private async readPlan(runId: string): Promise<RunPlan | null> {
+    const workspace = this.ui.data();
+    const request = this.run()?.request ?? "";
+    const start = { page: this.ui.page(), filters: this.ui.filters() };
+    let plan: Plan | null = null;
+    let failure = "no plan";
+    if (workspace)
+      try {
+        plan = await this.ui.api.plan.call({
+          request,
+          ...start,
+          selectedCase: this.ui.selectedId(),
+        });
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error);
+      }
+    this.history.update((history) =>
+      history.map((run) =>
+        run.id === runId ? { ...run, plan: plan ?? { failed: failure } } : run,
+      ),
+    );
+    return plan && workspace ? { plan, start: { ...start, workspace } } : null;
+  }
+  private planWorld(): PlanWorld | null {
+    const run = this.run(),
+      data = this.ui.data();
+    if (!run || !data) return null;
+    return {
+      page: this.ui.page(),
+      filters: this.ui.filters(),
+      selected: this.ui.selectedId(),
+      draft: this.ui.draft(),
+      dirty: this.ui.dirty(),
+      records: Object.fromEntries(data.cases.map((c) => [c.id, draftOf(c)])),
+      receipts: run.receipts.map((receipt) => ({
+        caseId: receipt.caseId,
+        saved: draftOf(receipt.saved),
+      })),
+      visited: run.steps.flatMap((step) => {
+        const page = pageSchema.safeParse(JSON.parse(step.after).page);
+        return page.success ? [page.data] : [];
+      }),
+      answers: run.answers,
+    };
+  }
+  private votes(vias: readonly PlanVia[]) {
+    const allowed: readonly PlanVia[] = gates[this.gate].planVote;
+    return vias.every((via) => allowed.includes(via));
+  }
+  /**
+   * Whether the run's plan agrees with this choice, recording each check it
+   * releases; null once the capture went stale while the plan was read.
+   */
+  private async planAgrees(
+    capture: DecisionCapture,
+    choice: string,
+    vias: readonly PlanVia[],
+  ): Promise<boolean | null> {
+    const planned = this.planned;
+    if (!planned || planned.runId !== capture.runId) return false;
+    const run = await planned.ready;
+    if (!this.resolveCapture(capture)) return null;
+    const world = this.planWorld();
+    const slot = run && world && stepVote(run, choice, capture.input, world);
+    if (!slot) return false;
+    this.update((r) => ({
+      ...r,
+      votes: [
+        ...(r.votes ?? []),
+        ...vias.map((via) => ({ step: r.steps.length, choice, via, slot })),
+      ],
+    }));
+    return true;
+  }
   private async checkCompletion(capture: DecisionCapture) {
     const { input } = capture;
     const assessment = await this.ui.api.assess.call(
@@ -706,14 +807,25 @@ export class CommandRunner {
       this.unconfirmed("Daten geändert. Abschluss erneut prüfen.");
       return;
     }
-    if (
-      !completes(
+    const below: PlanVia[] = [
+      ...(completes(
         this.gate,
         this.confidencePercent(),
         assessment,
         workKind(input.steps),
-      ) ||
-      !capture.pick.acts ||
+      )
+        ? []
+        : (["completion"] as const)),
+      ...(capture.pick.acts ? [] : (["pick"] as const)),
+    ];
+    let confirmed = !below.length;
+    if (!confirmed && this.votes(below)) {
+      const agrees = await this.planAgrees(capture, "done", below);
+      if (agrees === null) return;
+      confirmed = agrees;
+    }
+    if (
+      !confirmed ||
       this.ui.busy() ||
       this.ui.unknownSave() ||
       this.run()?.operations.some(
@@ -766,8 +878,14 @@ export class CommandRunner {
         this.terminalOrQuestion(chosen.choice, capture, input);
         return;
       }
+      let acts = chosen.acts;
+      if (!acts && this.votes(["pick"])) {
+        const agrees = await this.planAgrees(capture, chosen.choice, ["pick"]);
+        if (agrees === null) return;
+        acts = agrees;
+      }
       if (chosen.choice === "blocked" || chosen.choice.startsWith("ask:")) {
-        if (!chosen.acts)
+        if (!acts)
           this.review(
             capture,
             chosen.choice === "blocked"
@@ -782,7 +900,7 @@ export class CommandRunner {
       );
       if (!action)
         throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
-      let reason = chosen.acts
+      let reason = acts
         ? ""
         : "Auswahlkonfidenz unter der Bestätigungsschwelle. Vorschläge prüfen.";
       let assessed: { choice: string; assessment: Assessment } | undefined;
@@ -804,10 +922,15 @@ export class CommandRunner {
           );
           return;
         }
-        if (
+        let doubtful =
           assessment.verdict !== "authorized" ||
-          assessment.confidence < this.confidencePercent() / 100
-        )
+          assessment.confidence < this.confidencePercent() / 100;
+        if (doubtful && !reason && this.votes(["effect"])) {
+          const agrees = await this.planAgrees(capture, action.id, ["effect"]);
+          if (agrees === null) return;
+          doubtful = !agrees;
+        }
+        if (doubtful)
           reason = `Effektprüfung ${Math.round(assessment.confidence * 100)} %: ${assessment.verdict === "additional" ? "zusätzliche Änderung" : "Auftragsfreigabe nicht sicher bestätigt"}. Vorschläge prüfen.`;
       }
       if (reason) {

@@ -485,3 +485,21 @@ test("g3-mem is g3 with the lean state for decide only", () => {
   assert.equal(memory, "decide");
   assert.equal(g3Memory, "off");
 });
+test("only the plan gates let the plan release a check", () => {
+  for (const gate of gateNames)
+    if (!gate.startsWith("g3-compact-plan"))
+      assert.deepEqual(gates[gate].planVote, [], gate);
+  assert.deepEqual(gates["g3-compact-plan"].planVote, ["pick", "completion"]);
+  assert.deepEqual(gates["g3-compact-plan-effect"].planVote, [
+    "pick",
+    "completion",
+    "effect",
+  ]);
+});
+test("the plan gates are g3-compact apart from the plan vote", () => {
+  const { planVote: _compact, ...compact } = gates["g3-compact"];
+  for (const gate of ["g3-compact-plan", "g3-compact-plan-effect"] as const) {
+    const { planVote: _plan, ...rest } = gates[gate];
+    assert.deepEqual(rest, compact, gate);
+  }
+});

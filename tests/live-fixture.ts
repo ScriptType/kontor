@@ -44,6 +44,12 @@ export async function withLive(
       choice: string;
       confidence: number;
     };
+    /** Answers plan questions: yes to the named nouls, the named or first option of each choice; records each call's question keys. */
+    plan?: {
+      yes: readonly string[];
+      choose?: Record<string, string>;
+      calls: string[][];
+    };
   } = {},
 ) {
   const held = barrier(),
@@ -56,6 +62,53 @@ export async function withLive(
   const app = createApp(
     { mode: "live", apiKey: "test", model: "jev-latest" },
     async (_url, init) => {
+      const body: unknown = JSON.parse(String(init?.body));
+      const planCall = z
+        .object({
+          state: z.record(z.string(), z.unknown()),
+          questions: z.record(
+            z.string(),
+            z.object({
+              type: z.enum(["noul", "choice"]),
+              criteria: z.record(z.string(), z.string()).optional(),
+            }),
+          ),
+        })
+        .safeParse(body);
+      if (planCall.success) {
+        const { plan } = options;
+        if (!plan) throw new Error("unexpected plan call");
+        const { questions } = planCall.data;
+        plan.calls.push(Object.keys(questions));
+        return Response.json({
+          model: "scripted-test-fixture",
+          answers: Object.fromEntries(
+            Object.entries(questions).map(([key, question]) => {
+              if (question.type === "noul")
+                return [
+                  key,
+                  { type: "noul", noul: plan.yes.includes(key) ? 1 : 0 },
+                ];
+              const options = Object.keys(question.criteria ?? {});
+              const choice = plan.choose?.[key] ?? options[0] ?? "";
+              return [
+                key,
+                {
+                  type: "choice",
+                  choice,
+                  confidence: 1,
+                  probabilities: Object.fromEntries(
+                    options.map((option) => [
+                      option,
+                      option === choice ? 1 : 0,
+                    ]),
+                  ),
+                },
+              ];
+            }),
+          ),
+        });
+      }
       const payload = z
         .object({
           state: z.string(),
@@ -64,7 +117,7 @@ export async function withLive(
             z.object({ criteria: z.record(z.string(), z.string()) }),
           ),
         })
-        .parse(JSON.parse(String(init?.body)));
+        .parse(body);
       const input = z
         .object({ observedSteps: z.array(z.unknown()) })
         .parse(JSON.parse(payload.state));
