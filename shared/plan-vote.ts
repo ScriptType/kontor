@@ -109,7 +109,11 @@ export function planIntent(plan: Plan, answers: Answers): Intent | null {
   };
 }
 
-function expectedEnd(run: RunPlan, answers: Answers): ExpectedEnd | null {
+/** Where the plan ends from the run's start; null while an ASK stays open or the plan does not fit the start. */
+export function expectedEnd(
+  run: RunPlan,
+  answers: Answers,
+): ExpectedEnd | null {
   const intent = planIntent(run.plan, answers);
   if (!intent) return null;
   try {
