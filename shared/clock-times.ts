@@ -39,14 +39,16 @@ const relativeTime = new RegExp(
   String.raw`(?<!\p{L})(halb|viertel\s+nach|viertel\s+vor|dreiviertel)\s+(\d{1,2}|${hourWordPattern})(?![\p{L}\p{N}])`,
   "giu",
 );
+const durationUnit = String.raw`\s*(?:h|std|stunden?|min|minuten?)(?!\p{L})`;
 // "13", "13:30", "9.45". A "24.09." is a day, and a number before a duration
 // unit ("3 Stunden") is no clock time.
-const digitTime =
-  /(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?![.\p{N}]))?(?![\p{N}]|[.,:]\p{N}|\s?(?:h|std|stunden?|min|minuten?)(?!\p{L}))/giu;
+const digitTime = new RegExp(
+  String.raw`(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?![.\p{N}]))?(?!\p{N}|[.,:]\p{N}|${durationUnit})`,
+  "giu",
+);
 const minuteWordPattern = [...minuteWords.keys()]
   .sort((a, b) => b.length - a.length)
   .join("|");
-const durationUnit = String.raw`\s*(?:h|std|stunden?|min|minuten?)(?!\p{L})`;
 const minutesAfterUhr = new RegExp(
   String.raw`(?<![\p{L}\p{N}])(?:\d{1,2}|${hourWordPattern})\s*uhr\s+(\d{1,2}|${minuteWordPattern})(?![\p{L}\p{N}]|${durationUnit})`,
   "giu",
