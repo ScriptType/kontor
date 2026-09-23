@@ -284,3 +284,20 @@ test("a number read for both worked minutes and slot length goes to the field Je
   assert.deepEqual(plan?.cases, { "V-1041": { workedMinutes: "100" } });
   assert.ok(sent.some((questions) => "s0.V-1041.minutes" in questions));
 });
+
+test("a minute count written as a word is offered as a value, a clock hour is not", async () => {
+  const sent: Questions[] = [];
+  const plan = await planOf(
+    "1039 achtzig minuten gearbeitet seit halb elf",
+    { "s0.case.V-1039": 1, "s0.V-1039.chg.workedMinutes": 1 },
+    { "s0.V-1039.val.workedMinutes": "80" },
+    sent,
+  );
+  assert.deepEqual(plan?.cases, { "V-1039": { workedMinutes: "80" } });
+  const offered = Object.keys(
+    sent.find((q) => "s0.V-1039.val.workedMinutes" in q)?.[
+      "s0.V-1039.val.workedMinutes"
+    ]?.criteria ?? {},
+  );
+  assert.equal(offered.includes("11"), false);
+});

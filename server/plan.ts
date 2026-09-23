@@ -27,6 +27,7 @@ import {
   type CaseValues,
 } from "../shared/intent.js";
 import { ASK, type Plan, type PlanInput } from "../shared/plan.js";
+import { spokenNumbers } from "../shared/value-reading.js";
 import type { Config } from "./config.js";
 import { createClient } from "./jev.js";
 
@@ -191,6 +192,13 @@ function valueOptions(
     request: scene.request,
     ...(caseId ? { caseId } : {}),
   });
+  if ("reading" in entry && entry.reading === "minutes")
+    for (const { text, value } of spokenNumbers(scene.request))
+      if (!options.some((o) => o.value === String(value)))
+        options.push({
+          value: String(value),
+          label: `Zahl als Wort im Auftrag: „${text}“ = ${value} Minuten`,
+        });
   if (entry.scope === "list") {
     const reset = filterValue(entry.id, defaultCaseFilters);
     if (!options.some((o) => o.value === reset))
