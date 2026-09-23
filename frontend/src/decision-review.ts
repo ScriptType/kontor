@@ -34,9 +34,8 @@ export function choiceDescription(choice: string, input: DecisionInput) {
   switch (choice) {
     case "done":
       return {
-        label: "Abschluss prüfen",
-        effect:
-          "Erfüllung mit einer neuen Entscheidung und eigener Abschlussprüfung prüfen.",
+        label: "Als erledigt abschließen",
+        effect: "Auftrag beenden. Du bestätigst, dass nichts mehr offen ist.",
       };
     case "blocked":
       return {

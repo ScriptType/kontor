@@ -68,14 +68,9 @@ import {
 } from "./gate";
 export type RunState =
   | {
-      kind:
-        | "idle"
-        | "deciding"
-        | "executing"
-        | "done"
-        | "stopped"
-        | "reconciling";
+      kind: "idle" | "deciding" | "executing" | "stopped" | "reconciling";
     }
+  | { kind: "done"; by: "jev" | "user" }
   | {
       kind: "paused";
       reason: "modal" | "manual" | "reload" | "error";
@@ -324,6 +319,10 @@ export class CommandRunner {
       case "reconciling":
         return "Speicherergebnis wird geprüft";
       case "done":
+        if (state.by === "user")
+          return this.ui.dirty()
+            ? "Entwurf vorbereitet · nicht gespeichert · vom Nutzer als erledigt abgeschlossen"
+            : "Vom Nutzer als erledigt abgeschlossen";
         return this.ui.dirty()
           ? "Entwurf vorbereitet · nicht gespeichert · Jev meldet Auftrag erledigt"
           : "Jev meldet den Auftrag als erledigt";
@@ -505,20 +504,18 @@ export class CommandRunner {
         return;
       }
       if (choice === "done") {
-        const decision = await this.ui.api.decide.call(input, {
-          signal: this.abort?.signal,
-        });
-        if (!this.resolveCapture(capture)) return;
-        if (decision.snapshotId !== input.snapshotId)
-          throw new Error("Veraltete Entscheidung.");
-        const fresh = this.capture(input, decision);
-        if (fresh.pick.choice === "done") await this.checkCompletion(fresh);
-        else
-          this.review(
-            fresh,
-            "Neue Entscheidung nach Abschlussprüfung. Bitte den nächsten Schritt prüfen.",
-            fresh.pick.choice === "abstain" ? "abstain" : "uncertain",
+        if (this.unsettled()) {
+          this.unconfirmed(
+            "Ein Speicherergebnis ist noch nicht bestätigt. Abschluss erst nach der Prüfung möglich.",
           );
+          return;
+        }
+        this.update((r) => ({
+          ...r,
+          entries: [...r.entries, "Vom Nutzer als erledigt abgeschlossen"],
+        }));
+        this.state.set({ kind: "done", by: "user" });
+        this.finish(this.label());
         return;
       }
       if (this.terminalOrQuestion(choice, capture, input)) return;
@@ -921,15 +918,7 @@ export class CommandRunner {
       if (agrees === null) return;
       confirmed = agrees;
     }
-    if (
-      !confirmed ||
-      this.ui.busy() ||
-      this.ui.unknownSave() ||
-      this.run()?.operations.some(
-        (id) =>
-          !this.run()?.receipts.some((receipt) => receipt.operationId === id),
-      )
-    ) {
+    if (!confirmed || this.unsettled()) {
       this.review(
         capture,
         `Jev konnte die vollständige Erfüllung noch nicht bestätigen. Abschlussprüfung ${Math.round(assessment.confidence * 100)} %. Bereits ausgeführte Schritte stehen im Verlauf.`,
@@ -937,8 +926,21 @@ export class CommandRunner {
       );
       return;
     }
-    this.state.set({ kind: "done" });
+    this.state.set({ kind: "done", by: "jev" });
     this.finish(this.label());
+  }
+  /** Whether a save is still running, has an unknown result or lacks its receipt. */
+  private unsettled() {
+    const run = this.run();
+    return (
+      this.ui.busy() ||
+      this.ui.unknownSave() ||
+      Boolean(
+        run?.operations.some(
+          (id) => !run.receipts.some((receipt) => receipt.operationId === id),
+        ),
+      )
+    );
   }
   private async loop(epoch: number) {
     for (let count = 0; count < 40 && epoch === this.epoch; count++) {
