@@ -1,12 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { z } from "zod";
-import { start, withLive } from "./live-fixture.js";
-
-const storeGate = (page: Page, gate: string) =>
-  page.addInitScript(
-    (value) => localStorage.setItem("kontor-jev-gate-v1", value),
-    JSON.stringify({ version: 1, gate }),
-  );
+import { start, storeGate, withLive } from "./live-fixture.js";
 
 for (const run of [
   {

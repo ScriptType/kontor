@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { start, withLive } from "./live-fixture.js";
+import { start, storeGate, withLive } from "./live-fixture.js";
 
 const request = "Weise V-1042 Lea Sommer zu und speichere.";
 const sequence = ["case:V-1042", "menu:technician", "technician:lea", "save"];
@@ -16,10 +16,7 @@ for (const run of [
   test(`${run.gate} with a save pick at 60 percent and P(complete) 0.5`, async ({
     page,
   }) => {
-    await page.addInitScript(
-      (value) => localStorage.setItem("kontor-jev-gate-v1", value),
-      JSON.stringify({ version: 1, gate: run.gate }),
-    );
+    await storeGate(page, run.gate);
     const calls: string[][] = [];
     await withLive(
       page,
@@ -74,10 +71,7 @@ for (const run of [
   test(`${run.gate} with an effect check calling the save additional`, async ({
     page,
   }) => {
-    await page.addInitScript(
-      (value) => localStorage.setItem("kontor-jev-gate-v1", value),
-      JSON.stringify({ version: 1, gate: run.gate }),
-    );
+    await storeGate(page, run.gate);
     await withLive(
       page,
       sequence,

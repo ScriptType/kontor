@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { z } from "zod";
-import { barrier, start, withLive } from "./live-fixture.js";
+import { barrier, start, storeGate, withLive } from "./live-fixture.js";
 const assignment = ["case:V-1042", "menu:technician", "technician:lea", "save"];
 const slowPaletteClose = `
   @keyframes close-palette { from { opacity: 1; } to { opacity: 0.99; } }
@@ -9,6 +9,8 @@ const slowPaletteClose = `
 test("provider receives mounted regions, ordered controls and detail state without expanding choices", async ({
   page,
 }) => {
+  // Region order, viewport and the action list reach Jev only in the full prompt.
+  await storeGate(page, "threshold");
   await page.setViewportSize({ width: 1280, height: 720 });
   await withLive(
     page,
@@ -168,6 +170,8 @@ test("a selection kept off its detail page is current saved data, not an open de
 test("table action descriptions use the filtered DOM row order without adding actions", async ({
   page,
 }) => {
+  // Row positions in action labels reach Jev only in the full prompt's action list.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     ["case:V-1039"],
@@ -250,7 +254,7 @@ test("hidden and inert regions and controls stay absent from provider observatio
 }) => {
   await withLive(
     page,
-    [],
+    ["nav:customers"],
     async (store, _held, _arrived, _snapshots, observations) => {
       const before = store.snapshot();
       await page.locator('[data-action="nav:customers"]').click();
@@ -421,6 +425,7 @@ test("manual input invalidates held decision and reload retains paused history w
 test("low confidence exposes exact chosen action and requires confirmation", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   await withLive(
     page,
     ["nav:customers"],
@@ -449,7 +454,7 @@ test("additional mutation pauses with exact target and does not execute before a
       await page.addStyleTag({ content: slowPaletteClose });
       await start(page);
       await expect(page.locator(".answer-panel")).toContainText(
-        "V-1042: Zuständigkeit von Jonas Weber auf Lea Sommer",
+        "V-1042 verbindlich speichern. Zuständigkeit von Jonas Weber auf Lea Sommer",
       );
       expect(store.snapshot().revision).toBe(0);
       await page.getByRole("button", { name: "Stoppen", exact: true }).click();
@@ -556,6 +561,8 @@ test("unsupported trailing work remains partial after an authorized earlier save
 test("repeated no-op actions stop within a bounded number of decisions", async ({
   page,
 }) => {
+  // The default gate reads a pick that changes nothing as done, and its guard stops repeats first.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     Array.from({ length: 45 }, () => "nav:cases"),
@@ -582,12 +589,18 @@ test("independent outstanding verdict prevents an early done claim", async ({
       );
       expect(store.snapshot().revision).toBe(0);
     },
-    { outstanding: true },
+    {
+      outstanding: true,
+      // The run's plan reads both views, so it cannot release the early done.
+      plan: { yes: ["s0.page.customers", "s2.page.team"], calls: [] },
+    },
   );
 });
 test("reloading a concrete confirmation revokes approval authority", async ({
   page,
 }) => {
+  // The pick is uncertain only against the personal percent; the default gate reads its probability.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     assignment,
@@ -612,6 +625,8 @@ test("reloading a concrete confirmation revokes approval authority", async ({
 test("changed revision revokes a displayed concrete confirmation", async ({
   page,
 }) => {
+  // The pick is uncertain only against the personal percent; the default gate reads its probability.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     assignment,
@@ -715,6 +730,8 @@ test("invalid manual input also invalidates an outstanding choice", async ({
 test("uncertain filter completion does not inherit the selected case's inspection handoff", async ({
   page,
 }) => {
+  // Jev picks done before any step, at a confidence below the personal percent.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     [],
@@ -756,6 +773,8 @@ test("uncertain filter completion does not inherit the selected case's inspectio
 test("a precise cause after a reviewed uncertain blocked still requires a manual evidence handoff", async ({
   page,
 }) => {
+  // The blocked pick is uncertain only against the personal percent.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     ["case:V-1039", "blocked"],
@@ -887,10 +906,10 @@ for (const hidden of ["hidden", "inert", "aria-hidden", "no-reasons"]) {
             );
         await start(page, "Schließe den offenen Vorgang ab.");
         await expect(page.locator(".answer-panel")).toBeVisible();
-        expect(observations[1]).toMatchObject({
-          blockedControls: [],
-          currentFacts: { blockedControls: [] },
-        });
+        expect(observations[1]).toMatchObject({ blockedControls: [] });
+        expect(observations[1]).not.toHaveProperty(
+          "currentFacts.blockedControls",
+        );
         expect(snapshots[1]).toContain("blocked");
         expect(snapshots[1]).not.toContain("complete");
         await expect(page.locator(".blocked-control")).toHaveCount(0);

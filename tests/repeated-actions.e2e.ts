@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { start, withLive } from "./live-fixture.js";
+import { start, storeGate, withLive } from "./live-fixture.js";
 import { z } from "zod";
 
 test("same technician uses the visible handler without claiming an unsaved draft", async ({
@@ -23,6 +23,8 @@ test("same technician uses the visible handler without claiming an unsaved draft
 test("saved matching assignments can run twice without writes or fake receipts", async ({
   page,
 }) => {
+  // The default gate reads a pick that changes nothing as done, so the equal values never run.
+  await storeGate(page, "threshold");
   const choices = [
     "field:minutes:60",
     "menu:technician",
@@ -148,6 +150,8 @@ test("an equal manual input invalidates a pending decision", async ({
 test("equal values in a dirty draft remain unsaved evidence", async ({
   page,
 }) => {
+  // The default gate reads a pick that changes nothing as done, so the equal values never run.
+  await storeGate(page, "threshold");
   await withLive(
     page,
     ["case:V-1041", "field:minutes:60", "field:minutes:60", "nav:reports"],

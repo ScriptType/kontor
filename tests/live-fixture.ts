@@ -3,6 +3,13 @@ import { once } from "node:events";
 import { z } from "zod";
 import { createApp } from "../server/app.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
+import { gatePreferenceKey, type GateName } from "../frontend/src/gate.js";
+/** Stores the gate the app reads at load, as a person's browser would. */
+export const storeGate = (page: Page, gate: GateName) =>
+  page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
+    key: gatePreferenceKey,
+    value: JSON.stringify({ version: 2, gate }),
+  });
 export function barrier() {
   let release = () => {};
   const promise = new Promise<void>((resolve) => {
@@ -20,6 +27,7 @@ export async function withLive(
     snapshots: string[][],
     observations: unknown[],
     assessed: unknown[],
+    choiceTexts: Record<string, string>[],
   ) => Promise<void>,
   options: {
     hold?: string;
@@ -44,7 +52,11 @@ export async function withLive(
       choice: string;
       confidence: number;
     };
-    /** Answers plan questions: yes to the named nouls, the named or first option of each choice; records each call's question keys. */
+    /**
+     * Answers plan questions: yes to the named nouls, the named or first
+     * option of each choice; records each call's question keys. Without it a
+     * plan call gets no to every noul, a plan that asks for nothing.
+     */
     plan?: {
       yes: readonly string[];
       choose?: Record<string, string>;
@@ -58,6 +70,7 @@ export async function withLive(
   const snapshots: string[][] = [];
   const observations: unknown[] = [];
   const assessed: unknown[] = [];
+  const choiceTexts: Record<string, string>[] = [];
   const store = new WorkspaceStore(":memory:");
   const app = createApp(
     { mode: "live", apiKey: "test", model: "jev-latest" },
@@ -76,8 +89,7 @@ export async function withLive(
         })
         .safeParse(body);
       if (planCall.success) {
-        const { plan } = options;
-        if (!plan) throw new Error("unexpected plan call");
+        const plan = options.plan ?? { yes: [], calls: [] };
         const { questions } = planCall.data;
         plan.calls.push(Object.keys(questions));
         return Response.json({
@@ -171,7 +183,7 @@ export async function withLive(
           ? next
           : key === "cause"
             ? (options.cause ?? "unknown")
-            : next === "done"
+            : selected === "done"
               ? options.outstanding
                 ? "outstanding"
                 : (options.completionVerdict ?? "complete")
@@ -182,6 +194,7 @@ export async function withLive(
       if (key === "next") {
         observations.push(JSON.parse(payload.state));
         snapshots.push(Object.keys(payload.questions["next"]?.criteria ?? {}));
+        choiceTexts.push(payload.questions["next"]?.criteria ?? {});
       }
       if (
         ((key === "next" && next === options.hold) ||
@@ -236,7 +249,15 @@ export async function withLive(
   if (!address || typeof address === "string") throw new Error("No port");
   try {
     await page.goto(`http://127.0.0.1:${address.port}`);
-    await run(store, held, arrived.promise, snapshots, observations, assessed);
+    await run(
+      store,
+      held,
+      arrived.promise,
+      snapshots,
+      observations,
+      assessed,
+      choiceTexts,
+    );
   } finally {
     held.release();
     await app.close();

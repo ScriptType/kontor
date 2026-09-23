@@ -1,7 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import { z } from "zod";
-import { start, withLive } from "./live-fixture.js";
+import { start, storeGate, withLive } from "./live-fixture.js";
 
+// Pinned tests rely on the threshold gate: its 75 percent bar sends these picks
+// to review, it checks set buttons' effects and it offers done before any step.
 const rows = (page: Page) =>
   page
     .getByRole("list", { name: "Jevs zwei wahrscheinlichste Optionen" })
@@ -26,6 +28,7 @@ const selectedId = (selected: unknown) =>
 test("native ranking keeps original confidence and the second option gets its own assessment", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   const assessments: string[] = [];
   await withLive(
     page,
@@ -66,6 +69,7 @@ for (const verdict of ["additional", "unclear"]) {
   test(`second option ${verdict} needs a separate concrete approval`, async ({
     page,
   }) => {
+    await storeGate(page, "threshold");
     await withLive(
       page,
       [],
@@ -97,6 +101,7 @@ for (const verdict of ["additional", "unclear"]) {
 test("selecting Jev's own additional choice keeps its verdict and needs a concrete approval", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   const assessments: string[] = [];
   await withLive(
     page,
@@ -138,6 +143,7 @@ test("selecting Jev's own additional choice keeps its verdict and needs a concre
 test("both forbidden alternatives stay disabled in the same captured answer", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   const assessments: string[] = [];
   await withLive(
     page,
@@ -173,6 +179,7 @@ for (const interruption of [
   test(`late alternative assessment is discarded after ${interruption}`, async ({
     page,
   }) => {
+    await storeGate(page, "threshold");
     await withLive(
       page,
       ["nav:reports"],
@@ -226,6 +233,7 @@ for (const interruption of [
 test("a hidden alternative during palette close cannot be executed", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   await withLive(
     page,
     [],
@@ -257,6 +265,7 @@ for (const fresh of ["nav:reports", "done"] as const) {
   test(`ranked completion with fresh ${fresh} cannot borrow another choice confidence`, async ({
     page,
   }) => {
+    await storeGate(page, "threshold");
     await withLive(
       page,
       [],

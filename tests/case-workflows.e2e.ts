@@ -16,30 +16,32 @@ test("Jev uses visible draft controls for priority, appointment removal and reop
       "priority:Hoch",
       "save",
     ],
-    async (store, _held, _arrived, snapshots, observations) => {
+    async (
+      store,
+      _held,
+      _arrived,
+      snapshots,
+      observations,
+      _assessed,
+      choiceTexts,
+    ) => {
       const before = store.snapshot();
       await start(
         page,
         "Setze V-1041 auf Priorität Hoch, entferne den Termin und speichere. Öffne V-1035 wieder, setze Priorität Hoch und speichere.",
       );
-      await expect(page.locator(".activity-label")).toContainText(
-        "Jev meldet",
-      );
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
       expect(store.snapshot().revision).toBe(2);
-      expect(store.snapshot().cases.find((c) => c.id === "V-1041")).toEqual(
-        {
-          ...before.cases.find((c) => c.id === "V-1041"),
-          priority: "Hoch",
-          appointment: null,
-        },
-      );
-      expect(store.snapshot().cases.find((c) => c.id === "V-1035")).toEqual(
-        {
-          ...before.cases.find((c) => c.id === "V-1035"),
-          priority: "Hoch",
-          status: "open",
-        },
-      );
+      expect(store.snapshot().cases.find((c) => c.id === "V-1041")).toEqual({
+        ...before.cases.find((c) => c.id === "V-1041"),
+        priority: "Hoch",
+        appointment: null,
+      });
+      expect(store.snapshot().cases.find((c) => c.id === "V-1035")).toEqual({
+        ...before.cases.find((c) => c.id === "V-1035"),
+        priority: "Hoch",
+        status: "open",
+      });
       expect(snapshots[1]).toContain("priority:Hoch");
       expect(snapshots[1]).not.toContain("priority:Normal");
       expect(snapshots[1]).toContain("remove-appointment");
@@ -58,34 +60,20 @@ test("Jev uses visible draft controls for priority, appointment removal and reop
           },
           draft: { priority: "Hoch", appointment: null },
         },
-        availableActions: expect.arrayContaining([
-          expect.objectContaining({
-            id: "save",
-            effect: expect.stringContaining("priority Normal → Hoch"),
-          }),
-          expect.objectContaining({
-            id: "discard",
-            effect: expect.stringContaining("priority Normal → Hoch"),
-          }),
-          expect.objectContaining({
-            id: "save",
-            effect: expect.stringMatching(/appointment [^;]+ → none/),
-          }),
-        ]),
       });
+      expect(choiceTexts[3]).toMatchObject({
+        save: expect.stringContaining("priority Normal → Hoch"),
+        discard: expect.stringContaining("priority Normal → Hoch"),
+      });
+      expect(choiceTexts[3]?.["save"]).toMatch(/appointment [^;]+ → none/);
       expect(observations[7]).toMatchObject({
         currentFacts: {
           revision: 1,
           selected: { status: "done", priority: "Normal" },
           draft: { status: "open", priority: "Hoch" },
         },
-        availableActions: expect.arrayContaining([
-          expect.objectContaining({
-            id: "save",
-            effect: expect.stringContaining("status done → open"),
-          }),
-        ]),
       });
+      expect(choiceTexts[7]?.["save"]).toContain("status done → open");
     },
   );
 });
@@ -118,9 +106,7 @@ test("Jev sees complete combined filters and only mounted menu choices, then rep
         page,
         "Filtere Nordwerk, Lea und offene Vorgänge, dann erledigte. Setze Filter zurück. Zeige Maras offene Vorgänge, danach erledigte aus Berichte und dann alle von Hafen.",
       );
-      await expect(page.locator(".activity-label")).toContainText(
-        "Jev meldet",
-      );
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
       expect(store.snapshot()).toEqual(before);
       expect(snapshots[0]).toContain("menu:customer");
       expect(snapshots[0]).toContain("menu:filter-technician");

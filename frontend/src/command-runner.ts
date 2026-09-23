@@ -42,6 +42,8 @@ import {
 import {
   assesses,
   completes,
+  defaultGate,
+  gatePreferenceKey,
   gateNames,
   gates,
   pick,
@@ -127,10 +129,9 @@ const confidencePreferenceSchema = z.object({
 });
 const confidencePreferenceKey = "kontor-jev-confidence-v1";
 const gatePreferenceSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   gate: z.enum(gateNames),
 });
-const gatePreferenceKey = "kontor-jev-gate-v1";
 const leanStates = {
   off: "full",
   decide: "leanDecide",
@@ -185,8 +186,8 @@ export class CommandRunner {
   readonly confidenceStored = this.confidencePersistence.asReadonly();
   private readonly gate = gatePreferenceSchema
     .catch({
-      version: 1,
-      gate: "threshold",
+      version: 2,
+      gate: defaultGate,
     })
     .parse(readBrowserState(gatePreferenceKey)).gate;
   readonly historyStored = signal(true);

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createApp } from "../../server/app.js";
 import type { Config } from "../../server/config.js";
 import { WorkspaceStore } from "../../server/workspace-store.js";
-import type { GateName } from "../../frontend/src/gate.js";
+import { gatePreferenceKey, type GateName } from "../../frontend/src/gate.js";
 import { actionEffects } from "../../shared/dimensions.js";
 import {
   caseFiltersSchema,
@@ -333,7 +333,7 @@ export async function evalContext(
     viewport: { width: 1280, height: 900 },
   });
   await context.addInitScript(
-    ({ percent, mode, gate }) => {
+    ({ percent, mode, gate, gateKey }) => {
       localStorage.setItem(
         "kontor-jev-confidence-v1",
         JSON.stringify({ version: 1, percent }),
@@ -342,12 +342,9 @@ export async function evalContext(
         "kontor-jev-save-mode-v1",
         JSON.stringify({ version: 1, mode }),
       );
-      localStorage.setItem(
-        "kontor-jev-gate-v1",
-        JSON.stringify({ version: 1, gate }),
-      );
+      localStorage.setItem(gateKey, JSON.stringify({ version: 2, gate }));
     },
-    { percent: threshold, mode: saveMode, gate },
+    { percent: threshold, mode: saveMode, gate, gateKey: gatePreferenceKey },
   );
   return context;
 }

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { z } from "zod";
-import { barrier, start, withLive } from "./live-fixture.js";
+import { barrier, start, storeGate, withLive } from "./live-fixture.js";
 
 const preferenceKey = "kontor-jev-confidence-v1";
 const assignment = ["case:V-1042", "menu:technician", "technician:lea", "save"];
@@ -202,6 +202,7 @@ for (const scenario of [
   test(`action confidence ${scenario.score} at ${scenario.percent} percent ${scenario.approval ? "requires approval" : "executes"}`, async ({
     page,
   }) => {
+    await storeGate(page, "threshold");
     await withLive(
       page,
       ["nav:customers"],
@@ -321,6 +322,7 @@ for (const scenario of [
   test(`completion scores ${scenario.decision} and ${scenario.assessment} at ${scenario.percent} percent ${scenario.complete ? "complete" : "remain unconfirmed"}`, async ({
     page,
   }) => {
+    await storeGate(page, "threshold");
     await withLive(
       page,
       [],
@@ -347,6 +349,7 @@ for (const verdict of ["outstanding", "unclear"] as const) {
   test(`${verdict} completion remains unconfirmed at zero percent`, async ({
     page,
   }) => {
+    await storeGate(page, "threshold");
     await withLive(
       page,
       [],
@@ -442,6 +445,7 @@ for (const heldQuestion of ["decision", "assessment", "completion"]) {
 test("changing confidence revokes a displayed approval and requires a fresh decision", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   await withLive(
     page,
     ["nav:customers"],
@@ -481,6 +485,7 @@ test("changing confidence revokes a displayed approval and requires a fresh deci
 test("changing confidence during palette close revokes an already queued approval", async ({
   page,
 }) => {
+  await storeGate(page, "threshold");
   await withLive(
     page,
     ["nav:customers"],
@@ -631,17 +636,20 @@ test("zero percent completion still requires a receipt for every operation", asy
   });
 });
 
+// The default gate lets a view at 72 percent act; threshold asks at 75. A v1
+// value predates the default and is ignored.
 for (const stored of [
   null,
-  '{"version":1,"gate":"g1"}',
-  '{"version":1,"gate":"g9"}',
+  { key: "kontor-jev-gate-v2", value: '{"version":2,"gate":"threshold"}' },
+  { key: "kontor-jev-gate-v2", value: '{"version":2,"gate":"g9"}' },
+  { key: "kontor-jev-gate-v1", value: '{"version":1,"gate":"threshold"}' },
 ])
-  test(`stored gate ${stored} decides whether a view choice at 72 percent acts`, async ({
+  test(`stored gate ${stored ? `${stored.key} ${stored.value}` : "none"} decides whether a view choice at 72 percent acts`, async ({
     page,
   }) => {
     if (stored)
       await page.addInitScript(
-        (value) => localStorage.setItem("kontor-jev-gate-v1", value),
+        ({ key, value }) => localStorage.setItem(key, value),
         stored,
       );
     await withLive(
@@ -649,7 +657,7 @@ for (const stored of [
       [],
       async () => {
         await start(page, "Zeige Berichte.");
-        if (stored?.includes('"g1"')) {
+        if (stored?.value !== '{"version":2,"gate":"threshold"}') {
           await expect(page.locator(".activity-label")).toContainText(
             "Jev meldet",
           );
@@ -694,10 +702,7 @@ for (const run of [
     test(`${gate} completion of a ${run.work} run at P(complete) ${run.complete}`, async ({
       page,
     }) => {
-      await page.addInitScript(
-        (value) => localStorage.setItem("kontor-jev-gate-v1", value),
-        JSON.stringify({ version: 1, gate }),
-      );
+      await storeGate(page, gate);
       await withLive(
         page,
         [...run.sequence],
@@ -726,10 +731,7 @@ for (const run of [
   test(`${run.gate} checks the effect of ${run.assessed.join(", ")} before they run`, async ({
     page,
   }) => {
-    await page.addInitScript(
-      (value) => localStorage.setItem("kontor-jev-gate-v1", value),
-      JSON.stringify({ version: 1, gate: run.gate }),
-    );
+    await storeGate(page, run.gate);
     await withLive(
       page,
       [
@@ -764,10 +766,7 @@ for (const gate of ["g2-pool", "g1"] as const)
   test(`${gate} with done at 40 percent and a navigation to the open page at 30 percent`, async ({
     page,
   }) => {
-    await page.addInitScript(
-      (value) => localStorage.setItem("kontor-jev-gate-v1", value),
-      JSON.stringify({ version: 1, gate }),
-    );
+    await storeGate(page, gate);
     await withLive(
       page,
       [],

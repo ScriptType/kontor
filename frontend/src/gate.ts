@@ -239,6 +239,10 @@ export const gates = {
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
+/** The app's gate unless the browser stores another; won holdout-4. */
+export const defaultGate: GateName = "g3-compact-plan-effect";
+/** Browser key of the stored gate; v1 values are ignored so browsers move to the default. */
+export const gatePreferenceKey = "kontor-jev-gate-v2";
 
 export function gateKind(
   choice: string,
