@@ -110,8 +110,12 @@ Drei echte Läufe mit einer Schwelle von 10 Prozent führten beide Wiederholunge
 
 ## KI-010: Vorbelegung übernimmt den alten Wert statt des neuen
 
-Status: am 23. September 2026 im Eval-Lauf auf holdout-1 beobachtet, nicht behoben.
+Status: am 23. September 2026 im Eval-Lauf auf holdout-1 beobachtet, auf dem Zweig `exp/jev-fix-prefill` behoben (noch nicht in `main`).
 
 Die Antwortvorbelegung für ein Zahlenfeld übernimmt den einzigen Zahlwert, den `partialAnswer` im Auftrag findet. Nennt der Auftrag den alten Wert als Zahl und den neuen nur als Zahlwort, ist dieser einzige Wert der alte. Im Auftrag „zwei Stunden is zu lang, mach mal neunzig Minuten draus“ (Szenario `h-diktat-05`) liest `partialAnswer` für die Termindauer „zwei Stunden“ als 120. „neunzig“ liest es nicht. Das Antwortfeld zeigt „Aus dem Auftrag: 120. Bitte prüfen.“, obwohl 90 gemeint ist. Steht dort „90“, findet es zwei Werte und belegt nichts vor.
 
 Ein Mensch, der die Vorbelegung ungeprüft bestätigt, setzt den alten Wert erneut. Der Eval-Lauf bestätigt Vorbelegungen unverändert und zählt den Lauf deshalb als asked-wrong. Die Aufzeichnung liegt lokal unter `live-results/question-pipeline-2026-09-21/round5/eval-answers/h1/samples/h-diktat-05__1.json`.
+
+Die Vorbelegung liest den Wert jetzt nicht mehr im Code, sondern Jev liest ihn (`readValues` in `server/reader.ts`, `shared/value-reading.ts`). Code zählt jede geschriebene Zahl auf, dazu „als Zahlwort“ und „nicht genannt“. Jev wählt die Stelle mit dem neuen Wert, das Zahlwort, die Einheit und das Feld. Code rechnet die Minuten aus. Für den Auftrag aus `h-diktat-05` liest Jev „als Zahlwort“, „neunzig“ und „Minuten“, und das Antwortfeld zeigt 90. Liest Jev keinen neuen Wert mit mindestens 0,6 Konfidenz, bleibt das Feld leer, auch wenn der Auftrag den alten Wert als Zahl nennt. Der Browser-Test `tests/missing-value.e2e.ts` hält beides fest. Im Eval-Lauf auf holdout-1 endete `h-diktat-05` danach als correct-after-answers mit der Vorbelegung 90.
+
+Grenzen: Eine Minutenangabe ohne Feldwort („75 min“) liest Jev manchmal als Termindauer, obwohl die Szenarien Arbeitszeit meinen. Zahlwörter über hundert („hundertzwanzig“) stehen nicht in der Auswahl.

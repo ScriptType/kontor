@@ -99,7 +99,7 @@ Fehlt `flags.save`, gilt `true`, sobald ein Vorgang Werte erhält und `noSave` f
 
 ## Ablauf eines Laufs
 
-Jeder Lauf startet den echten Server mit einer Datenbank im Arbeitsspeicher und öffnet Chrome. Gespeicherte Startwerte schreibt der Lauf direkt in die Datenbank. Seite, Vorgang und Filter stellt er über die Oberfläche ein. Die Bestätigungsschwelle ist 75 Prozent.
+Jeder Lauf startet den echten Server mit einer Datenbank im Arbeitsspeicher und öffnet Chrome. Gespeicherte Startwerte schreibt der Lauf direkt in die Datenbank. Seite, Vorgang und Filter stellt er über die Oberfläche ein. Die Bestätigungsschwelle ist 75 Prozent. Die Uhr des Browsers steht auf Dienstag, 22.09.2026, 9 Uhr (`scenarioDay` in `scripts/jev-eval/harness.ts`), dem Tag, an dem die Szenarien geschrieben sind. So meint „morgen“ im Szenario den 23.09.2026.
 
 Danach sendet der Lauf den Auftrag über die Befehlspalette. Er wartet, bis Jev anhält. Ein Halt vor dem Abschluss zählt als Rückfrage: Auswahlprüfung, fehlender Wert, Freigabe und Blockade. Einen fehlenden Wert beantwortet der Lauf im Antwortfeld, siehe [Antwortvertrag für fehlende Werte](#antwortvertrag-für-fehlende-werte), und wartet auf den nächsten Halt. Auswahlprüfung, Freigabe und Blockade erhalten keine simulierte Antwort. Der Lauf endet dort.
 
@@ -195,3 +195,13 @@ Die Ausgabe ist JSON mit `id`, `endCorrect`, `mismatches`, `unexpectedSaves`, `e
 - Sichtbarkeit, Fokus und Lesbarkeit des Endzustands für Menschen.
 - Wirkungen auf Kennzahlen anderer Seiten. Sie folgen aus den gespeicherten Daten.
 - Varianz jenseits der gewählten Stichproben. Ein Lauf pro Szenario zeigt Tendenzen, keine stabilen Raten.
+
+## Wertlesung messen
+
+`scripts/value-reading/measure.ts` misst die Wertlesung ohne Oberfläche, mit einem Live-Aufruf je Angabe. Gemessen werden die Formulierungen in `scripts/value-reading/phrasings.ts` und, mit `--scenarios <Datei>` (mehrfach möglich), die Werte für Arbeitszeit, Termindauer und Terminbeginn in der Absicht jedes Szenarios. Fehlt ein Feld in der Absicht eines genannten Vorgangs, zählt es als „nicht genannt“. Bezugstag ist der 22.09.2026.
+
+```sh
+node --env-file-if-exists=.env --import tsx scripts/value-reading/measure.ts --scenarios <holdout.json> --out <ergebnis.json>
+```
+
+Die Ausgabe nennt je Menge und Schwelle, wie viele Teile richtig, falsch oder gar nicht vorbelegt würden, dazu Aufrufe und Tokens. `--only table|h1|h2` und `--match <regex>` grenzen die Angaben ein.

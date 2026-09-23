@@ -4,7 +4,7 @@ import { dimensions, type ReadingKind } from "./dimensions.js";
 import type { PartialAnswer } from "./field-values.js";
 
 /** One choice question of a reading: its text and its options by key. */
-export type ReadingPart = { text: string; options: Record<string, string> };
+type ReadingPart = { text: string; options: Record<string, string> };
 /** The provider's pick for one part. */
 export type PartPick = { choice: string; confidence: number };
 const readSchema = z.object({
