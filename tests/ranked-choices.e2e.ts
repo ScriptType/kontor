@@ -140,7 +140,7 @@ test("selecting Jev's own additional choice keeps its verdict and needs a concre
   );
 });
 
-test("both forbidden alternatives stay disabled in the same captured answer", async ({
+test("a forbidden alternative warns first and runs on the user's click", async ({
   page,
 }) => {
   await storeGate(page, "threshold");
@@ -148,19 +148,40 @@ test("both forbidden alternatives stay disabled in the same captured answer", as
   await withLive(
     page,
     [],
-    async (store) => {
+    async (store, _held, _arrived, snapshots) => {
       await start(page, "Zeige Berichte oder Team.");
       await choose(page, "Berichte öffnen").click();
-      await expect(choose(page, "Berichte öffnen")).toBeDisabled();
-      await choose(page, "Team öffnen").click();
-      await expect(choose(page, "Team öffnen")).toBeDisabled();
-      await expect(choose(page, "Berichte öffnen")).toBeDisabled();
-      expect(assessments).toEqual(["nav:reports", "nav:team"]);
-      expect(page.url()).not.toMatch(/#reports$|#team$/);
+      const override = choose(page, "Trotzdem ausführen: Berichte öffnen");
+      await expect(override).toBeEnabled();
+      await expect(review(page)).toContainText(
+        "Jev hält diesen Schritt für einen Widerspruch zum Auftrag. Du kannst ihn trotzdem ausführen.",
+      );
+      expect(page.url()).not.toMatch(/#reports$/);
+      await override.click();
+      await expect(page).toHaveURL(/#reports$/);
+      await expect(review(page)).toContainText("Jev hält bei Unklarheit an");
+      expect(assessments).toEqual(["nav:reports"]);
+      expect(snapshots).toHaveLength(2);
+      const steps = await page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("kontor-command-v1") ?? "null")
+            .history[0].steps,
+      );
+      expect(
+        z
+          .array(
+            z.object({
+              action: z.object({ id: z.string() }),
+              authorizedBy: z.string(),
+            }),
+          )
+          .parse(steps)
+          .map((step) => [step.action.id, step.authorizedBy]),
+      ).toEqual([["nav:reports", "user"]]);
       expect(store.snapshot().revision).toBe(0);
     },
     {
-      nextAnswer: () => alternative,
+      nextAnswer: (index) => (index === 0 ? alternative : stopped),
       effectAnswer: (selected) => {
         assessments.push(selectedId(selected));
         return { choice: "forbidden", confidence: 1 };
@@ -261,39 +282,63 @@ test("a hidden alternative during palette close cannot be executed", async ({
   );
 });
 
-for (const fresh of ["nav:reports", "done"] as const) {
-  test(`ranked completion with fresh ${fresh} cannot borrow another choice confidence`, async ({
+const finishing = {
+  abstain: {
+    choice: "abstain",
+    confidence: 1,
+    probabilities: { abstain: 0.6, done: 0.4 },
+  },
+  completion: {
+    choice: "done",
+    confidence: 1,
+    probabilities: { done: 0.6, abstain: 0.4 },
+  },
+} as const;
+for (const [reason, answer] of Object.entries(finishing)) {
+  test(`finishing from the ${reason} review ends the run without asking Jev again`, async ({
     page,
   }) => {
     await storeGate(page, "threshold");
     await withLive(
       page,
       [],
-      async (store, _held, _arrived, snapshots) => {
+      async (store, _held, _arrived, snapshots, _observations, assessed) => {
+        const before = store.snapshot();
         await start(page, "Zeige Berichte.");
-        await choose(page, "Abschluss prüfen").click();
-        await expect.poll(() => snapshots.length).toBe(2);
         await expect(review(page)).toBeVisible();
-        await expect(page.locator(".activity-label")).not.toContainText(
-          "Jev meldet",
+        const calls = { decide: snapshots.length, assess: assessed.length };
+        await choose(page, "Als erledigt abschließen").click();
+        await expect(page.locator(".activity-label")).toHaveText(
+          "Vom Nutzer als erledigt abgeschlossen",
+        );
+        await expect(review(page)).toHaveCount(0);
+        await page
+          .getByRole("button", { name: /Jev · Befehl eingeben/ })
+          .click();
+        await expect(page.locator(".history")).toContainText(
+          "Vom Nutzer als erledigt abgeschlossen",
+        );
+        await expect(review(page)).toHaveCount(0);
+        const run = await page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("kontor-command-v1") ?? "null")
+              .history[0],
+        );
+        expect(
+          z
+            .object({ entries: z.array(z.string()), outcome: z.string() })
+            .parse(run),
+        ).toEqual({
+          entries: ["Vom Nutzer als erledigt abgeschlossen"],
+          outcome: "Vom Nutzer als erledigt abgeschlossen",
+        });
+        expect({ decide: snapshots.length, assess: assessed.length }).toEqual(
+          calls,
         );
         expect(page.url()).not.toMatch(/#reports$/);
-        expect(store.snapshot().revision).toBe(0);
+        expect(store.snapshot()).toEqual(before);
       },
-      {
-        nextAnswer: (index) =>
-          index === 0
-            ? {
-                choice: "abstain",
-                confidence: 1,
-                probabilities: { abstain: 0.6, done: 0.4 },
-              }
-            : {
-                choice: fresh,
-                confidence: fresh === "done" ? 0.2 : 1,
-                probabilities: { [fresh]: 1 },
-              },
-      },
+      { nextAnswer: () => answer, completeProbability: 0.2 },
     );
   });
 }
