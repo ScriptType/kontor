@@ -40,7 +40,7 @@ Mehrere Änderungen können verschiedene Vorgänge betreffen. Bei ausdrücklich 
 
 Neue Rückfragen und Freigaben öffnen das Auftragsfenster automatisch. Escape schließt es und lässt die Frage offen. Bei Unsicherheit stehen die zwei am höchsten bewerteten Jev-Optionen mit Prozentwerten zur Auswahl. Jede Option nennt ihre geplante Wirkung. Die ursprüngliche Auswahl und deren Confidence bleiben gesondert sichtbar. Die Bestätigung gilt für die gewählte Handlung und den dazugehörigen Zustand.
 
-Die Prozentwerte der Rangfolge sind Optionswahrscheinlichkeiten aus derselben Antwort. Sie ersetzen nicht die Auswahl-Confidence für die Sicherheitsschwelle. Eine andere gewählte Aktion wird erneut geprüft. Zusätzliche oder unklare Änderungen benötigen eine konkrete Freigabe; widersprüchliche Änderungen bleiben gesperrt. Eine gewählte Abschlussprüfung kann keine Erledigung erzwingen.
+Die Prozentwerte der Rangfolge sind Optionswahrscheinlichkeiten aus derselben Antwort. Sie ersetzen nicht die Auswahl-Confidence für die Sicherheitsschwelle. Eine andere gewählte Aktion wird erneut geprüft. Zusätzliche oder unklare Änderungen benötigen eine konkrete Freigabe. Hält Jev einen Schritt für einen Widerspruch zum Auftrag, warnt die Palette. Der Nutzer kann ihn mit **Trotzdem ausführen** dennoch ausführen. **Als erledigt abschließen** beendet den Auftrag durch den Nutzer, ohne Jev erneut zu fragen. Eine Speicherung ohne Beleg verhindert auch diesen Abschluss.
 
 Kann Jev keinen sinnvollen nächsten Schritt wählen, kann es ausdrücklich anhalten. Die Palette bietet die bewerteten Optionen sowie Überarbeiten und Stoppen an. Bereits gespeicherte Änderungen bleiben erhalten. Dieser Halt allein erzeugt keinen fachlichen Hinweis auf einen fehlenden Prüfbeleg.
 
