@@ -9,7 +9,7 @@ Die Formatbank misst, wie Form und Umfang der Anfrage an Jev die Entscheidungen 
 3. Varianten mit `scripts/jev-format/run.ts` stellen.
 4. Die Rangliste mit `scripts/jev-format/table.ts` schreiben.
 
-Alle Dateien liegen unter `live-results/question-pipeline-2026-09-21/round4/format/` im Hauptverzeichnis des Repositorys, auch aus einem Worktree.
+Alle Dateien liegen unter `live-results/question-pipeline-2026-09-21/round4/format/` im Hauptverzeichnis des Repositorys, auch aus einem Worktree. `JEV_FORMAT_DIR` wählt einen anderen Ordner (siehe [Aufnahmen mit kompaktem Zustand](#aufnahmen-mit-kompaktem-zustand)).
 
 ## Aufnehmen
 
@@ -41,6 +41,21 @@ Ob ein Feldwert an den Auftrag gebunden ist, sendet die App nicht an Jev. Der Be
 - Der gebaute Prüfzustand gleicht dem gesendeten Prüfzustand.
 - Nach genau den Entscheidungen, nach denen die Bank eine Prüfung erwartet, folgt in der Aufnahme eine Prüfung.
 - Genau die Aktionen, die die Bank ausführen würde, hat der Lauf ausgeführt.
+
+### Aufnahmen mit kompaktem Zustand
+
+Unter `"focused"` und `"compact"` fehlen der Entscheidung `snapshotId` und `availableActions`. Dafür enthält sie `requestHints` und am Ende `originalRequestAgain`. Die Bank liest beide Formen. Die Art jeder Aktion braucht sie für das Gate, Label und vollen Text für die Prüfung. Folgt der Entscheidung eine Prüfung, nimmt die Bank deren `availableActions`. Sonst baut sie die Aktionen aus einem Katalog. Der Katalog kennt je Kennung und Wirkungstext Label, Art und den Text nach dem Optionstext. Er lernt aus allen Prüfungen, Zweikämpfen und bisherigen Schritten der gelesenen Läufe und der Läufe unter `--catalog <Ordner,…>`. Eine Kennung kann zwei Bedienelemente benennen, etwa `technician:mara` in der Zuweisung und im Filter. Deshalb gehört der Wirkungstext zum Schlüssel. Kennt der Katalog eine Option nicht, bricht der Befehl ab.
+
+Aufrufe eines Zweikampfs (`duel`) zählt `calls.json` mit, sie werden aber keine Zustände. Plan-Freigaben, Zweikampf und Lenkung bildet die Bank nicht nach. Die beiden letzten Prüfungen oben melden deshalb unter `g3-cpe-duel` Abweichungen, die der Plan erklärt.
+
+`JEV_FORMAT_DIR` legt den Ordner aller Bankdateien relativ zu `question-pipeline-2026-09-21` fest, Standard `round4/format`. `run.ts`, `table.ts`, `tokens.ts` und `preview.ts` lesen und schreiben dort, auch den Cache. Für Runde 6:
+
+```sh
+export JEV_FORMAT_DIR=round6/format
+node --import tsx scripts/jev-format/extract.ts \
+  --runs <lab>/round6/i5words-h1,<lab>/round6/i5words-h2 \
+  --catalog <lab>/round6,<lab>/round4/format
+```
 
 ## Varianten
 
