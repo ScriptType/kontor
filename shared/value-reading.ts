@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fieldSchema, type FieldDescription } from "./command.js";
-import { dimensions, type ReadingKind } from "./dimensions.js";
+import { dimensions, literalField, type ReadingKind } from "./dimensions.js";
 import type { PartialAnswer } from "./field-values.js";
 
 /** One choice question of a reading: its text and its options by key. */
@@ -48,36 +48,24 @@ export function prefillFrom(
     time: sure(reading.time),
   };
 }
+/** What a reading is read from: the request, the run's start day and the case ids, whose digits are no value. */
+export type ReadingScene = {
+  request: string;
+  today: string;
+  caseIds: string[];
+};
 type Reader = {
   parts(
     field: FieldDescription,
-    request: string,
-    today: string,
+    scene: ReadingScene,
   ): Record<string, ReadingPart>;
   assemble(
     picks: Record<string, PartPick>,
     field: FieldDescription,
-    request: string,
-    today: string,
+    scene: ReadingScene,
   ): ValueReading;
 };
 
-/** The fields the registry reads with this kind, by control field id, with their descriptions. */
-function fieldsReadAs(kind: ReadingKind) {
-  return dimensions.flatMap((entry) =>
-    entry.kind === "value" &&
-    "reading" in entry &&
-    entry.reading === kind &&
-    "field" in entry.controls
-      ? [
-          {
-            id: entry.controls.field,
-            label: `${entry.spoken}: ${entry.description}`,
-          },
-        ]
-      : [],
-  );
-}
 /** The reading kind the registry gives the field, if the model may read its value. */
 export function readingKind(field: FieldDescription): ReadingKind | null {
   for (const entry of dimensions)
@@ -98,36 +86,55 @@ const lowest = (...picks: PartPick[]) =>
 const pickOf = (picks: Record<string, PartPick>, part: string): PartPick =>
   picks[part] ?? { choice: "none", confidence: 0 };
 
-/** A number as the request writes it: one amount, or hours and minutes written together ("2h15"). */
-export type NumberSpan = { text: string; at: number; amounts: number[] };
+/** A number as the request writes it, with the unit written right after it, if any; a combo ("2h15") is hours and minutes. */
+export type NumberSpan = {
+  text: string;
+  at: number;
+  amounts: number[];
+  unit: "hours" | "minutes" | null;
+};
 const combo =
-  /(?<![\p{N}.,])(\d{1,2})\s?(?:h|std\.?|stunden?)\s?(\d{1,2})(?:\s?(?:minuten|min\.?))?(?![\p{N}\p{L}])/giu;
-const single = /(?<![\p{N}.,/])(\d+)(?:([.,])(\d+)|\/(\d+))?(?![\p{N}])/gu;
-/** Every number the request writes, exactly as written; code enumerates, the model picks. */
-export function numberSpans(request: string): NumberSpan[] {
+  /(?<![\p{L}\p{N}.,:/-])(\d{1,2})\s?(?:h|std\.?|stunden?)\s?(\d{1,2})(?:\s?(?:minuten|min\.?))?(?![\p{N}\p{L}])/giu;
+const single =
+  /(?<![\p{L}\p{N}.,:/-])(\d+)(?:[.,](\d+)|\/(\d+))?(?![\p{N}]|[:-]\d|[.,]\d)/gu;
+const hoursAfter = /^\s?(?:h|std\.?|stunden?|hours?|hrs?)(?![\p{L}])/iu;
+const minutesAfter = /^\s?(?:minuten|minute|mins?\.?|minutes)(?![\p{L}])/iu;
+/** Every number the request writes, exactly as written, except case ids and clock times; code enumerates, the model picks. */
+export function numberSpans(
+  request: string,
+  caseIds: string[] = [],
+): NumberSpan[] {
+  const ids = new Set(caseIds.map((id) => id.replace(/\D/g, "")));
   const spans: NumberSpan[] = [...request.matchAll(combo)].map((m) => ({
     text: m[0],
     at: m.index,
     amounts: [Number(m[1]), Number(m[2])],
+    unit: null,
   }));
   for (const m of request.matchAll(single)) {
+    const end = m.index + m[0].length;
     if (
-      spans.some(
-        (s) => m.index < s.at + s.text.length && m.index + m[0].length > s.at,
-      )
+      ids.has(m[0]) ||
+      spans.some((s) => m.index < s.at + s.text.length && end > s.at)
     )
       continue;
-    const amount =
-      m[4] !== undefined
-        ? Number(m[1]) / Number(m[4])
-        : Number(`${m[1]}.${m[3] ?? "0"}`);
-    if (Number.isFinite(amount))
-      spans.push({ text: m[0], at: m.index, amounts: [amount] });
+    const after = request.slice(end);
+    const unit = hoursAfter.exec(after) ?? minutesAfter.exec(after);
+    spans.push({
+      text: m[0] + (unit?.[0] ?? ""),
+      at: m.index,
+      amounts: [
+        m[3] !== undefined
+          ? Number(m[1]) / Number(m[3])
+          : Number(`${m[1]}.${m[2] ?? "0"}`),
+      ],
+      unit: !unit ? null : hoursAfter.test(after) ? "hours" : "minutes",
+    });
   }
-  return spans.sort((a, b) => a.at - b.at).slice(0, 250);
+  return spans.sort((a, b) => a.at - b.at);
 }
-const snippet = (request: string, span: NumberSpan) =>
-  `„${span.text}“ in „…${request.slice(Math.max(0, span.at - 30), span.at)}[${span.text}]${request.slice(span.at + span.text.length, span.at + span.text.length + 30)}…“`;
+const context = (request: string, at: number, text: string) =>
+  `„…${request.slice(Math.max(0, at - 30), at)}[${text}]${request.slice(at + text.length, at + text.length + 30)}…“`;
 
 const ones = [
   "",
@@ -173,110 +180,111 @@ function germanWord(n: number): string {
   const ten = tens[Math.floor(n / 10)]!;
   return unit ? `${unit === 1 ? "ein" : ones[unit]}und${ten}` : ten;
 }
-/** Number words the model can pick, by key: 1 to 100 and the common fractions. */
-const numberWords: Record<string, { label: string; amount: number }> = {
+/** Durations spoken in words, by option key, with their minutes: 1 to 100 minutes and the common hour phrases. */
+const spokenDurations: Record<string, { words: string; minutes: number }> = {
   ...Object.fromEntries(
     Array.from({ length: 100 }, (_, i) => [
-      String(i + 1),
-      { label: `${germanWord(i + 1)} (${i + 1})`, amount: i + 1 },
+      `m${i + 1}`,
+      { words: `${germanWord(i + 1)} (Minuten)`, minutes: i + 1 },
     ]),
   ),
-  viertel: { label: "viertel (0,25)", amount: 0.25 },
-  halbe: { label: "halbe / halb (0,5)", amount: 0.5 },
-  dreiviertel: { label: "dreiviertel (0,75)", amount: 0.75 },
-  anderthalb: { label: "anderthalb (1,5)", amount: 1.5 },
-  eineinhalb: { label: "eineinhalb (1,5)", amount: 1.5 },
-  zweieinhalb: { label: "zweieinhalb (2,5)", amount: 2.5 },
+  hq: { words: "eine Viertelstunde", minutes: 15 },
+  hh: { words: "eine halbe Stunde", minutes: 30 },
+  h3q: { words: "eine Dreiviertelstunde", minutes: 45 },
+  h1: { words: "eine Stunde", minutes: 60 },
+  h1h: { words: "anderthalb / eineinhalb Stunden", minutes: 90 },
+  ...Object.fromEntries(
+    Array.from({ length: 11 }, (_, i) => [
+      `h${i + 2}`,
+      { words: `${germanWord(i + 2)} Stunden`, minutes: (i + 2) * 60 },
+    ]),
+  ),
+  h2h: { words: "zweieinhalb Stunden", minutes: 150 },
+  h3h: { words: "dreieinhalb Stunden", minutes: 210 },
+  h4h: { words: "viereinhalb Stunden", minutes: 270 },
 };
-const minutesPerUnit = { minutes: 1, hours: 60 } as const;
+const choiceLimit = 255;
+/** A bare number above a working day's hours is no hour count. */
+const maxBareHours = 12;
+/**
+ * Every value in minutes the request can give this field, by option key: each
+ * written number in each unit it can have (its written unit, else minutes or
+ * hours), and each spoken duration; only values the field accepts.
+ */
+function minuteOptions(field: FieldDescription, scene: ReadingScene) {
+  const fits = (minutes: number) =>
+    Number.isInteger(minutes) &&
+    minutes >= (field.min ?? 0) &&
+    minutes <= (field.max ?? 10000);
+  const options: Record<string, { label: string; minutes: number | null }> = {};
+  const words = Object.entries(spokenDurations).filter(([, d]) =>
+    fits(d.minutes),
+  );
+  const room = choiceLimit - 2 - words.length;
+  for (const [i, span] of numberSpans(scene.request, scene.caseIds).entries()) {
+    const [first = 0, second] = span.amounts;
+    // [option key suffix, how the label reads the number, minutes]
+    const readings: [string, string, number][] =
+      second !== undefined
+        ? [["", "", first * 60 + second]]
+        : span.unit === "hours"
+          ? [["", "", Math.round(first * 60)]]
+          : span.unit === "minutes"
+            ? [["", "", first]]
+            : [
+                ["m", " als Minuten", first],
+                ...(first <= maxBareHours
+                  ? [
+                      ["h", " als Stunden", Math.round(first * 60)] as [
+                        string,
+                        string,
+                        number,
+                      ],
+                    ]
+                  : []),
+              ];
+    const fitting = readings.filter(([, , minutes]) => fits(minutes));
+    if (Object.keys(options).length + fitting.length > room) break;
+    for (const [suffix, as, minutes] of fitting)
+      options[`d${i}${suffix}`] = {
+        label: `„${span.text}“${as} = ${minutes} Minuten, in ${context(scene.request, span.at, span.text)}`,
+        minutes,
+      };
+  }
+  for (const [key, d] of words)
+    options[`w.${key}`] = {
+      label: `als Wort: „${d.words}“ = ${d.minutes} Minuten`,
+      minutes: d.minutes,
+    };
+  return options;
+}
 
 const minutesReader: Reader = {
-  parts(field, request) {
-    const spans = numberSpans(request);
+  parts(field, scene) {
     return {
-      span: {
-        text: `${newValue(field)} Welche Stelle des Auftrags nennt diesen Wert?`,
+      value: {
+        text: `${newValue(field)} Welche Angabe im Auftrag nennt diesen Wert?`,
         options: {
           ...Object.fromEntries(
-            spans.map((span, i) => [`s${i}`, snippet(request, span)]),
+            Object.entries(minuteOptions(field, scene)).map(([key, o]) => [
+              key,
+              o.label,
+            ]),
           ),
-          word: "Der Wert steht als Zahlwort im Auftrag, auch mit Einheit zusammen (etwa „neunzig“, „zwanzig Minuten“, „ne halbe Stunde“, „dreiviertelstunde“, „anderthalb“).",
-          elsewhere: `Die Zahlen im Auftrag gelten einem anderen Feld oder Vorgang${field.jev.notFor ? ` (etwa ${field.jev.notFor})` : ""}.`,
-          none: "Der Auftrag nennt keinen Wert für dieses Feld.",
-        },
-      },
-      unit: {
-        text: `${newValue(field)} In welcher Einheit nennt der Auftrag diesen Wert?`,
-        options: {
-          minutes: "Minuten",
-          hours: "Stunden (auch Bruchteile wie 1,5 h oder eine halbe Stunde)",
-          hoursMinutes:
-            "Stunden und Minuten zusammen (etwa „2h15“, „1 Std. 20“)",
-          none: "Der Auftrag nennt keinen Wert für dieses Feld.",
-        },
-      },
-      field: {
-        text: `Der Auftrag nennt vielleicht einen neuen Wert für „${field.label}“ von Vorgang ${field.scope}. Welchem Feld von Vorgang ${field.scope} gilt die Zeitangabe, die dafür in Frage kommt, nach dem Auftrag wirklich?`,
-        options: {
-          ...Object.fromEntries(
-            fieldsReadAs("minutes").map((f) => [f.id, f.label]),
-          ),
-          none: `keinem, der Auftrag nennt für Vorgang ${field.scope} keine solche Zeitangabe`,
-        },
-      },
-      word: {
-        text: `${newValue(field)} Steht dieser Wert als Zahlwort im Auftrag: welches Zahlwort? Wähle das Wort selbst, ohne es mit der Einheit umzurechnen: bei „eine Stunde“ „eins“, bei „eine halbe Stunde“ „halbe“, bei „neunzig Minuten“ „neunzig“.`,
-        options: {
-          ...Object.fromEntries(
-            Object.entries(numberWords).map(([key, w]) => [key, w.label]),
-          ),
-          none: "Der Wert steht nicht als Zahlwort im Auftrag, oder der Auftrag nennt keinen.",
+          elsewhere: `Die Zeitangaben im Auftrag gelten einem anderen Feld oder Vorgang${field.jev.notFor ? ` (etwa ${field.jev.notFor})` : ""}.`,
+          none: "Der Auftrag nennt keinen eindeutigen neuen Wert für dieses Feld: keinen, nur mögliche Werte zur Wahl („20 oder 25“) oder nur eine Änderung um einen Betrag („um 15 Minuten verlängern“).",
         },
       },
     };
   },
-  assemble(picks, field, request) {
-    const none = (confidence: number): ValueReading => ({
-      type: "number",
-      value: { value: null, confidence },
-    });
-    const [target, span, unit, word] = ["field", "span", "unit", "word"].map(
-      (part) => pickOf(picks, part),
-    ) as [PartPick, PartPick, PartPick, PartPick];
-    if (target.choice !== field.id) return none(target.confidence);
-    if (span.choice === "none" || span.choice === "elsewhere")
-      return none(span.confidence);
-    const byWord = span.choice === "word";
-    const written = byWord
-      ? numberWords[word.choice]
-      : numberSpans(request)[Number(span.choice.slice(1))];
-    if (!written) return none(lowest(span, word));
-    const amounts = "amounts" in written ? written.amounts : [written.amount];
-    const combined = amounts.length === 2;
-    const factor =
-      unit.choice === "minutes" || unit.choice === "hours"
-        ? minutesPerUnit[unit.choice]
-        : null;
-    const minutes = combined
-      ? amounts[0]! * 60 + amounts[1]!
-      : factor === null
-        ? null
-        : Math.round(amounts[0]! * factor);
-    const valid =
-      minutes !== null &&
-      minutes >= (field.min ?? 0) &&
-      minutes <= (field.max ?? 10000);
-    const used = [
-      target,
-      span,
-      ...(byWord ? [word] : []),
-      ...(combined ? [] : [unit]),
-    ];
+  assemble(picks, field, scene) {
+    const pick = pickOf(picks, "value");
+    const option = minuteOptions(field, scene)[pick.choice];
     return {
       type: "number",
       value: {
-        value: valid ? String(minutes) : null,
-        confidence: lowest(...used),
+        value: option ? String(option.minutes) : null,
+        confidence: pick.confidence,
       },
     };
   },
@@ -326,7 +334,7 @@ const dayParts = {
 } as const;
 
 const dateTimeReader: Reader = {
-  parts(field, _request, today) {
+  parts(field, { today }) {
     const intro = `${newValue(field)} Heute ist ${weekdays[weekdayIndex(dayOf(today))]}, der ${today.split("-").reverse().join(".")}.`;
     const none = { none: "nicht genannt" };
     return {
@@ -443,7 +451,7 @@ const dateTimeReader: Reader = {
       },
     };
   },
-  assemble(picks, _field, _request, today) {
+  assemble(picks, _field, { today }) {
     const p = (part: string) => pickOf(picks, part);
     return {
       type: "datetime-local",

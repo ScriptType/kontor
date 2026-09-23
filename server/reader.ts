@@ -19,12 +19,17 @@ export async function readValues(
   ask: Ask,
 ): Promise<(ValueReading | null)[]> {
   const kinds = input.fields.map(readingKind);
+  const scene = {
+    request: input.request,
+    today: input.today,
+    caseIds: workspace.cases.map((c) => c.id),
+  };
   const questions: Questions = {};
   input.fields.forEach((field, i) => {
     const kind = kinds[i];
     if (!kind) return;
     for (const [part, { text, options }] of Object.entries(
-      readers[kind].parts(field, input.request, input.today),
+      readers[kind].parts(field, scene),
     ))
       questions[`f${i}.${part}`] = choice(text, options);
   });
@@ -54,7 +59,7 @@ export async function readValues(
           choice: answer.choice,
           confidence: answer.confidence,
         };
-    return readers[kind].assemble(picks, field, input.request, input.today);
+    return readers[kind].assemble(picks, field, scene);
   });
 }
 
