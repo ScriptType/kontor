@@ -101,14 +101,14 @@ Fehlt `flags.save`, gilt `true`, sobald ein Vorgang Werte erhält und `noSave` f
 
 Jeder Lauf startet den echten Server mit einer Datenbank im Arbeitsspeicher und öffnet Chrome. Gespeicherte Startwerte schreibt der Lauf direkt in die Datenbank. Seite, Vorgang und Filter stellt er über die Oberfläche ein. Die Bestätigungsschwelle ist 75 Prozent.
 
-Danach sendet der Lauf den Auftrag über die Befehlspalette. Er wartet, bis Jev anhält. Ein Halt vor dem Abschluss zählt als Rückfrage: Auswahlprüfung, fehlender Wert, Freigabe und Blockade. Die heutige Oberfläche erhält keine simulierte Antwort. Der Lauf endet an dieser Stelle.
+Danach sendet der Lauf den Auftrag über die Befehlspalette. Er wartet, bis Jev anhält. Ein Halt vor dem Abschluss zählt als Rückfrage: Auswahlprüfung, fehlender Wert, Freigabe und Blockade. Einen fehlenden Wert beantwortet der Lauf im Antwortfeld, siehe [Antwortvertrag für fehlende Werte](#antwortvertrag-für-fehlende-werte), und wartet auf den nächsten Halt. Auswahlprüfung, Freigabe und Blockade erhalten keine simulierte Antwort. Der Lauf endet dort.
 
 ## Bestätigungsvertrag für Varianten
 
 Eine Variante kann Rückfragen zu Dimensionen stellen. Der Lauf beantwortet sie aus der Wahrheit des Szenarios und setzt fort, wenn die Oberfläche diesen Vertrag einhält:
 
 - Ein sichtbares Element mit `data-confirm-dimension="<id>"` ist eine Rückfrage. Die ID stammt aus `shared/dimensions.ts`.
-- Bei vorgangsbezogenen Dimensionen nennt `data-confirm-case="<Vorgang>"` den Vorgang. Ohne Angabe gilt der einzige beabsichtigte Wert. Unterscheiden sich die Werte je Vorgang, bleibt die Rückfrage unbeantwortbar.
+- Bei vorgangsbezogenen Dimensionen nennt `data-confirm-case="<Vorgang>"` den Vorgang. Ohne Angabe gilt der einzige beabsichtigte Wert. Unterscheiden sich die Werte je Vorgang, bleibt die Rückfrage unbeantwortbar. Das gilt auch, wenn die Zwischenstände eines Vorgangs in `sequence` verschiedene Werte nennen.
 - Schaltflächen im Element tragen `data-confirm-value`. Werte sind die Schlüssel aus `dimensionOptions`, also Personen-, Kunden- und Vorgangs-IDs, Enumwerte, wörtliche Kandidaten, `all` und `none`. Schalter verwenden `yes` und `no`. `unstated` bedeutet, dass der Auftrag die Dimension nicht setzt.
 - Für die Menge `cases` klickt der Lauf jeden beabsichtigten Vorgang und danach `[data-confirm-submit]` im Element.
 - Nach einer Antwort muss das Element verschwinden. Solange Jev arbeitet, zeigt die Aktivitätsleiste den laufenden Zustand. Sonst liest der Lauf den Halt zu früh.
@@ -116,6 +116,20 @@ Eine Variante kann Rückfragen zu Dimensionen stellen. Der Lauf beantwortet sie 
 - Die Speicherfrage im Modus `confirm` ist ein Element mit `data-confirm-dimension="save"`, optional `data-confirm-case`, und den Schaltflächen `data-confirm-value="yes"` und `"no"`. Der Lauf antwortet `yes`, wenn das Szenario eine Speicherung dieses Vorgangs erwartet, sonst `no`. Ohne Vorgang antwortet er `yes`, wenn das Szenario überhaupt eine Speicherung erwartet.
 
 Jede beantwortete Rückfrage zählt als Frage. Nach höchstens zwölf Antworten endet der Lauf.
+
+## Antwortvertrag für fehlende Werte
+
+Fragt Jev nach einem fehlenden Wert, zeigt die Befehlspalette den Abschnitt „Antwort ausstehend“. Der Lauf beantwortet ihn aus der Absicht des Szenarios, so wie ein Mensch den Wert eintippt. Er liest den Abschnitt nur über diese Attribute, nicht über Texte oder Beschriftungen:
+
+- `data-answer-field="<Feld>"` am Abschnitt nennt das gefragte Feld: `minutes`, `appointment`, `duration` oder `search`. `data-answer-scope` nennt den Vorgang, bei der Suche `cases`.
+- Die Eingaben tragen `data-answer-part`: `date` und `time` für einen Termin, sonst `value`. Ob `value` eine Zahl oder ein Text ist, steht im `type` der Eingabe.
+- `[data-answer-submit]` bestätigt den Wert. Ein sichtbares `[data-answer-error]` heißt, dass die Oberfläche den Wert abgelehnt hat.
+
+Die Dimension folgt aus `actionEffects("ask:<Feld>")` in `shared/dimensions.ts`, wie in `shared/open-questions.ts`. Den Wert liefert dieselbe Wahrheit wie für Chips. Der Lauf füllt nur leere Teile. Was die Oberfläche aus dem Auftrag vorbelegt hat, bleibt stehen, auch wenn es von der Absicht abweicht. Die Meldung des Halts nennt die Abweichung dann, und der Endzustand entscheidet über die Kategorie. Beispiel: Das Datum 06.09.2026 ist vorbelegt, die Uhrzeit ist leer, und die Absicht ist `2026-09-06T10:00`. Der Lauf tippt nur 10:00. Sind alle Teile vorbelegt, bestätigt er sie unverändert.
+
+Hat die Absicht keinen einzelnen Wert, antwortet der Lauf nicht und tippt nichts. Das gilt, wenn die Dimension `unstated` ist, wenn der gefragte Vorgang nicht in der Absicht steht, wenn die Zwischenstände in `sequence` verschiedene Werte nennen und wenn der Wert nicht in die Eingabe passt, etwa `none` für den Terminbeginn. Der Halt bleibt dann ein fehlender Wert mit Dimension und Vorgang, und der Lauf endet als stopped-unanswered. Lehnt die Oberfläche die Antwort ab, gilt dasselbe. Die Meldung enthält dann den Fehlertext.
+
+Eine beantwortete Frage ist ein Halt der Art `answer`. Er nennt die Dimension, bei vorgangsbezogenen Dimensionen den Vorgang, und den bestätigten Wert. Er zählt als Frage wie ein Chip. Chips und Antworten teilen sich die Obergrenze von zwölf Antworten je Lauf.
 
 ## Endzustand und Kennzahlen
 
@@ -133,18 +147,22 @@ Jeder Lauf erhält genau eine Kategorie. Ein Fehler geht vor, danach der Halt an
 | Kategorie | Bedeutung |
 | --- | --- |
 | magic | Endzustand richtig, keine Frage und keine Übergabe. |
-| handoff | Endzustand richtig, und der Lauf hält korrekt für die erwartete Übergabe an einen Menschen an. Das ist nicht magic, auch nicht nach beantworteten Chips. |
-| correct-after-chips | Endzustand richtig, und jede Frage war ein Chip, den der Lauf beantwortet hat. |
-| stopped-unanswered | Der Lauf endet an einer Frage ohne Chip-Antwort: Auswahlprüfung, fehlender Wert, Freigabe, Blockade ohne erwartete Übergabe oder unbeantwortbarer Chip. Der Bericht zählt in Klammern, wie oft der Endzustand in diesem Moment schon stimmte. |
-| asked-wrong | Chips beantwortet, Endzustand trotzdem falsch. |
+| handoff | Endzustand richtig, und der Lauf hält korrekt für die erwartete Übergabe an einen Menschen an. Das ist nicht magic, auch nicht nach beantworteten Fragen. |
+| correct-after-answers | Endzustand richtig, und der Lauf hat jede Frage beantwortet, als Chip oder als Wert im Antwortfeld. |
+| stopped-unanswered | Der Lauf endet an einer Frage ohne Antwort: Auswahlprüfung, fehlender Wert ohne einzelnen Wert in der Absicht, Freigabe, Blockade ohne erwartete Übergabe oder unbeantwortbarer Chip. Der Bericht zählt in Klammern, wie oft der Endzustand in diesem Moment schon stimmte. |
+| asked-wrong | Fragen beantwortet, Endzustand trotzdem falsch. |
 | silent-wrong | Endzustand falsch oder unerwartete Speicherung, ohne Frage. |
 | error | Anbieter- oder Harnessfehler, etwa Zeitüberschreitung. |
 
-`magic-save-check` zählt magic und die Läufe unter correct-after-chips, deren Chips alle Speicherfragen waren. Das ist das Ziel des Modus `confirm`: Jev fragt nur, ob gespeichert werden soll. Der Bericht zeigt die Kennzahl in beiden Modi. Im Modus `auto` erscheint keine Speicherfrage, dort entspricht sie magic.
+`magic-save-check` zählt magic und die Läufe unter correct-after-answers, deren Fragen alle Speicherfragen waren. Das ist das Ziel des Modus `confirm`: Jev fragt nur, ob gespeichert werden soll. Der Bericht zeigt die Kennzahl in beiden Modi. Im Modus `auto` erscheint keine Speicherfrage, dort entspricht sie magic.
 
-Dazu kommen die Fragen als Mittelwert je Lauf und als Anteil der Läufe mit mindestens einer Frage, die Anbieteraufrufe und die Laufzeit vom Absenden bis zum letzten Halt.
+`correct ≤1 question` zählt magic und die Läufe unter correct-after-answers mit genau einer Frage. Die Spalte ist kumulativ und enthält magic. Sie zeigt, wie oft Jev mit höchstens einer Rückfrage ans Ziel kommt.
 
-Ältere Berichte kennen `correct-after-questions` statt `correct-after-chips` und zählen eine erwartete Übergabe als magic. Läufe, die an einer unbeantworteten Frage endeten, stehen dort unter `correct-after-questions` oder `asked-wrong`. magic und silent-wrong bleiben vergleichbar: Ein älterer magic-Wert entspricht magic plus handoff ohne Chips, silent-wrong ist unverändert.
+Dazu kommen die Fragen als Mittelwert je Lauf in der Spalte `questions per run` und als Anteil der Läufe mit mindestens einer Frage, die Anbieteraufrufe und die Laufzeit vom Absenden bis zum letzten Halt.
+
+Berichte vor dem Antwortvertrag nennen die Kategorie `correct-after-chips` statt `correct-after-answers`. Sie enthalten keine Spalte `correct ≤1 question`, und ein fehlender Wert beendete dort jeden Lauf als stopped-unanswered.
+
+Noch ältere Berichte kennen `correct-after-questions` statt `correct-after-chips` und zählen eine erwartete Übergabe als magic. Läufe, die an einer unbeantworteten Frage endeten, stehen dort unter `correct-after-questions` oder `asked-wrong`. magic und silent-wrong bleiben vergleichbar: Ein älterer magic-Wert entspricht magic plus handoff ohne Chips, silent-wrong ist unverändert.
 
 ## Ausgabe
 
@@ -173,7 +191,7 @@ Die Ausgabe ist JSON mit `id`, `endCorrect`, `mismatches`, `unexpectedSaves`, `e
 ## Nicht gemessen
 
 - Verständlichkeit und Qualität der Rückfragen. Der Lauf zählt sie nur.
-- Die richtige Antwort auf eine heutige Rückfrage. Der Lauf endet dort.
+- Die richtige Antwort auf eine Auswahlprüfung, Freigabe oder Blockade. Der Lauf endet dort.
 - Sichtbarkeit, Fokus und Lesbarkeit des Endzustands für Menschen.
 - Wirkungen auf Kennzahlen anderer Seiten. Sie folgen aus den gespeicherten Daten.
 - Varianz jenseits der gewählten Stichproben. Ein Lauf pro Szenario zeigt Tendenzen, keine stabilen Raten.
