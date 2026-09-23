@@ -25,18 +25,45 @@ const doesOf = (text: string) =>
 // label, kind and the full effect, which a check and a duel send. One id can
 // name two controls (technician:mara assigns in the picker and filters in the
 // filter menu), so the catalog keys by id and the text before "Now:", and
-// keeps every text seen after the option text.
+// keeps every text seen after the option text. A field value or a picker case
+// fills a template whose text after the option is the same for every value
+// and case, so the catalog keys those by template.
 type Known = {
   label: string;
   kind: SentAction["kind"];
   tails: Map<string, number>;
 };
 
+/** The template a field value (`field:minutes`) or a picker case (`open-case`) fills. */
+function templateOf(id: string) {
+  const field = /^field:([^:]+):/.exec(id);
+  if (field) return `field:${field[1]}`;
+  return id.startsWith("open-case:") ? "open-case" : undefined;
+}
+/**
+ * Label and kind the product gives a field value (ActionRegistry.snapshot) or
+ * a picker case (ActionDispatcher.openCaseAction), from the fields the state
+ * lists and the case the id names.
+ */
+function templatedControl(
+  id: string,
+  state: FullState,
+  learned: SentAction["kind"],
+) {
+  const value = /^field:([^:]+):(.*)$/s.exec(id);
+  if (!value)
+    return { label: `${id.slice("open-case:".length)} öffnen`, kind: learned };
+  const field = state.availableFields.find((f) => f.id === value[1]);
+  if (!field) throw new Error(`${id} sets no field the state lists`);
+  return { label: `${field.label} auf ${value[2]} setzen`, kind: field.kind };
+}
+
 /** Labels, kinds and effect texts of the controls recorded runs show. */
 export function createCatalog() {
   const known = new Map<string, Known>();
   function remember(action: SentAction, option?: string) {
-    const key = `${action.id}\n${doesOf(action.effect)}`;
+    const key =
+      templateOf(action.id) ?? `${action.id}\n${doesOf(action.effect)}`;
     const entry = known.get(key) ?? {
       label: action.label,
       kind: action.kind,
@@ -66,9 +93,11 @@ export function createCatalog() {
       for (const { question, payload } of callLog) {
         if (!payload) continue;
         if (question === "next" && !isDuel(payload)) {
-          options = payload.request.questions["next"]?.criteria ?? {};
           const state = stateOf(payload);
-          for (const step of state.observedSteps) remember(step.action);
+          // A step was offered by the decide before, as the option it took.
+          for (const step of state.observedSteps)
+            remember(step.action, options[step.action.id]);
+          options = payload.request.questions["next"]?.criteria ?? {};
           for (const action of state.availableActions ?? [])
             remember(action, options[action.id]);
         } else if (question === "next") {
@@ -106,18 +135,23 @@ export function createCatalog() {
       return Object.entries(options)
         .filter(([id]) => !terminal(id))
         .map(([id, text]) => {
-          const entry = lookup(id, text);
+          const template = templateOf(id);
+          const entry = template ? known.get(template) : lookup(id, text);
+          if (!entry) throw new Error(`${id}: no recording shows ${template}`);
+          const { label, kind } = template
+            ? templatedControl(id, state, entry.kind)
+            : entry;
           // Texts that name the open case fit only while a detail is open.
           const fits = ([tail]: [string, number]) =>
             tail.includes("V-…") === (open !== undefined);
           const [tail] = [...entry.tails].sort(
             (a, b) => Number(fits(b)) - Number(fits(a)) || b[1] - a[1],
-          )[0] ?? [defaultTail[entry.kind] ?? ""];
+          )[0] ?? [defaultTail[kind] ?? ""];
           return {
             id,
-            label: entry.label,
+            label,
             effect: text + tail.replaceAll("V-…", open ?? "V-…"),
-            kind: entry.kind,
+            kind,
           };
         });
     },
