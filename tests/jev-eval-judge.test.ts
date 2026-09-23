@@ -105,6 +105,25 @@ test("answered chips separate correct-after-answers from asked-wrong", () => {
     unexpectedSaves: [],
   });
 });
+test("an answered value question counts as a question and never leaves the run unanswered", () => {
+  const s = byId("use-09");
+  const answer: Stop = { ...chip, kind: "answer" };
+  const input: Stop = { ...chip, kind: "input" };
+  assert.deepEqual(
+    [
+      judge(s, asExpected(s, [done])),
+      judge(s, asExpected(s, [answer, done])),
+      judge(s, { ...asExpected(s, [answer, done]), page: "cases" }),
+      judge(s, asExpected(s, [answer, input])),
+    ].map((v) => [v.outcome, v.questions]),
+    [
+      ["magic", 0],
+      ["correct-after-answers", 1],
+      ["asked-wrong", 1],
+      ["stopped-unanswered", 2],
+    ],
+  );
+});
 test("a run that ends at a question the harness cannot answer is stopped-unanswered and keeps whether the end was right", () => {
   const s = byId("use-09");
   const right = judge(s, asExpected(s, [chip, review]));

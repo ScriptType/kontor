@@ -1,4 +1,9 @@
-import { UNSTATED, dimensions } from "../../shared/dimensions.js";
+import type { FieldDescription } from "../../shared/command.js";
+import {
+  UNSTATED,
+  actionEffects,
+  dimensions,
+} from "../../shared/dimensions.js";
 import { endMismatches, type ObservedEnd } from "../../shared/intent.js";
 import type { Scenario } from "./scenarios.js";
 
@@ -10,6 +15,7 @@ export type Stop = {
     | "approval"
     | "blocked"
     | "confirm"
+    | "answer"
     | "unanswerable"
     | "error"
     | "timeout";
@@ -24,6 +30,7 @@ const questionKinds = new Set<Stop["kind"]>([
   "approval",
   "blocked",
   "confirm",
+  "answer",
   "unanswerable",
 ]);
 export type Observed = ObservedEnd & { stops: Stop[] };
@@ -76,6 +83,7 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
     !wroteWrong &&
     final !== undefined &&
     final.kind !== "confirm" &&
+    final.kind !== "answer" &&
     questionKinds.has(final.kind);
   const outcome: Outcome = observed.stops.some(
     (stop) => stop.kind === "error" || stop.kind === "timeout",
@@ -122,7 +130,15 @@ export function answerFor(
   if (entry.kind === "set") return Object.keys(intent.cases);
   if (entry.scope === "view") return intent.pages.at(-1) ?? UNSTATED;
   if (entry.scope === "list") return intent.filters[entry.id] ?? UNSTATED;
-  if (caseId) return intent.cases[caseId]?.[entry.id] ?? UNSTATED;
+  if (caseId) {
+    const values = new Set(
+      [
+        intent.cases[caseId]?.[entry.id],
+        ...(intent.sequence[caseId] ?? []).map((step) => step[entry.id]),
+      ].filter((value) => value !== undefined),
+    );
+    return values.size > 1 ? null : ([...values][0] ?? UNSTATED);
+  }
   const values = new Set(
     Object.values(intent.cases).flatMap((values) => {
       const value = values[entry.id];
@@ -130,4 +146,65 @@ export function answerFor(
     }),
   );
   return values.size > 1 ? null : ([...values][0] ?? UNSTATED);
+}
+
+/** The parts of the answer panel's inputs; an empty input is "". */
+export type AnswerParts = { date?: string; time?: string; value?: string };
+export type ValueAnswer = {
+  dimension: string | null;
+  caseId?: string;
+  /** The parts to type, only those that were empty; null means not answerable. */
+  parts: AnswerParts | null;
+  value: string | null;
+  /** Prefilled parts that differ from the scenario, kept as the panel showed them. */
+  kept: string[];
+};
+const inputValue: Record<FieldDescription["type"], RegExp> = {
+  "datetime-local": /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
+  number: /^\d+$/,
+  text: /./,
+};
+export function valueAnswer(
+  scenario: Scenario,
+  field: { id: string; scope: string; type: FieldDescription["type"] },
+  prefill: AnswerParts,
+): ValueAnswer {
+  const dimension = actionEffects(`ask:${field.id}`)?.[0]?.dimension ?? null;
+  const entry = dimensions.find((candidate) => candidate.id === dimension);
+  const caseId =
+    entry && "scope" in entry && entry.scope === "case"
+      ? field.scope
+      : undefined;
+  const found = { dimension, ...(caseId ? { caseId } : {}) };
+  const truth = dimension && answerFor(scenario, dimension, caseId);
+  if (
+    typeof truth !== "string" ||
+    truth === UNSTATED ||
+    !inputValue[field.type].test(truth)
+  )
+    return { ...found, parts: null, value: null, kept: [] };
+  const wanted: AnswerParts =
+    field.type === "datetime-local"
+      ? { date: truth.slice(0, 10), time: truth.slice(11) }
+      : { value: truth };
+  const parts: AnswerParts = {};
+  const submitted: AnswerParts = {};
+  const kept: string[] = [];
+  for (const part of ["date", "time", "value"] as const) {
+    const want = wanted[part];
+    if (want === undefined) continue;
+    const given = prefill[part];
+    if (!given) parts[part] = want;
+    else if (given !== want) kept.push(`${part} ${given}, scenario ${want}`);
+    submitted[part] = given || want;
+  }
+  return {
+    ...found,
+    parts,
+    value:
+      field.type === "datetime-local"
+        ? `${submitted.date}T${submitted.time}`
+        : (submitted.value ?? null),
+    kept,
+  };
 }
