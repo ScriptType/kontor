@@ -92,6 +92,32 @@ export function writtenMinutes(request: string): number[] {
   ].filter((minute): minute is number => minute !== undefined && minute < 60);
   return [...new Set(minutes)].sort((a, b) => a - b);
 }
+export type ClockRelation = {
+  text: string;
+  minutes: number;
+  direction: "vor" | "nach";
+  half: boolean;
+};
+const minutesBeforeAfter = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(\d{1,2}|${minuteWordPattern})\s+(?:min(?:uten?)?\s+)?(vor|nach)\s+(halb\s+)?(?:\d{1,2}|${hourWordPattern})(?![\p{L}\p{N}])`,
+  "giu",
+);
+const halfHour = 30;
+export function writtenRelations(request: string): ClockRelation[] {
+  return [...request.matchAll(minutesBeforeAfter)].flatMap((m) => {
+    const minutes = valueOf(m[1]!, minuteWords);
+    return minutes && minutes < halfHour
+      ? [
+          {
+            text: m[0],
+            minutes,
+            direction: m[2]!.toLowerCase() === "vor" ? "vor" : "nach",
+            half: m[3] !== undefined,
+          },
+        ]
+      : [];
+  });
+}
 /** A clock time code reads without doubt, in minutes after midnight. */
 type ClockTime = Span & { minutes: number };
 function clockTimes(request: string): ClockTime[] {

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { writtenHours, writtenMinutes } from "./clock-times.js";
+import {
+  writtenHours,
+  writtenMinutes,
+  writtenRelations,
+  type ClockRelation,
+} from "./clock-times.js";
 import { fieldSchema, type FieldDescription } from "./command.js";
 import {
   dimensions,
@@ -417,7 +422,7 @@ const dateTimeReader: Reader = {
         },
       },
       hour: {
-        text: `${intro} Welche Stunde nennt der Auftrag für die Uhrzeit, so wie sie dasteht („halb 10“: 10, „viertel nach 2“: 2, „14 Uhr“: 14)?`,
+        text: `${intro} Welche Stunde nennt der Auftrag für die Uhrzeit, so wie sie dasteht („halb 10“: 10, „viertel nach 2“: 2, „zehn nach 3“: 3, „14 Uhr“: 14)?`,
         options: {
           ...Object.fromEntries(
             writtenHours(request).map((hour) => [
@@ -437,6 +442,14 @@ const dateTimeReader: Reader = {
           half: "halb, eine halbe Stunde VOR der Stunde („halb 10“ = 9:30)",
           quarter_to:
             "dreiviertel oder viertel vor („dreiviertel 8“ = 7:45, „viertel vor 8“ = 7:45)",
+          ...Object.fromEntries(
+            writtenRelations(request).map((relation) => [
+              relationKey(relation),
+              `${relation.minutes} Minuten ${relation.direction} ${relation.half ? "halb" : "der Stunde"}, wie in „${relation.text}“`,
+            ]),
+          ),
+          other:
+            "eine andere Angabe mit „vor“ oder „nach“ vor der Stunde, die hier nicht steht („kurz vor 11“, „gleich nach 3“)",
           none: "keine Uhrzeit genannt",
         },
       },
@@ -458,12 +471,12 @@ const dateTimeReader: Reader = {
       },
     };
   },
-  assemble(picks, _field, { today }) {
+  assemble(picks, _field, { request, today }) {
     const p = (part: string) => pickOf(picks, part);
     return {
       type: "datetime-local",
       date: assembleDate(p, today),
-      time: assembleTime(p),
+      time: assembleTime(p, relationOffsets(request)),
     };
   },
 };
@@ -515,22 +528,37 @@ function assembleDate(p: (part: string) => PartPick, today: string): Read {
   return read(null);
 }
 
-/** Hour shift and minutes of a clock time said relative to the written hour: "halb 10" is 9:30. */
-const relativeClock: Record<string, [number, number]> = {
-  quarter_past: [0, 15],
-  half: [-1, 30],
-  quarter_to: [-1, 45],
-};
+const relationKey = (relation: ClockRelation) =>
+  `${relation.half ? "halb_" : ""}${relation.direction}_${relation.minutes}`;
+function relationOffsets(request: string): Record<string, number> {
+  return {
+    quarter_past: 15,
+    half: -30,
+    quarter_to: -15,
+    ...Object.fromEntries(
+      writtenRelations(request).map((relation) => [
+        relationKey(relation),
+        (relation.half ? -30 : 0) +
+          (relation.direction === "vor" ? -1 : 1) * relation.minutes,
+      ]),
+    ),
+  };
+}
 /** Hours from 1 to 6 without a day part are afternoon hours inside the working day. */
 const workingDayStart = 7;
-function assembleTime(p: (part: string) => PartPick): Read {
+const minutesPerDay = 24 * 60;
+function assembleTime(
+  p: (part: string) => PartPick,
+  offsets: Record<string, number>,
+): Read {
   const [hour, relation, minute, daypart] = [
     p("hour"),
     p("relation"),
     p("minute"),
     p("daypart"),
   ];
-  if (hour.choice === "none" || relation.choice === "none")
+  const offset = relation.choice === "exact" ? 0 : offsets[relation.choice];
+  if (hour.choice === "none" || offset === undefined)
     return { value: null, confidence: lowest(hour, relation) };
   const used = [hour, relation];
   let h = Number(hour.choice) % 24;
@@ -544,19 +572,16 @@ function assembleTime(p: (part: string) => PartPick): Read {
           : daypart.choice === "none" && h < workingDayStart;
     if (later) h += 12;
   }
-  let m = 0;
+  let at = h * 60 + offset;
   if (relation.choice === "exact") {
     used.push(minute);
     if (minute.choice === "other" || minute.choice === "none")
       return { value: null, confidence: lowest(...used) };
-    m = Number(minute.choice);
-  } else {
-    const [back, at] = relativeClock[relation.choice] ?? [0, 0];
-    h += back;
-    m = at;
+    at += Number(minute.choice);
   }
+  at = (at + minutesPerDay) % minutesPerDay;
   return {
-    value: `${pad((h + 24) % 24)}:${pad(m)}`,
+    value: `${pad(Math.floor(at / 60))}:${pad(at % 60)}`,
     confidence: lowest(...used),
   };
 }
