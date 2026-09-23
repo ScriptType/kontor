@@ -396,6 +396,13 @@ const check = {
               JSON.stringify(value).length,
             ]),
           ),
+          "observedSteps.before+after": state.observedSteps.reduce(
+            (sum, step) =>
+              sum +
+              JSON.stringify(step.before).length +
+              JSON.stringify(step.after).length,
+            0,
+          ),
         },
       });
       if (duel) continue;
