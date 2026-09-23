@@ -222,10 +222,7 @@ test("the duration answer is prefilled with the value Jev reads as the new one, 
     {
       nextAnswer: script(["case:V-1041", "ask:duration", "done"]),
       read: {
-        "f0.field": "duration",
-        "f0.span": "word",
-        "f0.word": "90",
-        "f0.unit": "minutes",
+        "f0.value": "w.m90",
       },
     },
   );

@@ -42,18 +42,33 @@ const picks = (parts: Record<string, string>) =>
   Object.fromEntries(
     Object.entries(parts).map(([part, choice]) => [part, sure(choice)]),
   );
+const scene = (request: string) => ({
+  request,
+  today,
+  caseIds: ["V-1041", "V-1042"],
+});
+/** The options code offers for the field, as key and label. */
+const optionsOf = (id: "minutes" | "duration", request: string) =>
+  readers.minutes.parts(field(id), scene(request))["value"]!.options;
+/** The minutes code assembles when the model picks the option whose label starts with this text. */
 const minutesOf = (
   id: "minutes" | "duration",
   request: string,
-  parts: Record<string, string>,
+  labelStart: string | null,
+  confidence = 1,
 ) => {
+  const key = labelStart
+    ? Object.entries(optionsOf(id, request)).find(([, label]) =>
+        label.startsWith(labelStart),
+      )?.[0]
+    : "none";
+  assert.ok(key, `no option ${labelStart} for ${request}`);
   const reading = readers.minutes.assemble(
-    picks({ field: id, ...parts }),
+    { value: sure(key, confidence) },
     field(id),
-    request,
-    today,
+    scene(request),
   );
-  return reading.type === "number" ? reading.value.value : undefined;
+  return reading.type === "number" ? reading.value : undefined;
 };
 const dateTimeOf = (parts: Record<string, string>) => {
   const reading = readers.dateTime.assemble(
@@ -66,99 +81,76 @@ const dateTimeOf = (parts: Record<string, string>) => {
       ...parts,
     }),
     field("appointment"),
-    "",
-    today,
+    scene(""),
   );
   return reading.type === "datetime-local"
     ? [reading.date.value, reading.time.value]
     : undefined;
 };
 
-test("every number is enumerated exactly as written", () => {
+test("every number is enumerated exactly as written, without case ids and clock times", () => {
   assert.deepEqual(
     numberSpans(
-      "1,3h und 1.25 std, dann 37 min, 2h15, 1 std 20 und 3/4 bei V-1042",
-    ).map((s) => [s.text, s.amounts]),
+      "1,3h und 1.25 std, dann 37 min, 2h15, 1 std 20 und 3/4 bei V-1042 und 1041 um 14:30",
+      ["V-1041", "V-1042"],
+    ).map((s) => [s.text, s.amounts, s.unit]),
     [
-      ["1,3", [1.3]],
-      ["1.25", [1.25]],
-      ["37", [37]],
-      ["2h15", [2, 15]],
-      ["1 std 20", [1, 20]],
-      ["3/4", [0.75]],
-      ["1042", [1042]],
+      ["1,3h", [1.3], "hours"],
+      ["1.25 std", [1.25], "hours"],
+      ["37 min", [37], "minutes"],
+      ["2h15", [2, 15], null],
+      ["1 std 20", [1, 20], null],
+      ["3/4", [0.75], null],
     ],
   );
 });
 
-// request, field, picks, minutes code computes from them
+// request, field, the option the model picks (by label start), minutes code assembles
 const minuteReadings: [
   string,
   "minutes" | "duration",
-  Record<string, string>,
+  string | null,
   string | null,
 ][] = [
-  ["1,3h gearbeitet", "minutes", { span: "s0", unit: "hours" }, "78"],
-  ["1.25 std dran", "minutes", { span: "s0", unit: "hours" }, "75"],
-  ["37 min Arbeit", "minutes", { span: "s0", unit: "minutes" }, "37"],
-  ["Arbeitszeit 2h15", "minutes", { span: "s0", unit: "minutes" }, "135"],
-  ["Arbeitszeit 1 std 20", "minutes", { span: "s0", unit: "none" }, "80"],
+  ["1,3h gearbeitet", "minutes", "„1,3h“ = 78 Minuten", "78"],
+  ["1.25 std dran", "minutes", "„1.25 std“ = 75 Minuten", "75"],
+  ["37 min Arbeit", "minutes", "„37 min“ = 37 Minuten", "37"],
+  ["Arbeitszeit 2h15", "minutes", "„2h15“ = 135 Minuten", "135"],
+  ["Arbeitszeit 1 std 20", "minutes", "„1 std 20“ = 80 Minuten", "80"],
+  ["Arbeitszeit 1,5", "minutes", "„1,5“ als Stunden = 90 Minuten", "90"],
+  ["Arbeitszeit 45", "minutes", "„45“ als Minuten = 45 Minuten", "45"],
+  ["ne halbe stunde", "minutes", "als Wort: „eine halbe Stunde“", "30"],
+  ["anderthalb", "minutes", "als Wort: „anderthalb", "90"],
   [
-    "ne halbe stunde",
+    "ne dreiviertel Stunde",
     "minutes",
-    { span: "word", word: "halbe", unit: "hours" },
-    "30",
-  ],
-  [
-    "anderthalb",
-    "minutes",
-    { span: "word", word: "anderthalb", unit: "hours" },
-    "90",
+    "als Wort: „eine Dreiviertelstunde“",
+    "45",
   ],
   [
     "zwei stunden is zu lang, mach neunzig draus",
     "duration",
-    { span: "word", word: "90", unit: "minutes" },
+    "als Wort: „neunzig (Minuten)“",
     "90",
   ],
-  ["Termin 120, nee 90", "duration", { span: "s1", unit: "minutes" }, "90"],
-  ["zwei Stunden is zu lang", "duration", { span: "none" }, null],
-  ["az 50 min", "duration", { span: "elsewhere" }, null],
-  ["10 Stunden", "duration", { span: "s0", unit: "hours" }, null],
-  ["45 Minuten", "duration", { span: "s0", unit: "none" }, null],
-  ["neunzig", "duration", { span: "word", word: "none" }, null],
+  ["Termin 120, nee 90", "duration", "„90“ als Minuten", "90"],
+  ["zwei Stunden is zu lang", "duration", null, null],
 ];
-test("code computes whole minutes from the picked span, word and unit", () => {
-  for (const [request, id, parts, value] of minuteReadings)
-    assert.equal(minutesOf(id, request, parts), value, request);
+test("code assembles whole minutes from the picked option", () => {
+  for (const [request, id, label, value] of minuteReadings)
+    assert.equal(minutesOf(id, request, label)?.value, value, request);
 });
-test("a value the model gives to another field is no value for this one", () => {
-  const reading = readers.minutes.assemble(
-    picks({ field: "minutes", span: "s0", unit: "minutes" }),
-    field("duration"),
-    "az 50 min",
-    today,
-  );
-  assert.deepEqual(reading, {
-    type: "number",
-    value: { value: null, confidence: 1 },
-  });
+test("only values the field accepts are offered", () => {
+  const labels = Object.values(optionsOf("duration", "Termin 10 Stunden, 45"));
+  assert.ok(!labels.some((l) => l.startsWith("„10 Stunden“")));
+  assert.ok(!labels.some((l) => l.includes("„45“ als Stunden")));
+  assert.ok(labels.some((l) => l.startsWith("„45“ als Minuten")));
+  assert.ok(!labels.some((l) => l.includes("= 5 Minuten")));
 });
-test("a reading's confidence is the lowest of the parts it used", () => {
-  const reading = readers.minutes.assemble(
-    {
-      field: sure("duration", 0.9),
-      span: sure("s1", 0.8),
-      unit: sure("minutes", 0.7),
-      word: sure("none", 0.1),
-    },
-    field("duration"),
-    "Termin 60, nee 90",
-    today,
-  );
-  assert.deepEqual(reading, {
-    type: "number",
-    value: { value: "90", confidence: 0.7 },
+test("a reading carries the confidence of the model's pick", () => {
+  assert.deepEqual(minutesOf("duration", "Termin 60, nee 90", "„90“", 0.7), {
+    value: "90",
+    confidence: 0.7,
   });
 });
 
@@ -284,10 +276,7 @@ test("all fields are read in one call, each from its own parts", async () => {
         answer("f0.relation", "exact"),
         answer("f0.minute", "0"),
         answer("f0.daypart", "none"),
-        answer("f2.field", "duration"),
-        answer("f2.span", "word"),
-        answer("f2.word", "90"),
-        answer("f2.unit", "minutes"),
+        answer("f2.value", "w.m90"),
       ]);
     },
   );
