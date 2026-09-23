@@ -43,3 +43,33 @@ export function guardStop(
     ).length;
   return entries >= 2 ? "revisit" : null;
 }
+
+/**
+ * The offered actions without the views and drafts that already ran in this
+ * run from this same observed state and changed nothing. Saving and
+ * discarding stay offered.
+ */
+export function withoutSpentActions<
+  Action extends Pick<ActionDescription, "id" | "kind">,
+>(
+  actions: Action[],
+  steps: {
+    action: Pick<ActionDescription, "id">;
+    before: string;
+    outcome: Step["outcome"];
+  }[],
+  observed: string,
+): Action[] {
+  const spent = new Set(
+    steps
+      .filter(
+        (step) => step.before === observed && step.outcome === "unchanged",
+      )
+      .map((step) => step.action.id),
+  );
+  return actions.filter(
+    (action) =>
+      (action.kind !== "view" && action.kind !== "draft") ||
+      !spent.has(action.id),
+  );
+}

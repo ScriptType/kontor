@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { requestClauses } from "../shared/field-values.js";
-import { guardStop, stepBudget } from "../shared/run-guard.js";
+import {
+  guardStop,
+  stepBudget,
+  withoutSpentActions,
+} from "../shared/run-guard.js";
 
 const filters = (customerId: string | null = null) => ({
   customerId,
@@ -114,5 +118,54 @@ test("the step budget is 8 plus 4 per clause, at most 24", () => {
       "cases",
     ),
     "budget",
+  );
+});
+
+const offered = [
+  { id: "case:V-1042", kind: "view" as const },
+  { id: "field:minutes:45", kind: "draft" as const },
+  { id: "save", kind: "commit" as const },
+  { id: "discard", kind: "discard" as const },
+];
+const ranFrom = (
+  before: string,
+  outcome: "changed" | "unchanged",
+  actions = offered,
+) => actions.map((action) => ({ action, before, outcome }));
+const ids = (actions: { id: string }[]) => actions.map((action) => action.id);
+test("a view or draft that ran from this same state without change is not offered again", () => {
+  const here = state("cases");
+  assert.deepEqual(
+    ids(withoutSpentActions(offered, ranFrom(here, "unchanged"), here)),
+    ["save", "discard"],
+  );
+  assert.deepEqual(
+    ids(
+      withoutSpentActions(
+        offered,
+        ranFrom(here, "unchanged", [offered[0]!]),
+        here,
+      ),
+    ),
+    ["field:minutes:45", "save", "discard"],
+  );
+});
+test("an action that changed something or ran from another state stays offered", () => {
+  const here = state("cases");
+  assert.deepEqual(
+    withoutSpentActions(offered, ranFrom(here, "changed"), here),
+    offered,
+  );
+  assert.deepEqual(
+    withoutSpentActions(offered, ranFrom(state("reports"), "unchanged"), here),
+    offered,
+  );
+  assert.deepEqual(
+    withoutSpentActions(
+      offered,
+      ranFrom(state("cases", "nord"), "unchanged"),
+      here,
+    ),
+    offered,
   );
 });
