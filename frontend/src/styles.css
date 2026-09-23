@@ -255,6 +255,14 @@ kbd {
   padding: 0 12px;
   color: #b5bfcb;
 }
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar-tools .menu-wrap > button {
+  white-space: nowrap;
+}
 .command-trigger {
   display: flex;
   gap: 10px;
@@ -352,6 +360,10 @@ kbd {
   border-radius: 8px;
   padding: 5px;
   box-shadow: 0 8px 24px #1627421a;
+}
+.popover.align-end {
+  left: auto;
+  right: 0;
 }
 .popover button {
   display: block;
@@ -871,8 +883,14 @@ tr.selected {
     min-width: 0;
     width: 100%;
   }
+  .topbar-tools,
   kontor-palette {
     width: 100%;
+    min-width: 0;
+  }
+  .popover.align-end {
+    left: 0;
+    right: auto;
   }
   .activity {
     padding: 8px 12px;

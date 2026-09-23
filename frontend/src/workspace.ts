@@ -50,7 +50,7 @@ export class WorkspaceUi {
   private readonly filterState = signal<CaseFilters>({ ...defaultCaseFilters });
   readonly filters = this.filterState.asReadonly();
   readonly menu = signal<
-    "customer" | "filter-technician" | "technician" | null
+    "customer" | "filter-technician" | "technician" | "open-case" | null
   >(null);
   readonly evidenceFocus = signal<string | null>(null);
   readonly detailFocus = signal<string | null>(null);

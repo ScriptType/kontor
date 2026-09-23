@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { createApp } from "../server/app.js";
 import { WorkspaceStore } from "../server/workspace-store.js";
 import { actionEffects } from "../shared/dimensions.js";
+import { storeGate } from "./live-fixture.js";
 
 async function renderedIds(page: Page) {
   return page.evaluate(() => [
@@ -19,6 +20,7 @@ async function renderedIds(page: Page) {
 test("every rendered action and field maps to a dimension or an explicit entry", async ({
   page,
 }) => {
+  await storeGate(page, "g3-cpe-duel-jump");
   const app = createApp({ mode: "demo" }, undefined, new WorkspaceStore());
   app.server.listen(0, "127.0.0.1");
   await once(app.server, "listening");
@@ -30,8 +32,14 @@ test("every rendered action and field maps to a dimension or an explicit entry",
     const collect = async () => {
       for (const id of await renderedIds(page)) ids.add(id);
     };
-    for (const menu of ["menu:customer", "menu:filter-technician"]) {
-      await page.locator(`[data-action="${menu}"]`).click();
+    for (const menu of [
+      "menu:customer",
+      "menu:filter-technician",
+      "menu:open-case",
+    ]) {
+      const button = page.locator(`[data-action="${menu}"]`);
+      await button.click();
+      await expect(button).toHaveAttribute("aria-expanded", "true");
       await collect();
     }
     for (const caseId of ["V-1041", "V-1035"]) {
@@ -44,6 +52,7 @@ test("every rendered action and field maps to a dimension or an explicit entry",
       await page.locator(`[data-action="${nav}"]`).click();
       await collect();
     }
+    expect([...ids]).toContain("open-case:V-1041");
     expect(ids.size).toBeGreaterThan(30);
     expect(
       [...ids].filter((id) => id === null || actionEffects(id) === null),
