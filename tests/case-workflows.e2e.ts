@@ -192,3 +192,88 @@ test("Jev sees complete combined filters and only mounted menu choices, then rep
     },
   );
 });
+
+test("the assignee options say who is available at the drafted appointment", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["case:V-1042", "field:appointment:2026-09-24T10:00", "menu:technician"],
+    async (
+      _store,
+      _held,
+      _arrived,
+      _snapshots,
+      _observations,
+      _assessed,
+      choiceTexts,
+    ) => {
+      await start(
+        page,
+        "Setze V-1042 auf 2026-09-24 10:00 und setze jemand anderen ein, der dann frei ist.",
+      );
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      expect(choiceTexts[2]?.["menu:technician"]).toContain(
+        "assignee is Jonas Weber; available for V-1042 at 2026-09-24 10:00: Lea Sommer; busy then: Jonas Weber (current) (V-1041); lacking skill Elektro: Mara Schulz",
+      );
+      expect(choiceTexts[3]?.["technician:lea"]).toContain(
+        "assignee Jonas Weber → Lea Sommer; Lea Sommer is available",
+      );
+      expect(choiceTexts[3]?.["technician:jonas"]).toContain(
+        "Jonas Weber is already the assignee; no change; Jonas Weber is busy then with V-1041",
+      );
+      expect(choiceTexts[3]).not.toHaveProperty("technician:mara");
+      const menu = page.locator('[data-action="menu:technician"]');
+      if ((await menu.getAttribute("aria-expanded")) !== "true")
+        await menu.click();
+      await expect(
+        page.locator('[data-action="technician:lea"]'),
+      ).toContainText("Elektro, Service · verfügbar");
+      await expect(
+        page.locator('[data-action="technician:jonas"]'),
+      ).toContainText("Elektro, Service · belegt durch V-1041");
+      await expect(
+        page.locator('[data-action="technician:mara"]'),
+      ).toContainText("Service · ohne Qualifikation Elektro");
+    },
+  );
+});
+
+test("without an appointment the assignee options name the qualified technicians and say times are not checked", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    ["case:V-1042", "menu:technician"],
+    async (
+      _store,
+      _held,
+      _arrived,
+      _snapshots,
+      _observations,
+      _assessed,
+      choiceTexts,
+    ) => {
+      await start(page, "Setze für V-1042 jemand anderen ein.");
+      await expect(page.locator(".activity-label")).toContainText("Jev meldet");
+      expect(choiceTexts[1]?.["menu:technician"]).toContain(
+        "assignee is Jonas Weber; qualified for V-1042 (skill Elektro; no appointment in the draft, times not checked): Lea Sommer, Jonas Weber (current); lacking skill Elektro: Mara Schulz",
+      );
+      expect(choiceTexts[2]?.["technician:lea"]).toContain(
+        "assignee Jonas Weber → Lea Sommer; no appointment in the draft, times not checked",
+      );
+      const menu = page.locator('[data-action="menu:technician"]');
+      if ((await menu.getAttribute("aria-expanded")) !== "true")
+        await menu.click();
+      await expect(
+        page.locator('[data-action="technician:lea"]'),
+      ).toContainText("Elektro, Service");
+      await expect(
+        page.locator('[data-action="technician:lea"]'),
+      ).not.toContainText("verfügbar");
+      await expect(
+        page.locator('[data-action="technician:mara"]'),
+      ).toContainText("Service · ohne Qualifikation Elektro");
+    },
+  );
+});

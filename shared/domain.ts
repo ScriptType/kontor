@@ -90,6 +90,17 @@ export function overlaps(
     startA < startB + b.minutes * 60000 && startB < startA + a.minutes * 60000
   );
 }
+export type Availability =
+  | { kind: "available"; at: ServiceCase["appointment"] }
+  | { kind: "unqualified"; skill: string }
+  | { kind: "busy"; cases: string[] };
+export function availability(
+  _workspace: Workspace,
+  _value: ServiceCase,
+  _technicianId: string,
+): Availability {
+  throw new Error("not implemented");
+}
 export function blockers(workspace: Workspace, value: ServiceCase): Blocker[] {
   const result: Blocker[] = [];
   const technician = workspace.technicians.find(
