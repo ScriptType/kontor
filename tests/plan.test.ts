@@ -239,3 +239,13 @@ test("two views read at the same word keep the likelier one", async () => {
   );
   assert.deepEqual(plan?.visits, ["cases"]);
 });
+
+test("a customer filter the request never names is no filter", async () => {
+  const filter = { "s0.fchg.customerFilter": 1 };
+  const nord = { "s0.fval.customerFilter": "nord" };
+  assert.deepEqual((await planOf("1039 an jonas", filter, nord))?.filters, {});
+  assert.deepEqual(
+    (await planOf("nur die vom Nord Werk", filter, nord))?.filters,
+    { customerFilter: "nord" },
+  );
+});

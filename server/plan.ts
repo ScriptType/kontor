@@ -272,6 +272,50 @@ function names(ws: Workspace) {
       .filter((n) => n.length > 2),
   );
 }
+/** Whether at most one letter is changed, added or dropped between the two words. */
+function nearly(a: string, b: string) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  let j = 0;
+  while (
+    j < Math.min(a.length, b.length) - i &&
+    a.at(-1 - j) === b.at(-1 - j)
+  )
+    j++;
+  return Math.max(a.length, b.length) - i - j <= 1;
+}
+/** Whether the request names this technician or customer (or its contact), allowing one typo and compounds such as "Hafenkunden". */
+function named(
+  scene: PlanScene,
+  references: "technicians" | "customers",
+  id: string,
+) {
+  const ws = scene.workspace;
+  const customer = ws.customers.find((c) => c.id === id);
+  const said =
+    references === "technicians"
+      ? (ws.technicians.find((t) => t.id === id)?.name ?? "")
+      : customer
+        ? `${customer.name.split(/[ &]/)[0]} ${customer.contact.split("·")[0]}`
+        : "";
+  const parts = said
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((p) => p.length > 2);
+  const single = scene.request.toLowerCase().match(/\p{L}+/gu) ?? [];
+  // A compound name can be written as two words.
+  const words = [
+    ...single,
+    ...single.slice(1).map((word, i) => single[i] + word),
+  ];
+  return parts.some((part) =>
+    words.some(
+      (word) =>
+        nearly(word, part) || (part.length > 3 && word.startsWith(part)),
+    ),
+  );
+}
 /** Word gaps after punctuation or a line break, before a connector, a case id or a name. */
 function gapCandidates(scene: PlanScene, toks: Token[]): number[] {
   const known = names(scene.workspace);
@@ -479,7 +523,18 @@ async function extractSteps(
             ? picked(a[`s${i}.fval.${dim}`])
             : null
           : likeliest(a, `s${i}.fis.${dim}.`);
-      if (value !== null && value !== filterValue(dim, scene.filters))
+      const d = dimension(dim);
+      // A filter to a person or customer the request never names is no filter it asks for.
+      const unnamed =
+        "references" in d &&
+        value !== d.unset.value &&
+        value !== null &&
+        !named(scene, d.references, value);
+      if (
+        value !== null &&
+        !unnamed &&
+        value !== filterValue(dim, scene.filters)
+      )
         filters[dim] = value;
     }
     const opened = pages.filter((pg) => yes(a[`s${i}.page.${pg}`]) >= 0.5);
