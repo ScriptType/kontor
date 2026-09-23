@@ -9,6 +9,7 @@ import {
   assessmentSchema,
 } from "./command.js";
 import { planInputSchema, planSchema } from "./plan.js";
+import { readInputSchema, valueReadingSchema } from "./value-reading.js";
 
 const probability = z.number().min(0).max(1);
 export const evaluationInputSchema = z.object({
@@ -57,6 +58,10 @@ export const contract = {
   assess: oc.input(assessmentInputSchema).output(assessmentSchema),
   decide: oc.input(decisionInputSchema).output(decisionSchema),
   plan: oc.input(planInputSchema).output(planSchema.nullable()),
+  /** Each field's new value read from the request; null without a live model. */
+  readValues: oc
+    .input(readInputSchema)
+    .output(z.array(valueReadingSchema.nullable()).nullable()),
   status: oc.output(sourceSchema),
   evaluate: oc
     .input(evaluationInputSchema)

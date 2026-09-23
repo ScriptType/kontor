@@ -28,6 +28,8 @@ export type DimensionSource =
 export type DimensionOption = { value: string; label: string };
 type Wording = { question: string; description: string };
 type Controls = { menu?: string; option?: string; field?: string };
+/** How the model reads a value the request states in words or corrects: code enumerates the parts, the model picks them, code assembles the value. */
+export type ReadingKind = "minutes" | "dateTime";
 export type ValueDimension = Wording & {
   kind: "value";
   id: string;
@@ -37,6 +39,7 @@ export type ValueDimension = Wording & {
   labels?: Record<string, string>;
   unset?: DimensionOption;
   controls: Controls;
+  reading?: ReadingKind;
 };
 export type FlagDimension = Wording & { kind: "flag"; id: string };
 export type SetDimension = Wording & { kind: "set"; id: string };
@@ -60,6 +63,7 @@ export const dimensions = [
     scope: "case",
     source: { schema: "editable", field: "minutes" },
     controls: { field: "minutes" },
+    reading: "minutes",
     question: "How many minutes of work should be recorded for the case?",
     description:
       "Worked minutes: the time the technician spends or needs on the case. Not the length of the appointment slot, and not a case number.",
@@ -71,6 +75,7 @@ export const dimensions = [
     source: { schema: "editable", field: "appointment", key: "start" },
     unset: { value: "none", label: "Remove the appointment" },
     controls: { field: "appointment" },
+    reading: "dateTime",
     question: "When should the case's appointment start?",
     description:
       "Start date and time of the appointment slot, or removing the appointment.",
@@ -81,6 +86,7 @@ export const dimensions = [
     scope: "case",
     source: { schema: "editable", field: "appointment", key: "minutes" },
     controls: { field: "duration" },
+    reading: "minutes",
     question: "How long should the case's appointment slot be, in minutes?",
     description:
       "Appointment duration: the length of the appointment slot. Not the technician's worked minutes.",
