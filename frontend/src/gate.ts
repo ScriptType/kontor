@@ -60,6 +60,12 @@ export type GatePolicy = Read & {
    */
   duel?: number;
   /**
+   * The probability at which the plan's option acts in place of a pick that
+   * neither acts nor wins a duel: the offered option the plan agrees with
+   * that Jev rates highest.
+   */
+  steer?: number;
+  /**
    * Whether Jev also reads what the plan says still remains after each step;
    * it informs and never chooses.
    */
@@ -304,6 +310,21 @@ export const gates = {
     planVote: ["pick", "completion", "effect"],
     todo: true,
     duel: 0.75,
+  },
+  "g3-cpe-steer": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
+    planVote: ["pick", "completion", "effect"],
+    todo: false,
+    duel: 0.75,
+    steer: 0.1,
   },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;

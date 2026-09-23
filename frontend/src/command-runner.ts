@@ -136,6 +136,18 @@ const historySchema = z.object({
       }),
     )
     .optional(),
+  /** Each plan's option offered in place of a pick, with whether it acted. */
+  steers: z
+    .array(
+      z.object({
+        step: z.number(),
+        choice: z.string(),
+        probability: z.number(),
+        slot: z.string(),
+        acts: z.boolean(),
+      }),
+    )
+    .optional(),
   /** Each second look between two effects, with its winner and whether it acted. */
   duels: z
     .array(
@@ -993,12 +1005,46 @@ export class CommandRunner {
     const planned = this.planned;
     if (!planned || planned.runId !== capture.runId) return null;
     const run = await planned.ready;
-    if (capture.epoch !== this.epoch || capture.runId !== this.activeId)
-      return undefined;
+    if (!this.resolveCapture(capture)) return undefined;
     const world = this.planWorld();
     return run && world
       ? planOption(run, capture.decision.probabilities, capture.input, world)
       : null;
+  }
+  /**
+   * The plan's option in place of a pick that neither acts nor wins a duel:
+   * the capture to follow when Jev rates it at the gate's steer floor, false
+   * when the gate does not steer or the option is missing or below the floor,
+   * null once the capture went stale.
+   */
+  private async steer(
+    capture: DecisionCapture,
+  ): Promise<DecisionCapture | false | null> {
+    const policy: GatePolicy = gates[this.gate];
+    if (policy.steer === undefined) return false;
+    const option = await this.planChoice(capture);
+    if (option === undefined) return null;
+    if (!option) return false;
+    const { choice, probability, slot } = option;
+    const acts = probability >= policy.steer;
+    this.update((r) => ({
+      ...r,
+      steers: [
+        ...(r.steers ?? []),
+        { step: r.steps.length, choice, probability, slot, acts },
+      ],
+    }));
+    if (!acts) return false;
+    return {
+      ...capture,
+      pick: {
+        choice,
+        kind: gateKind(choice, capture.input),
+        acts: true,
+        total: probability,
+        margin: probability - (capture.decision.ranked[0]?.probability ?? 0),
+      },
+    };
   }
   /**
    * A second look between the two strongest effects of a pick that does not
@@ -1147,9 +1193,15 @@ export class CommandRunner {
         if (agrees === null) return;
         acts = agrees;
       }
+      let steered = false;
       if (!acts) {
-        const won = await this.duel(capture);
+        let won = await this.duel(capture);
         if (won === null) return;
+        if (!won) {
+          won = await this.steer(capture);
+          if (won === null) return;
+          steered = won !== false;
+        }
         if (won) {
           capture = won;
           chosen = won.pick;
@@ -1213,7 +1265,13 @@ export class CommandRunner {
         let doubtful =
           assessment.verdict !== "authorized" ||
           assessment.confidence < this.confidencePercent() / 100;
-        if (doubtful && !reason && this.votes(["effect"])) {
+        // The plan chose a steered save, so it cannot also vouch for its effect.
+        if (
+          doubtful &&
+          !reason &&
+          this.votes(["effect"]) &&
+          !(steered && chosen.kind === "commit")
+        ) {
           const agrees = await this.planAgrees(capture, action.id, ["effect"]);
           if (agrees === null) return;
           doubtful = !agrees;

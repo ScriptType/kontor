@@ -103,3 +103,139 @@ test("a review without a plan offers only Jev's two options", async ({
     },
   );
 });
+
+// Two views tie, the duel between them stays below its bar, and the plan's case trails.
+const trailing = (probability: number) => ({
+  choice: "nav:customers",
+  confidence: (1 - probability) / 2,
+  probabilities: {
+    "nav:customers": (1 - probability) / 2,
+    "nav:reports": (1 - probability) / 2,
+    "case:V-1042": probability,
+  },
+});
+const unsureDuel = {
+  choice: "nav:customers",
+  confidence: 0.6,
+  probabilities: { "nav:customers": 0.6, "nav:reports": 0.4 },
+};
+
+for (const run of [
+  { gate: "g3-cpe-steer", probability: 0.1, acts: true },
+  { gate: "g3-cpe-steer", probability: 0.09, acts: false },
+  { gate: "g3-cpe-duel", probability: 0.1, acts: false },
+] as const)
+  test(`${run.gate} with the plan's case at ${run.probability} after an unsure duel`, async ({
+    page,
+  }) => {
+    await storeGate(page, run.gate);
+    await withLive(
+      page,
+      sequence,
+      async (store) => {
+        await start(page, request);
+        await expect(page.locator(".activity-label")).toContainText(
+          run.acts ? "Jev meldet" : "Auswahl unter der Schwelle",
+        );
+        const history = await page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}")
+              .history[0],
+        );
+        expect(history.duels).toMatchObject([{ step: 0, acts: false }]);
+        expect(history.steers).toEqual(
+          run.gate === "g3-cpe-steer"
+            ? [
+                {
+                  step: 0,
+                  choice: "case:V-1042",
+                  probability: run.probability,
+                  slot: "cases=V-1042",
+                  acts: run.acts,
+                },
+              ]
+            : undefined,
+        );
+        expect(
+          store.snapshot().cases.find((c) => c.id === "V-1042")?.technicianId,
+        ).toBe(run.acts ? "lea" : "jonas");
+        if (!run.acts)
+          expect(await offered(page)).toEqual([
+            "nav:customers",
+            "nav:reports",
+            "case:V-1042",
+          ]);
+      },
+      {
+        plan: { ...plan, calls: [] },
+        nextAnswer: (index) =>
+          index === 0
+            ? trailing(run.probability)
+            : index === 1
+              ? unsureDuel
+              : { choice: sequence[index - 1] ?? "done", confidence: 1 },
+      },
+    );
+  });
+
+// On Lea's unsaved draft two views tie, their duel stays unsure and the plan's save trails.
+const saveTrails = {
+  choice: "nav:customers",
+  confidence: 0.35,
+  probabilities: { "nav:customers": 0.35, "nav:reports": 0.35, save: 0.3 },
+};
+
+for (const run of [
+  { effect: "authorized", saves: true },
+  { effect: "additional", saves: false },
+] as const)
+  test(`g3-cpe-steer steers to a save the effect check calls ${run.effect}`, async ({
+    page,
+  }) => {
+    await storeGate(page, "g3-cpe-steer");
+    await withLive(
+      page,
+      sequence,
+      async (store) => {
+        await start(page, request);
+        await expect(page.locator(".activity-label")).toContainText(
+          run.saves ? "Jev meldet" : "Effektprüfung 90 %",
+        );
+        expect(
+          store.snapshot().cases.find((c) => c.id === "V-1042")?.technicianId,
+        ).toBe(run.saves ? "lea" : "jonas");
+        const history = await page.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}")
+              .history[0],
+        );
+        expect(history.steers).toEqual([
+          {
+            step: 3,
+            choice: "save",
+            probability: 0.3,
+            slot: "save:V-1042#0",
+            acts: true,
+          },
+        ]);
+        expect(
+          (history.votes ?? []).filter(
+            (vote: { via: string }) => vote.via === "effect",
+          ),
+        ).toEqual([]);
+      },
+      {
+        plan: { ...plan, calls: [] },
+        effectAnswer: () => ({ choice: run.effect, confidence: 0.9 }),
+        nextAnswer: (index) =>
+          index === 3
+            ? saveTrails
+            : index === 4
+              ? unsureDuel
+              : {
+                  choice: sequence[index > 4 ? index - 1 : index] ?? "done",
+                  confidence: 1,
+                },
+      },
+    );
+  });
