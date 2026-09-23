@@ -47,6 +47,18 @@ test("a time range offers its length to the appointment length, unbound", () => 
       request,
     );
 });
+test("a time range's length unbinds the number beside it", () => {
+  const bound = (request: string) =>
+    fieldValues(number("duration"), request, [], ids).map(({ value, bound }) => [
+      value,
+      bound,
+    ]);
+  assert.deepEqual(bound("Termin 45 Minuten"), [["45", true]]);
+  assert.deepEqual(bound("Arbeitszeit von 9 bis 11, Termin 45 Minuten"), [
+    ["45", false],
+    ["120", false],
+  ]);
+});
 test("a time range gives no worked minutes", () => {
   assert.deepEqual(ranges("minutes", "von 13 bis 15 uhr gearbeitet"), []);
 });
