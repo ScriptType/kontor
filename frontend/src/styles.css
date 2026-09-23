@@ -262,6 +262,7 @@ kbd {
 }
 .topbar-tools .menu-wrap > button {
   white-space: nowrap;
+  font-size: 12px;
 }
 .command-trigger {
   display: flex;
