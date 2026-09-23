@@ -1,12 +1,13 @@
 /**
  * Phrasings the value reader is measured against, read on the demo reference
- * day (Tuesday 2026-09-22). null means the request asks for no new value that
- * can be read with confidence, so the prefill must stay empty.
+ * day (Tuesday 2026-09-22) on case V-1042 unless a phrasing names its case.
+ * null means the request asks for no new value that can be read with
+ * confidence, so the prefill must stay empty.
  */
 export type Expected =
   | { field: "minutes" | "duration"; value: string | null }
   | { field: "appointment"; date: string | null; time: string | null };
-export type Phrasing = { request: string } & Expected;
+export type Phrasing = { request: string; scope?: string } & Expected;
 
 const duration = (request: string, value: string | null): Phrasing => ({
   request,
@@ -111,4 +112,32 @@ export const phrasings: Phrasing[] = [
   appointment("Termin um 3 am nachmittag", null, "15:00"),
   appointment("Termin gegen mittag", null, null),
   appointment("Termin früh morgens", null, null),
+  appointment("Termin morgen um halb elf", "2026-09-23", "10:30"),
+  appointment("Termin halb 12", null, "11:30"),
+  appointment("um halb 10", null, "09:30"),
+  appointment("viertel nach 2 nachmittags", null, "14:15"),
+  appointment("14:30", null, "14:30"),
+  appointment("um 8", null, "08:00"),
+  appointment("von 9 bis 11", null, "09:00"),
+  appointment("9-11 Uhr", null, "09:00"),
+  {
+    ...appointment(
+      "1039 übermorgen von 13 bis 15 uhr eintragen",
+      "2026-09-24",
+      "13:00",
+    ),
+    scope: "V-1039",
+  },
+  {
+    ...duration("1039 übermorgen von 13 bis 15 uhr eintragen", "120"),
+    scope: "V-1039",
+  },
+  duration(
+    "am dienstag lieber schon um halb 12 anfangen, dann bis 14 uhr",
+    "150",
+  ),
+  duration("von 9 bis 11", "120"),
+  duration("9-11 Uhr", "120"),
+  duration("zwei Stunden", "120"),
+  duration("1,5h", "90"),
 ];
