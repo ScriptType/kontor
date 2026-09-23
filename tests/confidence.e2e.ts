@@ -312,15 +312,26 @@ for (const verdict of ["additional", "unclear", "forbidden"]) {
 }
 
 test("zero percent still asks for a missing value", async ({ page }) => {
-  await withLive(page, ["case:V-1042", "ask:minutes"], async (store) => {
-    await chooseConfidence(page, 0);
-    await start(page, "Erfasse Minuten für V-1042.");
-    await expect(page.locator(".answer-panel")).toContainText(
-      "Antwort ausstehend",
-    );
-    await expect(page.locator(".answer-panel input")).toBeVisible();
-    expect(store.snapshot().revision).toBe(0);
-  });
+  const choices = ["case:V-1042", "ask:minutes", "blocked"];
+  await withLive(
+    page,
+    [],
+    async (store) => {
+      await chooseConfidence(page, 0);
+      await start(page, "Erfasse Minuten für V-1042.");
+      await expect(page.locator(".answer-panel")).toContainText(
+        "Antwort ausstehend",
+      );
+      await expect(page.locator(".answer-panel input")).toBeVisible();
+      expect(store.snapshot().revision).toBe(0);
+    },
+    {
+      nextAnswer: (index) => ({
+        choice: choices[index] ?? "done",
+        confidence: 1,
+      }),
+    },
+  );
 });
 
 for (const scenario of [

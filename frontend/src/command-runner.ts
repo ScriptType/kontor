@@ -27,6 +27,12 @@ import {
   type PartialAnswer,
 } from "../../shared/field-values";
 import { changingActions } from "../../shared/dimensions";
+import {
+  dueQuestion,
+  notedQuestionSchema,
+  openQuestions,
+  withheld,
+} from "../../shared/open-questions";
 import { requestHints } from "../../shared/request-hints";
 import { guardStop, type GuardStop } from "../../shared/run-guard";
 import {
@@ -98,6 +104,8 @@ const historySchema = z.object({
   savedOperations: z.array(z.string()),
   receipts: z.array(receiptSchema),
   answers: z.array(answerSchema),
+  /** Questions Jev chose to ask; each waits until its case is saved or left. */
+  questions: z.array(notedQuestionSchema).default([]),
   steps: z.array(stepSchema),
   createdAt: z.string(),
   outcome: z.string(),
@@ -387,6 +395,7 @@ export class CommandRunner {
           savedOperations: [],
           receipts: [],
           answers: [],
+          questions: [],
           steps: [],
           createdAt: new Date().toISOString(),
           outcome: "In Arbeit",
@@ -483,6 +492,11 @@ export class CommandRunner {
       await this.render();
       const input = this.resolveCapture(capture);
       if (!input) return;
+      const due = this.due(choice, input);
+      if (due) {
+        this.raise(due);
+        return;
+      }
       if (choice === "done") {
         const decision = await this.ui.api.decide.call(input, {
           signal: this.abort?.signal,
@@ -634,16 +648,23 @@ export class CommandRunner {
     const policy = gates[this.gate];
     const context = this.facts(blockedControls);
     const actions = this.registry.snapshot(run.request, run.answers, existing);
+    const shown = withheld(
+      {
+        actions:
+          policy.memory === "off"
+            ? actions
+            : changingActions({ actions, context }),
+        fields: this.registry.fieldSnapshot(),
+      },
+      openQuestions(run.questions, run.answers),
+    );
     return {
       request: run.request,
       snapshotId: crypto.randomUUID(),
       context,
       blockedControls,
-      actions:
-        policy.memory === "off"
-          ? actions
-          : changingActions({ actions, context }),
-      fields: this.registry.fieldSnapshot(),
+      actions: shown.actions,
+      fields: shown.fields,
       answers: run.answers,
       steps: run.steps,
       doneBeforeFirstStep: policy.doneBeforeFirstStep,
@@ -740,6 +761,27 @@ export class CommandRunner {
       return true;
     }
     return false;
+  }
+  /** The noted question this choice has to wait for, or null. */
+  private due(choice: string, input: DecisionInput) {
+    return dueQuestion(
+      openQuestions(this.run()?.questions ?? [], input.answers),
+      choice,
+      input,
+    );
+  }
+  /** Keeps Jev's question for later, so the rest of its case goes on first. */
+  private note(choice: string, input: DecisionInput) {
+    const field = input.fields.find((field) => `ask:${field.id}` === choice);
+    if (!field) throw new Error("Unbekannte Rückfrage.");
+    this.update((r) => ({
+      ...r,
+      questions: [...r.questions, { field, since: r.answers.length }],
+      entries: [
+        ...r.entries,
+        `${field.label}: Rückfrage vorgemerkt · Jev fragt, bevor der Vorgang gespeichert oder verlassen wird`,
+      ],
+    }));
   }
   /** Asks the user, prefilled with what the request gives, read on the run's start day. */
   private raise(field: FieldDescription) {
@@ -906,6 +948,11 @@ export class CommandRunner {
       if (decision.snapshotId !== input.snapshotId)
         throw new Error("Veraltete Entscheidung.");
       const chosen = capture.pick;
+      const due = this.due(chosen.choice, input);
+      if (due) {
+        this.raise(due);
+        return;
+      }
       if (chosen.choice === "done") {
         await this.checkCompletion(capture);
         return;
@@ -919,6 +966,10 @@ export class CommandRunner {
         const agrees = await this.planAgrees(capture, chosen.choice, ["pick"]);
         if (agrees === null) return;
         acts = agrees;
+      }
+      if (acts && chosen.choice.startsWith("ask:")) {
+        this.note(chosen.choice, input);
+        continue;
       }
       if (chosen.choice === "blocked" || chosen.choice.startsWith("ask:")) {
         if (!acts)
