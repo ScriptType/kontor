@@ -30,7 +30,7 @@ export type Observed = ObservedEnd & { stops: Stop[] };
 export type Outcome =
   | "magic"
   | "handoff"
-  | "correct-after-chips"
+  | "correct-after-answers"
   | "stopped-unanswered"
   | "asked-wrong"
   | "silent-wrong"
@@ -87,14 +87,14 @@ export function judge(scenario: Scenario, observed: Observed): Verdict {
         ? handedOff
           ? "handoff"
           : questions
-            ? "correct-after-chips"
+            ? "correct-after-answers"
             : "magic"
         : questions
           ? "asked-wrong"
           : "silent-wrong";
   const magicSaveCheck =
     outcome === "magic" ||
-    (outcome === "correct-after-chips" &&
+    (outcome === "correct-after-answers" &&
       asked.every((stop) => stop.dimension === "save"));
   return {
     outcome,

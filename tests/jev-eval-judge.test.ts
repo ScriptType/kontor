@@ -85,10 +85,10 @@ const chip: Stop = {
   caseId: "V-1042",
   value: "35",
 };
-test("answered chips separate correct-after-chips from asked-wrong", () => {
+test("answered chips separate correct-after-answers from asked-wrong", () => {
   const s = byId("use-09");
   assert.deepEqual(judge(s, asExpected(s, [chip, done])), {
-    outcome: "correct-after-chips",
+    outcome: "correct-after-answers",
     endCorrect: true,
     questions: 1,
     magicSaveCheck: false,
@@ -155,8 +155,8 @@ test("magic-save-check also counts a correct run whose only chips asked whether 
     ].map((v) => [v.outcome, v.magicSaveCheck]),
     [
       ["magic", true],
-      ["correct-after-chips", true],
-      ["correct-after-chips", false],
+      ["correct-after-answers", true],
+      ["correct-after-answers", false],
       ["asked-wrong", false],
       ["handoff", false],
     ],
@@ -273,7 +273,7 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     calls: number,
   ): SampleResult => ({
     outcome,
-    endCorrect: ["magic", "handoff", "correct-after-chips"].includes(outcome),
+    endCorrect: ["magic", "handoff", "correct-after-answers"].includes(outcome),
     questions,
     magicSaveCheck: outcome === "magic",
     mismatches: [],
@@ -295,7 +295,7 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
   const summary = summarize([
     sample("magic", 0, 4),
     sample("silent-wrong", 0, 6),
-    sample("correct-after-chips", 2, 8),
+    sample("correct-after-answers", 2, 8),
     sample("asked-wrong", 1, 2),
     sample("handoff", 0, 3),
     { ...sample("stopped-unanswered", 1, 3), endCorrect: true },
@@ -306,7 +306,7 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     {
       magic: summary.magic,
       handoff: summary.handoff,
-      correctAfterChips: summary.correctAfterChips,
+      correctAfterAnswers: summary.correctAfterAnswers,
       stoppedUnanswered: summary.stoppedUnanswered,
       stoppedUnansweredEndCorrect: summary.stoppedUnansweredEndCorrect,
       silentWrong: summary.silentWrong,
@@ -321,7 +321,7 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
     {
       magic: 1,
       handoff: 1,
-      correctAfterChips: 1,
+      correctAfterAnswers: 1,
       stoppedUnanswered: 2,
       stoppedUnansweredEndCorrect: 1,
       silentWrong: 1,

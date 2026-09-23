@@ -24,7 +24,7 @@ export type Summary = {
   samples: number;
   magic: number;
   handoff: number;
-  correctAfterChips: number;
+  correctAfterAnswers: number;
   stoppedUnanswered: number;
   stoppedUnansweredEndCorrect: number;
   askedWrong: number;
@@ -48,7 +48,7 @@ export function summarize(results: SampleResult[]): Summary {
     samples: results.length,
     magic: count(results, "magic"),
     handoff: count(results, "handoff"),
-    correctAfterChips: count(results, "correct-after-chips"),
+    correctAfterAnswers: count(results, "correct-after-answers"),
     stoppedUnanswered: count(results, "stopped-unanswered"),
     stoppedUnansweredEndCorrect: results.filter(
       (r) => r.outcome === "stopped-unanswered" && r.endCorrect,
@@ -95,7 +95,7 @@ export function markdown(
 ) {
   const rows = Object.entries(summaries(results)).map(
     ([group, s]) =>
-      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.magicSaveCheck, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterChips, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
+      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.magicSaveCheck, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterAnswers, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
   );
   const samples = results.map(
     (r) =>
