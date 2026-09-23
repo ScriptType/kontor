@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { writtenHours } from "./clock-times.js";
+import { writtenHours, writtenMinutes } from "./clock-times.js";
 import { fieldSchema, type FieldDescription } from "./command.js";
 import {
   dimensions,
@@ -440,12 +440,13 @@ const dateTimeReader: Reader = {
       minute: {
         text: `${intro} Welche Minuten stehen hinter der Stunde („9:30“: 30, „9 Uhr“: 00)?`,
         options: {
-          "0": ":00 oder keine Minuten",
-          "15": ":15",
-          "30": ":30",
-          "45": ":45",
-          other: "andere Minuten",
-          none: "keine Uhrzeit genannt",
+          "0": ":00, keine Minuten hinter der Stunde („9 Uhr“, „um 9“)",
+          ...Object.fromEntries(
+            writtenMinutes(request)
+              .filter((minute) => minute !== 0)
+              .map((minute) => [String(minute), `:${pad(minute)}`]),
+          ),
+          other: "andere Minuten hinter der Stunde, die hier nicht stehen",
         },
       },
       daypart: {
@@ -543,9 +544,9 @@ function assembleTime(p: (part: string) => PartPick): Read {
   let m = 0;
   if (relation.choice === "exact") {
     used.push(minute);
-    if (minute.choice === "other")
+    if (minute.choice === "other" || minute.choice === "none")
       return { value: null, confidence: lowest(...used) };
-    m = minute.choice === "none" ? 0 : Number(minute.choice);
+    m = Number(minute.choice);
   } else {
     const [back, at] = relativeClock[relation.choice] ?? [0, 0];
     h += back;

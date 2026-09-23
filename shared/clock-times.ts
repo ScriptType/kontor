@@ -1,13 +1,15 @@
 import { germanWord } from "./number-words.js";
 
-/** The hour words 1 to 24 ("eins", "ein", "eine", "zwei" … "vierundzwanzig"), with their hour. */
-const hourWords = new Map(
-  Array.from({ length: 24 }, (_, i) =>
-    germanWord(i + 1)
-      .split(" / ")
-      .map((word) => [word, i + 1] as const),
-  ).flat(),
-);
+const numberWords = (upTo: number) =>
+  new Map(
+    Array.from({ length: upTo }, (_, i) =>
+      germanWord(i + 1)
+        .split(" / ")
+        .map((word) => [word, i + 1] as const),
+    ).flat(),
+  );
+const hourWords = numberWords(24);
+const minuteWords = numberWords(59);
 // Digits after a colon are minutes, not an hour.
 const hourDigits = /(?<![\p{N}:])\d{1,2}(?!\p{N})/gu;
 /**
@@ -43,6 +45,25 @@ const relativeTime = new RegExp(
 // unit ("3 Stunden") is no clock time.
 const digitTime =
   /(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?![.\p{N}]))?(?![\p{N}]|[.,:]\p{N}|\s?(?:h|std|stunden?|min|minuten?)(?!\p{L}))/giu;
+const minuteWordPattern = [...minuteWords.keys()]
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+const durationUnit = String.raw`\s*(?:h|std|stunden?|min|minuten?)(?!\p{L})`;
+const minutesAfterUhr = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:\d{1,2}|${hourWordPattern})\s*uhr\s+(\d{1,2}|${minuteWordPattern})(?![\p{L}\p{N}]|${durationUnit})`,
+  "giu",
+);
+export function writtenMinutes(request: string): number[] {
+  const minutes = [
+    ...[...request.matchAll(digitTime)].map((m) =>
+      m[2] === undefined ? undefined : Number(m[2]),
+    ),
+    ...[...request.matchAll(minutesAfterUhr)].map(
+      (m) => Number(m[1]) || minuteWords.get(m[1]!.toLowerCase()),
+    ),
+  ].filter((minute): minute is number => minute !== undefined && minute < 60);
+  return [...new Set(minutes)].sort((a, b) => a - b);
+}
 const isoDate = /\d{4}-\d{2}-\d{2}/g;
 /** A clock time code reads without doubt, in minutes after midnight. */
 type ClockTime = { at: number; end: number; minutes: number };
