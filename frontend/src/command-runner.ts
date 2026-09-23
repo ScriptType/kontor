@@ -144,18 +144,6 @@ const historySchema = z.object({
       }),
     )
     .optional(),
-  /** Each plan's option offered in place of a pick, with whether it acted. */
-  steers: z
-    .array(
-      z.object({
-        step: z.number(),
-        choice: z.string(),
-        probability: z.number(),
-        slot: z.string(),
-        acts: z.boolean(),
-      }),
-    )
-    .optional(),
   /** Each second look between two effects, with its winner and whether it acted. */
   duels: z
     .array(
@@ -1010,70 +998,19 @@ export class CommandRunner {
     return true;
   }
   /**
-   * The option of the capture's decision among `eligible` the run's plan
-   * agrees with that Jev rates highest; null without a plan or agreement,
-   * undefined once the capture went stale while the plan was read.
+   * The option of the capture's decision the run's plan agrees with that Jev
+   * rates highest; null without a plan or agreement, undefined once the
+   * capture went stale while the plan was read.
    */
-  private async planChoice(
-    capture: DecisionCapture,
-    eligible: (choice: string) => boolean = () => true,
-  ) {
+  private async planChoice(capture: DecisionCapture) {
     const planned = this.planned;
     if (!planned || planned.runId !== capture.runId) return null;
     const run = await planned.ready;
     if (!this.resolveCapture(capture)) return undefined;
     const world = this.planWorld();
-    const probabilities = Object.fromEntries(
-      Object.entries(capture.decision.probabilities).filter(([choice]) =>
-        eligible(choice),
-      ),
-    );
     return run && world
-      ? planOption(run, probabilities, capture.input, world)
+      ? planOption(run, capture.decision.probabilities, capture.input, world)
       : null;
-  }
-  /**
-   * The plan's view in place of a pick that neither acts nor wins a duel: the
-   * capture to follow when Jev rates it at the gate's steer floor, false when
-   * the gate does not steer or the view is missing or below the floor, null
-   * once the capture went stale. Only views: a plan misread then costs a
-   * wrong page, filter or menu, never a wrong write or a wrong done.
-   */
-  private async steer(
-    capture: DecisionCapture,
-  ): Promise<DecisionCapture | false | null> {
-    const policy: GatePolicy = gates[this.gate];
-    if (policy.steer === undefined) return false;
-    const views = new Set(
-      capture.input.actions
-        .filter((action) => action.kind === "view")
-        .map((action) => action.id),
-    );
-    const option = await this.planChoice(capture, (choice) =>
-      views.has(choice),
-    );
-    if (option === undefined) return null;
-    if (!option) return false;
-    const { choice, probability, slot } = option;
-    const acts = probability >= policy.steer;
-    this.update((r) => ({
-      ...r,
-      steers: [
-        ...(r.steers ?? []),
-        { step: r.steps.length, choice, probability, slot, acts },
-      ],
-    }));
-    if (!acts) return false;
-    return {
-      ...capture,
-      pick: {
-        choice,
-        kind: gateKind(choice, capture.input),
-        acts: true,
-        total: probability,
-        margin: probability - (capture.decision.ranked[0]?.probability ?? 0),
-      },
-    };
   }
   /**
    * A second look between the two strongest effects of a pick that does not
@@ -1223,12 +1160,8 @@ export class CommandRunner {
         acts = agrees;
       }
       if (!acts) {
-        let won = await this.duel(capture);
+        const won = await this.duel(capture);
         if (won === null) return;
-        if (!won) {
-          won = await this.steer(capture);
-          if (won === null) return;
-        }
         if (won) {
           capture = won;
           chosen = won.pick;

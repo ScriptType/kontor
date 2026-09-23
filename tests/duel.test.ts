@@ -167,12 +167,6 @@ test("g3-cpe-duel is g3-compact-plan-effect with a duel bar of 0.75", () => {
   assert.equal(duel, 0.75);
 });
 
-test("g3-cpe-steer is g3-cpe-duel with a steer floor of 0.1", () => {
-  const { steer, ...rest } = gates["g3-cpe-steer"];
-  assert.deepEqual(rest, gates["g3-cpe-duel"]);
-  assert.equal(steer, 0.1);
-});
-
 const team = {
   id: "nav:team",
   label: "Team",

@@ -572,7 +572,6 @@ const withSeen = ["g3-cpe-duel-seen", "g3-cpe-duel-nrseen"];
 const withNorepeat = [
   "g3-cpe-duel-nr",
   "g3-cpe-duel-nrseen",
-  "g3-cpe-all",
   "g3-cpe-nrj",
 ];
 test("the norepeat and seen gates are g3-cpe-duel with their flags", () => {
@@ -605,11 +604,6 @@ test("only g3-cpe-duel-jump shows the case picker, otherwise it is g3-cpe-duel",
   assert.deepEqual(rest, gates["g3-cpe-duel"]);
   assert.deepEqual(
     gateNames.filter((gate) => "jump" in gates[gate]),
-    ["g3-cpe-duel-jump", "g3-cpe-all", "g3-cpe-nrj"],
+    ["g3-cpe-duel-jump", "g3-cpe-nrj"],
   );
-});
-test("g3-cpe-all is g3-cpe-steer with norepeat and the case picker", () => {
-  const { norepeat, jump, ...rest } = gates["g3-cpe-all"];
-  assert.deepEqual([norepeat, jump], [true, true]);
-  assert.deepEqual(rest, gates["g3-cpe-steer"]);
 });
