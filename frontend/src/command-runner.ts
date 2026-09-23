@@ -34,10 +34,7 @@ import {
   openQuestions,
   withheld,
 } from "../../shared/open-questions";
-import {
-  listOrdinalSchema,
-  requestOrdinals,
-} from "../../shared/request-hints";
+import { listOrdinalSchema, requestOrdinals } from "../../shared/request-hints";
 import { guardStop, type GuardStop } from "../../shared/run-guard";
 import {
   blockers,
@@ -46,7 +43,12 @@ import {
   receiptSchema,
 } from "../../shared/domain";
 import { planSchema, type Plan } from "../../shared/plan";
-import { stepVote, type PlanWorld, type RunPlan } from "../../shared/plan-vote";
+import {
+  planOption,
+  stepVote,
+  type PlanWorld,
+  type RunPlan,
+} from "../../shared/plan-vote";
 import { WorkspaceUi } from "./workspace";
 import { ActionRegistry } from "./action-registry";
 import {
@@ -89,6 +91,8 @@ export type RunState =
   | {
       kind: "review";
       capture: DecisionCapture;
+      /** Jev's two top options, then the plan's option when neither is it. */
+      options: ReviewOption[];
       reason: "uncertain" | "forbidden" | "abstain" | "completion";
       message: string;
     }
@@ -98,6 +102,12 @@ export type RunState =
       capture: DecisionCapture;
       message: string;
     };
+export type ReviewOption = {
+  choice: string;
+  probability: number;
+  /** Offered because the plan read at run start agrees with it. */
+  fromPlan: boolean;
+};
 const historySchema = z.object({
   id: z.string(),
   request: z.string(),
@@ -507,7 +517,7 @@ export class CommandRunner {
     const state = this.state();
     if (
       state.kind !== "review" ||
-      !state.capture.decision.ranked.some((row) => row.choice === choice)
+      !state.options.some((option) => option.choice === choice)
     )
       return;
     const capture = state.capture;
@@ -538,7 +548,7 @@ export class CommandRunner {
         this.finish(this.label());
         return;
       }
-      if (this.terminalOrQuestion(choice, capture, input)) return;
+      if (await this.terminalOrQuestion(choice, capture, input)) return;
       const action = input.actions.find((action) => action.id === choice);
       if (!action) throw new Error("Schritt ist nicht mehr verfügbar.");
       const warned = capture.assessments[action.id];
@@ -556,7 +566,7 @@ export class CommandRunner {
         // The review showed the warning with this verdict, so the click is the user's decision.
         if (warned) await this.performReviewed(capture, input, action);
         else
-          this.review(
+          await this.review(
             capture,
             `Schritt widerspricht dem Auftrag: ${action.effect}`,
             "forbidden",
@@ -742,12 +752,28 @@ export class CommandRunner {
     }
     return input;
   }
-  private review(
+  /** Stops for review of Jev's two top options and the plan's option beside them. */
+  private async review(
     capture: DecisionCapture,
     message: string,
     reason: Extract<RunState, { kind: "review" }>["reason"] = "uncertain",
     assessed?: { choice: string; assessment: Assessment },
   ) {
+    const agreed = await this.planChoice(capture);
+    if (agreed === undefined) return;
+    const { ranked } = capture.decision;
+    const options: ReviewOption[] = [
+      ...ranked.map((row) => ({ ...row, fromPlan: false })),
+      ...(agreed && !ranked.some((row) => row.choice === agreed.choice)
+        ? [
+            {
+              choice: agreed.choice,
+              probability: agreed.probability,
+              fromPlan: true,
+            },
+          ]
+        : []),
+    ];
     const reviewed = assessed
       ? {
           ...capture,
@@ -757,17 +783,23 @@ export class CommandRunner {
           },
         }
       : capture;
-    this.state.set({ kind: "review", capture: reviewed, message, reason });
+    this.state.set({
+      kind: "review",
+      capture: reviewed,
+      options,
+      message,
+      reason,
+    });
     this.finish(message);
     this.attention.update((n) => n + 1);
   }
-  private terminalOrQuestion(
+  private async terminalOrQuestion(
     choice: string,
     capture: DecisionCapture,
     input: DecisionInput,
   ) {
     if (choice === "abstain") {
-      this.review(
+      await this.review(
         capture,
         "Jev kann keinen sinnvollen nächsten Schritt wählen. Auftrag überarbeiten oder Vorschlag prüfen.",
         "abstain",
@@ -953,6 +985,22 @@ export class CommandRunner {
     return true;
   }
   /**
+   * The option of the capture's decision the run's plan agrees with that Jev
+   * rates highest; null without a plan or agreement, undefined once the
+   * capture went stale while the plan was read.
+   */
+  private async planChoice(capture: DecisionCapture) {
+    const planned = this.planned;
+    if (!planned || planned.runId !== capture.runId) return null;
+    const run = await planned.ready;
+    if (capture.epoch !== this.epoch || capture.runId !== this.activeId)
+      return undefined;
+    const world = this.planWorld();
+    return run && world
+      ? planOption(run, capture.decision.probabilities, capture.input, world)
+      : null;
+  }
+  /**
    * A second look between the two strongest effects of a pick that does not
    * act: the capture to follow when its winner acts, false when there is no
    * duel or the winner stays below the bar, null once the capture went stale.
@@ -1029,7 +1077,7 @@ export class CommandRunner {
       confirmed = agrees;
     }
     if (!confirmed || this.unsettled()) {
-      this.review(
+      await this.review(
         capture,
         `Jev konnte die vollständige Erfüllung noch nicht bestätigen. Abschlussprüfung ${Math.round(assessment.confidence * 100)} %. Bereits ausgeführte Schritte stehen im Verlauf.`,
         "completion",
@@ -1090,7 +1138,7 @@ export class CommandRunner {
         return;
       }
       if (chosen.choice === "abstain") {
-        this.terminalOrQuestion(chosen.choice, capture, input);
+        await this.terminalOrQuestion(chosen.choice, capture, input);
         return;
       }
       let acts = chosen.acts;
@@ -1124,13 +1172,13 @@ export class CommandRunner {
       if (chosen.choice === "blocked" || chosen.choice.startsWith("ask:")) {
         if (!acts && this.askNoted()) return;
         if (!acts)
-          this.review(
+          await this.review(
             capture,
             chosen.choice === "blocked"
               ? "Jev ist unsicher, ob verbleibende Arbeit blockiert ist. Vorschläge prüfen."
               : "Jev ist bei der Rückfrage unsicher. Vorschläge prüfen.",
           );
-        else this.terminalOrQuestion(chosen.choice, capture, input);
+        else await this.terminalOrQuestion(chosen.choice, capture, input);
         return;
       }
       const action = input.actions.find(
@@ -1154,7 +1202,7 @@ export class CommandRunner {
           throw new Error("Veraltete Schrittprüfung.");
         assessed = { choice: action.id, assessment };
         if (assessment.verdict === "forbidden") {
-          this.review(
+          await this.review(
             capture,
             `Schritt widerspricht dem Auftrag: ${action.effect}`,
             "forbidden",
@@ -1175,7 +1223,7 @@ export class CommandRunner {
       }
       if (reason) {
         if (this.askNoted()) return;
-        this.review(capture, reason, "uncertain", assessed);
+        await this.review(capture, reason, "uncertain", assessed);
         return;
       }
       if (!(await this.execute(input, action, "request", epoch, capture.runId)))

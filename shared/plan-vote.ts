@@ -326,8 +326,7 @@ export function planOption(
   input: Pick<DecisionInput, "actions" | "context">,
   world: PlanWorld,
 ): { choice: string; probability: number; slot: string } | null {
-  let best: { choice: string; probability: number; slot: string } | null =
-    null;
+  let best: { choice: string; probability: number; slot: string } | null = null;
   for (const choice of [
     ...input.actions.map((action) => action.id),
     "done",
