@@ -430,6 +430,13 @@ async function extractSteps(
       );
     for (const dim of listDimensions) {
       const d = dimension(dim);
+      if ("labels" in d) {
+        for (const option of valueOptions(scene, dim))
+          qa[`s${i}.fis.${dim}.${option.value}`] = noul(
+            `${ref}\n\nDoes this part ask to set this case-list setting to "${option.label}"? ${d.description} Current value: ${filterValue(dim, scene.filters)}.`,
+          );
+        continue;
+      }
       qa[`s${i}.fchg.${dim}`] = noul(
         `${ref}\n\nDoes this part ask to change this case-list setting? ${d.description} Current value: ${filterValue(dim, scene.filters) || "empty"}.`,
       );
@@ -454,9 +461,14 @@ async function extractSteps(
       .filter((id) => yes(a[`s${i}.case.${id}`]) >= 0.5);
     const filters: Plan["filters"] = {};
     for (const dim of listDimensions) {
-      if (yes(a[`s${i}.fchg.${dim}`]) < 0.5) continue;
-      const value = picked(a[`s${i}.fval.${dim}`]);
-      if (value !== filterValue(dim, scene.filters)) filters[dim] = value;
+      const value =
+        `s${i}.fchg.${dim}` in a
+          ? yes(a[`s${i}.fchg.${dim}`]) >= 0.5
+            ? picked(a[`s${i}.fval.${dim}`])
+            : null
+          : likeliest(a, `s${i}.fis.${dim}.`);
+      if (value !== null && value !== filterValue(dim, scene.filters))
+        filters[dim] = value;
     }
     const opened = pages.filter((pg) => yes(a[`s${i}.page.${pg}`]) >= 0.5);
     return { cases, filters, pages: opened };
