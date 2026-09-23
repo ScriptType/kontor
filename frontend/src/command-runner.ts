@@ -43,7 +43,6 @@ import {
   withoutSpentActions,
   type GuardStop,
 } from "../../shared/run-guard";
-import { pagesShown } from "../../shared/step-log";
 import {
   blockers,
   draftOf,
@@ -707,7 +706,6 @@ export class CommandRunner {
         data,
         run.ordinals,
         plan && world ? { run: plan, world } : null,
-        pagesShown(run.steps, this.ui.page()),
       );
     const changing =
       policy.memory === "off" ? actions : changingActions({ actions, context });

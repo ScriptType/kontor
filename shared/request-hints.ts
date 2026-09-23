@@ -32,8 +32,6 @@ export const requestHintsSchema = z.object({
   planReading: z
     .object({ note: z.string(), stillOpen: z.array(z.string()) })
     .optional(),
-  /** The pages the run has shown so far, in order (shared/step-log.ts). */
-  pagesShownSoFar: z.array(z.string()).optional(),
 });
 export type RequestHints = z.infer<typeof requestHintsSchema>;
 

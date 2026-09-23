@@ -69,8 +69,6 @@ export type GatePolicy = Read & {
    * changed nothing leaves the options.
    */
   norepeat?: boolean;
-  /** Whether the hints also list the pages the run has shown so far. */
-  seen?: boolean;
   /** Whether the header shows the case picker that opens any case, whatever the list filters hide. */
   jump?: true;
 };
@@ -358,37 +356,6 @@ export const gates = {
     duel: 0.75,
     norepeat: true,
   },
-  "g3-cpe-duel-seen": {
-    read: "pooled",
-    margin: 0.1,
-    bars: g3Bars,
-    assessed: ["draft", "commit"],
-    doneBeforeFirstStep: false,
-    memory: "off",
-    guard: true,
-    completion: "perKind",
-    prompt: "compact",
-    planVote: ["pick", "completion", "effect"],
-    todo: false,
-    duel: 0.75,
-    seen: true,
-  },
-  "g3-cpe-duel-nrseen": {
-    read: "pooled",
-    margin: 0.1,
-    bars: g3Bars,
-    assessed: ["draft", "commit"],
-    doneBeforeFirstStep: false,
-    memory: "off",
-    guard: true,
-    completion: "perKind",
-    prompt: "compact",
-    planVote: ["pick", "completion", "effect"],
-    todo: false,
-    duel: 0.75,
-    norepeat: true,
-    seen: true,
-  },
   "g3-cpe-duel-jump": {
     read: "pooled",
     margin: 0.1,
@@ -430,8 +397,7 @@ export const gatePreferenceKey = "kontor-jev-gate-v2";
 
 /**
  * The hints a focused or compact prompt sends Jev; under todo also what the
- * plan says still remains, once the plan is read and asks for nothing; under
- * seen also the pages the run has shown so far.
+ * plan says still remains, once the plan is read and asks for nothing.
  */
 export function decisionHints(
   gate: GateName,
@@ -439,7 +405,6 @@ export function decisionHints(
   workspace: Workspace,
   ordinals: NonNullable<RequestHints["listOrdinals"]>,
   plan: { run: RunPlan; world: PlanWorld } | null,
-  pagesShownSoFar: string[],
 ): RequestHints | undefined {
   const policy: GatePolicy = gates[gate];
   if (policy.prompt === "full") return undefined;
@@ -448,7 +413,6 @@ export function decisionHints(
     ...requestHints(request, workspace),
     ...(ordinals.length ? { listOrdinals: ordinals } : {}),
     ...(reading ? { planReading: reading } : {}),
-    ...(policy.seen ? { pagesShownSoFar } : {}),
   };
 }
 

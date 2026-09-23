@@ -3,7 +3,7 @@ import { z } from "zod";
 import { start, storeGate, withLive } from "./live-fixture.js";
 
 for (const run of [
-  { gate: "g3-cpe-duel-nrseen", offeredAgain: false },
+  { gate: "g3-cpe-duel-nr", offeredAgain: false },
   { gate: "g3-cpe-duel", offeredAgain: true },
 ] as const)
   test(`${run.gate}: opening another case over an unsaved draft ${run.offeredAgain ? "stays" : "is no longer"} offered`, async ({
@@ -48,39 +48,6 @@ for (const run of [
         expect(snapshots[5]?.includes("case:V-1042")).toBe(run.offeredAgain);
         expect(snapshots[5]).toContain("save");
         expect(snapshots[5]).toContain("done");
-      },
-    );
-  });
-
-for (const run of [
-  { gate: "g3-cpe-duel-nrseen", seen: true },
-  { gate: "g3-cpe-duel", seen: false },
-] as const)
-  test(`${run.gate} ${run.seen ? "tells" : "does not tell"} Jev the pages shown so far`, async ({
-    page,
-  }) => {
-    await storeGate(page, run.gate);
-    await withLive(
-      page,
-      ["nav:reports", "nav:cases", "done"],
-      async (_store, _held, _arrived, snapshots, observations) => {
-        await start(page, "Zeige die Berichte, dann die Vorgänge.");
-        await expect.poll(() => snapshots.length).toBe(3);
-        const shown = observations.map(
-          (state) =>
-            z
-              .object({
-                requestHints: z.object({
-                  pagesShownSoFar: z.array(z.string()).optional(),
-                }),
-              })
-              .parse(state).requestHints.pagesShownSoFar,
-        );
-        expect(shown).toEqual(
-          run.seen
-            ? [["cases"], ["cases", "reports"], ["cases", "reports", "cases"]]
-            : [undefined, undefined, undefined],
-        );
       },
     );
   });
