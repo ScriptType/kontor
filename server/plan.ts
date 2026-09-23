@@ -605,56 +605,72 @@ async function extractSteps(
         )
         .sort((x, y) => at[x]! - at[y]!);
     }
-  const perCase: Record<string, { seg: number; values: CaseValues }[]> = {};
-  steps.forEach((step, i) => {
-    for (const id of step.cases) {
+  const reads = steps.flatMap((step, i) =>
+    step.cases.map((id) => {
       const values: CaseValues = {};
-      const changeP: Partial<Record<CaseDimensionId, number>> = {};
       for (const dim of caseDimensions) {
-        const py = yes(b[`s${i}.${id}.chg.${dim}`]);
-        if (py < 0.5) continue;
+        if (yes(b[`s${i}.${id}.chg.${dim}`]) < 0.5) continue;
         const key = `s${i}.${id}.val.${dim}`;
         // A fixed-set field whose yes/no names no option keeps its value.
-        const value =
+        values[dim] =
           fixed[key] ??
           (key in qb
             ? picked(b[key])
             : (likeliest(b, `s${i}.${id}.is.${dim}.`) ??
               currentCaseValue(scene, id, dim)));
-        // Setting a field to its current value is no change.
-        if (value === currentCaseValue(scene, id, dim)) continue;
-        const d = dimension(dim);
-        // A person the request never names is a guess: the run asks instead.
-        values[dim] =
-          "references" in d && !named(scene, d.references, value)
-            ? ASK
-            : value;
-        changeP[dim] = py;
       }
-      // One number fills one field: the same value in worked minutes and appointment length goes to the likelier field.
-      const [m, d] = [values.workedMinutes, values.appointmentDuration];
-      if (m !== undefined && m !== ASK && m === d) {
-        const pm = changeP.workedMinutes ?? 0;
-        const pd = changeP.appointmentDuration ?? 0;
-        delete values[pm >= pd ? "appointmentDuration" : "workedMinutes"];
-      }
-      // A case without an appointment has no slot length: a minutes value read for it is the worked minutes.
-      const length = values.appointmentDuration;
-      if (
-        length !== undefined &&
-        (values.appointmentStart ??
-          currentCaseValue(scene, id, "appointmentStart")) === "none"
-      ) {
-        delete values.appointmentDuration;
-        if (
-          values.workedMinutes === undefined &&
-          length !== currentCaseValue(scene, id, "workedMinutes")
-        )
-          values.workedMinutes = length;
-      }
-      (perCase[id] ??= []).push({ seg: i, values });
+      return { seg: i, id, values };
+    }),
+  );
+  // One number fills one field: when worked minutes and appointment length read the same number, Jev picks the field.
+  const qc: Questions = {};
+  for (const { seg, id, values } of reads) {
+    const m = values.workedMinutes;
+    if (m !== undefined && m !== ASK && m === values.appointmentDuration)
+      qc[`s${seg}.${id}.minutes`] = choice(
+        `${partRef(segments, seg)}\n\nFor case ${caseLabel(scene, id)}: which field should get the value ${m} minutes? ${resolveNote}`,
+        {
+          workedMinutes: dimension("workedMinutes").description,
+          appointmentDuration: dimension("appointmentDuration").description,
+        },
+      );
+  }
+  const c = await ask(state, qc);
+  const perCase: Record<string, { seg: number; values: CaseValues }[]> = {};
+  for (const { seg: i, id, values } of reads) {
+    const key = `s${i}.${id}.minutes`;
+    if (key in qc)
+      delete values[
+        picked(c[key]) === "workedMinutes"
+          ? "appointmentDuration"
+          : "workedMinutes"
+      ];
+    for (const dim of caseDimensions) {
+      const value = values[dim];
+      if (value === undefined) continue;
+      const d = dimension(dim);
+      // Setting a field to its current value is no change.
+      if (value === currentCaseValue(scene, id, dim)) delete values[dim];
+      // A person the request never names is a guess: the run asks instead.
+      else if ("references" in d && !named(scene, d.references, value))
+        values[dim] = ASK;
     }
-  });
+    // A case without an appointment has no slot length: a minutes value read for it is the worked minutes.
+    const length = values.appointmentDuration;
+    if (
+      length !== undefined &&
+      (values.appointmentStart ??
+        currentCaseValue(scene, id, "appointmentStart")) === "none"
+    ) {
+      delete values.appointmentDuration;
+      if (
+        values.workedMinutes === undefined &&
+        length !== currentCaseValue(scene, id, "workedMinutes")
+      )
+        values.workedMinutes = length;
+    }
+    (perCase[id] ??= []).push({ seg: i, values });
+  }
   // A field set again in a later part is a sequence only when the earlier part saves; otherwise the later value corrects it.
   const cases: Record<string, CaseValues> = {};
   const sequence: Record<string, CaseValues[]> = {};

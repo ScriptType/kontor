@@ -264,3 +264,23 @@ test("an assignee the request never names is asked for", async () => {
     "V-1041": { technician: "lea" },
   });
 });
+
+test("a number read for both worked minutes and slot length goes to the field Jev picks", async () => {
+  const sent: Questions[] = [];
+  const plan = await planOf(
+    "1041 100 min",
+    {
+      "s0.case.V-1041": 1,
+      "s0.V-1041.chg.workedMinutes": 0.8,
+      "s0.V-1041.chg.appointmentDuration": 0.9,
+    },
+    {
+      "s0.V-1041.val.workedMinutes": "100",
+      "s0.V-1041.val.appointmentDuration": "100",
+      "s0.V-1041.minutes": "workedMinutes",
+    },
+    sent,
+  );
+  assert.deepEqual(plan?.cases, { "V-1041": { workedMinutes: "100" } });
+  assert.ok(sent.some((questions) => "s0.V-1041.minutes" in questions));
+});
