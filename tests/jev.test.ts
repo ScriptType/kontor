@@ -726,6 +726,34 @@ test("a compact prompt drops snapshot ids and viewport details and keeps what an
   );
   assert(!call.criteria["ask:minutes"]?.includes("Not for"));
 });
+test("a compact prompt keeps where a row action's row stands, so 'den letzten' can be read", async () => {
+  const row = (id: string, position: string) => ({
+    id: `case:${id}`,
+    label: `Details von ${id} öffnen`,
+    effect: `Details von ${id} öffnen`,
+    kind: "view" as const,
+    jev: {
+      does: `Open the detail editor of case ${id}`,
+      row: position,
+      now: "status open",
+    },
+  });
+  const { jev, calls } = causalProvider([{ choice: "abstain", confidence: 1 }]);
+  await jev.decide({
+    ...input,
+    prompt: "compact",
+    actions: [
+      row("V-1041", 'row 1 of 2 (first) of the table "Vorgangsliste" as shown now'),
+      row("V-1037", 'row 2 of 2 (last) of the table "Vorgangsliste" as shown now'),
+    ],
+  });
+  const [call] = calls;
+  assert(call);
+  assert.equal(
+    call.criteria["case:V-1037"],
+    'Open the detail editor of case V-1037. Position: row 2 of 2 (last) of the table "Vorgangsliste" as shown now. Now: status open',
+  );
+});
 test("a slim history writes each step's slim observation after it, and before it only where the chain breaks", async () => {
   const observed = (page: string, operations: string[]) =>
     JSON.stringify({

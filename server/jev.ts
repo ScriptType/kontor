@@ -106,7 +106,7 @@ export function createJev(config: Config, fetch?: Fetch) {
           .map((a) => [
             a.id,
             compact
-              ? renderJev({ does: a.jev.does, now: a.jev.now })
+              ? renderJev({ does: a.jev.does, row: a.jev.row, now: a.jev.now })
               : `${jevText(a)}. UI "${a.label}", kind ${a.kind}`,
           ]),
       );

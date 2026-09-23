@@ -284,9 +284,15 @@ function describeAction(control: ActionControl): ActionDescription {
   const index = rows.indexOf(row);
   if (index < 0) return description;
   const name = table.getAttribute("aria-label")?.slice(0, 160) || "Tabelle";
+  const first = index === 0;
+  const last = index === rows.length - 1;
   return {
     ...description,
-    label: `${description.label} · ${name}, Zeile ${index + 1} von ${rows.length}${index === 0 ? ", erste Zeile" : ""}${index === rows.length - 1 ? ", letzte Zeile" : ""}`,
+    label: `${description.label} · ${name}, Zeile ${index + 1} von ${rows.length}${first ? ", erste Zeile" : ""}${last ? ", letzte Zeile" : ""}`,
+    jev: {
+      ...description.jev,
+      row: `row ${index + 1} of ${rows.length}${first ? " (first)" : ""}${last ? " (last)" : ""} of the table "${name}" as shown now`,
+    },
   };
 }
 function domOrder(a: { element: HTMLElement }, b: { element: HTMLElement }) {

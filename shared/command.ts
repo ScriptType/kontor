@@ -5,6 +5,8 @@ import { requestHintsSchema } from "./request-hints.js";
 export const jevTextSchema = z.object({
   does: z.string().min(1),
   now: z.string().optional(),
+  /** Where a row action's row stands in its table, e.g. "row 4 of 4 (last)". */
+  row: z.string().optional(),
   reveals: z.string().optional(),
   notFor: z.string().optional(),
 });
@@ -122,8 +124,14 @@ const defaultReveals: Partial<Record<ActionDescription["kind"], string>> = {
   view: "View only; changes no case data",
   draft: "Changes only the unsaved draft; nothing is saved until save",
 };
-export function renderJev({ does, now, reveals, notFor }: JevText) {
-  return [does, now && `Now: ${now}`, reveals, notFor && `Not for: ${notFor}`]
+export function renderJev({ does, now, row, reveals, notFor }: JevText) {
+  return [
+    does,
+    row && `Position: ${row}`,
+    now && `Now: ${now}`,
+    reveals,
+    notFor && `Not for: ${notFor}`,
+  ]
     .filter(Boolean)
     .join(". ");
 }
