@@ -16,9 +16,19 @@ const answers = {
     probabilities: { save: 0.62, done: 0.38 },
   },
 };
-async function call(recordPayloads: boolean) {
+const questions = {
+  next: choice("Choose ONE", { save: "Save", done: "Done" }),
+};
+function recorder(options: {
+  recordPayloads?: boolean;
+  limit?: number;
+  respond?: () => Response;
+}) {
   const callLog: CallRecord[] = [];
-  const budget: Budget = { used: 0, limit: 5 };
+  const refused: string[] = [];
+  const budget: Budget = { used: 0, limit: options.limit ?? 5 };
+  const respond = options.respond ?? (() => Response.json({ answers, usage }));
+  let sent = 0;
   const client = new TypeSafeClient({
     apiKey: "test",
     defaultModel: "jev-latest",
@@ -27,20 +37,31 @@ async function call(recordPayloads: boolean) {
     fetch: recordingFetch({
       budget,
       callLog,
+      refused,
       maxCalls: 5,
-      recordPayloads,
-      fetch: async () => Response.json({ answers, usage }),
+      recordPayloads: options.recordPayloads ?? false,
+      fetch: async () => {
+        sent++;
+        return respond();
+      },
     }),
   });
-  const questions = {
-    next: choice("Choose ONE", { save: "Save", done: "Done" }),
+  return {
+    ask: () => client.systemOne({ state: '{"page":"cases"}', questions }),
+    callLog,
+    refused,
+    budget,
+    sent: () => sent,
   };
-  await client.systemOne({ state: '{"page":"cases"}', questions });
-  return { callLog, budget, questions };
+}
+async function call(recordPayloads: boolean) {
+  const recording = recorder({ recordPayloads });
+  await recording.ask();
+  return recording;
 }
 
 test("a recorded call keeps the exact request body, the provider's answers and its usage", async () => {
-  const { callLog, budget, questions } = await call(true);
+  const { callLog, budget } = await call(true);
   assert.equal(budget.used, 1);
   assert.deepEqual(
     callLog.map(({ ms: _, ...rest }) => rest),
@@ -68,4 +89,12 @@ test("without recording the call log holds no payload", async () => {
   assert.equal(callLog.length, 1);
   assert.equal("payload" in callLog[0]!, false);
   assert.equal(callLog[0]!.choice, "save");
+});
+test("a call past the eval budget is refused unsent and the refusal is kept for the sample", async () => {
+  const recording = recorder({ limit: 1 });
+  await recording.ask();
+  await assert.rejects(recording.ask());
+  assert.equal(recording.sent(), 1);
+  assert.equal(recording.callLog.length, 1);
+  assert.deepEqual(recording.refused, ["Eval call budget exhausted"]);
 });

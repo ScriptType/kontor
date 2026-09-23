@@ -538,20 +538,28 @@ const providerAnswerSchema = z.object({
     .optional(),
   usage: z.unknown().optional(),
 });
+/**
+ * Sends and records the sample's provider calls. A call past the run's budget
+ * or the sample's limit is refused unsent; the app only sees a connection
+ * failure, so the reason is kept in `refused` for the sample's result.
+ */
 export function recordingFetch(options: {
   budget: Budget;
   callLog: CallRecord[];
+  refused: string[];
   maxCalls: number;
   recordPayloads: boolean;
   fetch?: Fetch;
 }): Fetch {
-  const { budget, callLog, maxCalls } = options;
+  const { budget, callLog, refused, maxCalls } = options;
   const send = options.fetch ?? globalThis.fetch;
+  const refuse = (reason: string) => {
+    refused.push(reason);
+    throw new Error(reason);
+  };
   return async (url, init) => {
-    if (budget.used >= budget.limit)
-      throw new Error("Eval call budget exhausted");
-    if (callLog.length >= maxCalls)
-      throw new Error("Sample call limit reached");
+    if (budget.used >= budget.limit) refuse("Eval call budget exhausted");
+    if (callLog.length >= maxCalls) refuse("Sample call limit reached");
     budget.used++;
     const began = Date.now();
     const record: CallRecord = {
@@ -618,9 +626,11 @@ export async function runSample(options: {
   const store = seededStore(scenario.start);
   const workspace = store.snapshot();
   const callLog: CallRecord[] = [];
+  const refused: string[] = [];
   const fetch = recordingFetch({
     budget,
     callLog,
+    refused,
     maxCalls: options.maxCalls ?? 40,
     recordPayloads: options.recordPayloads ?? false,
     fetch: options.fetch,
@@ -729,7 +739,7 @@ export async function runSample(options: {
     reviewClicks: stops.filter((stop) => stop.kind === "review-answer").length,
     calls: callLog.length,
     wallMs: ended - began,
-    error,
+    error: error ?? refused[0] ?? null,
     observed,
     callLog,
   };
