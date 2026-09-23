@@ -259,6 +259,8 @@ const minuteChoices: [request: string, options: string[]][] = [
   ["Termin 9 uhr", ["0", "other"]],
   ["Termin 9:30", ["0", "30", "other"]],
   ["um 9.45", ["0", "45", "other"]],
+  ["um 9.45.", ["0", "45", "other"]],
+  ["Termin 24.09.", ["0", "other"]],
   ["um 9:20", ["0", "20", "other"]],
   ["um 9 Uhr 30", ["0", "30", "other"]],
   ["um neun Uhr dreißig", ["0", "30", "other"]],
