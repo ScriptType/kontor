@@ -343,13 +343,46 @@ export function rangeDurations(field: FieldDescription, request: string) {
   });
 }
 /**
+ * The last saved value and the numbers no save of the run applied. A save
+ * spends the number it wrote, else nothing when it wrote an answer or a spent
+ * number, else the number its sum or difference used. This is the order
+ * fieldValues offers them in, so a save counts as the candidate Jev picked.
+ */
+function replaySaves(
+  trail: readonly (number | undefined)[],
+  numbers: RequestNumber[],
+  written: ReadonlySet<number>,
+) {
+  const unspent = [...numbers];
+  const spend = (n: RequestNumber | undefined) => {
+    if (n) unspent.splice(unspent.indexOf(n), 1);
+    return n !== undefined;
+  };
+  trail.slice(1).forEach((after, i) => {
+    const before = trail[i];
+    if (after === undefined || after === before) return;
+    if (spend(unspent.find((n) => Number(n.value) === after))) return;
+    if (written.has(after) || before === undefined) return;
+    spend(
+      unspent.find(
+        (n) =>
+          before + Number(n.value) === after ||
+          before - Number(n.value) === after,
+      ),
+    );
+  });
+  return { base: trail.at(-1), unspent };
+}
+/**
  * Value candidates for one field. A candidate is bound when the request ties it
  * to this field alone (a field word, or the field type for a date and time) and
  * it is the only request value offered to this field on this case. A
  * correction or a sequence offers two values, so neither is bound. With the
  * field's saved minutes, the sums and differences count as request values too,
  * so the number they come from is not bound. So does the length of a time
- * range for the appointment length.
+ * range for the appointment length. The run's saves of the field move the
+ * saved minutes the sums build on, and a number a save applied is spent: it
+ * feeds no further sum and is never bound.
  */
 export function fieldValues(
   field: FieldDescription,
@@ -357,6 +390,7 @@ export function fieldValues(
   answers: DecisionInput["answers"],
   existing: string[],
   saved?: number,
+  saves: readonly (number | undefined)[] = [],
 ) {
   type Found = {
     source: ValueSource;
@@ -380,15 +414,20 @@ export function fieldValues(
       span === undefined ? { source, bound } : { source, span, bound },
     );
   };
-  for (const answer of answers)
-    if (answer.fieldId === field.id && answer.scope === field.scope)
-      add(answer.value, "answer", false);
+  const own = answers.filter(
+    (answer) => answer.fieldId === field.id && answer.scope === field.scope,
+  );
+  for (const answer of own) add(answer.value, "answer", false);
   if (field.type === "number") {
     const numbers = fieldNumbers(field, request, existing);
-    for (const { value, span, bound, source } of numbers)
-      add(value, source, bound, span);
-    if (saved !== undefined)
-      for (const { value, ...found } of savedArithmetic(saved, numbers))
+    const written = new Set(
+      [...own, ...numbers].map(({ value }) => Number(value)),
+    );
+    const { base, unspent } = replaySaves([saved, ...saves], numbers, written);
+    for (const n of numbers)
+      add(n.value, n.source, n.bound && unspent.includes(n), n.span);
+    if (base !== undefined)
+      for (const { value, ...found } of savedArithmetic(base, unspent))
         if (!values.has(value) && validFieldValue(field, value))
           values.set(value, { ...found, bound: false });
     for (const { value, ...found } of rangeDurations(field, request))

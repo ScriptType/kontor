@@ -16,7 +16,7 @@ import {
   type DecisionInput,
 } from "../../shared/command";
 import { savedMinutes } from "../../shared/dimensions";
-import type { CaseDraft } from "../../shared/domain";
+import type { CaseDraft, Receipt } from "../../shared/domain";
 import { describeSource, fieldValues } from "../../shared/field-values";
 export type Actor = "manual" | "jev";
 interface Control {
@@ -185,6 +185,7 @@ export class ActionRegistry {
     answers: DecisionInput["answers"] = [],
     existing: string[] = [],
     records: Record<string, CaseDraft> = {},
+    receipts: readonly Receipt[] = [],
   ) {
     this.offers.clear();
     if (this.modal) return [];
@@ -217,6 +218,9 @@ export class ActionRegistry {
           answers,
           existing,
           savedMinutes(field, records[field.scope]),
+          receipts
+            .filter((r) => r.caseId === field.scope)
+            .map((r) => savedMinutes(field, r.saved)),
         ))
           add(
             {

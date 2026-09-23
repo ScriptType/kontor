@@ -131,8 +131,9 @@ const historySchema = z.object({
   steps: z.array(stepSchema),
   createdAt: z.string(),
   /**
-   * The saved case records when the run started. "Noch 25 dazu" adds to these;
-   * after Jev saves the sum, the live record would add the 25 a second time.
+   * The saved case records when the run started. Sums build on them and on
+   * this run's receipts, and a save spends the number it applied, so it is not
+   * added twice.
    */
   records: z.record(z.string(), editableSchema).optional(),
   outcome: z.string(),
@@ -704,6 +705,7 @@ export class CommandRunner {
       existing,
       run.records ??
         Object.fromEntries((data?.cases ?? []).map((c) => [c.id, draftOf(c)])),
+      run.receipts,
     );
     const changing =
       policy.memory === "off" ? actions : changingActions({ actions, context });
