@@ -312,3 +312,33 @@ export function validFieldValue(field: FieldDescription, value: string) {
     );
   return value.length > 0 && value.length <= 200;
 }
+
+/** What the request already gives for a field Jev asks about, in the answer control's parts. */
+export type PartialAnswer =
+  | {
+      type: "datetime-local";
+      date: { day: string; past: boolean } | null;
+      time: string | null;
+    }
+  | { type: "number" | "text"; value: string | null };
+/** Today's date in the browser's local time zone, not UTC. */
+export function localToday(_now = new Date()): string {
+  throw new Error("not implemented");
+}
+export function partialAnswer(
+  _field: FieldDescription,
+  _request: string,
+  _today: string,
+  _existing: string[],
+): PartialAnswer {
+  throw new Error("not implemented");
+}
+export function partialNotes(_partial: PartialAnswer): string[] {
+  throw new Error("not implemented");
+}
+export function composeAnswer(
+  _field: FieldDescription,
+  _parts: { date?: string; time?: string; value?: string },
+): string | null {
+  throw new Error("not implemented");
+}
