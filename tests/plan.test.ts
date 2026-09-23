@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Fetch } from "@typesafe-ai/sdk";
 import { createPlanner, type PlanScene } from "../server/plan.js";
 import { defaultCaseFilters, seedWorkspace } from "../shared/domain.js";
+import { ASK } from "../shared/plan.js";
 
 const live = { mode: "live", apiKey: "test", model: "jev-latest" } as const;
 const scene: PlanScene = {
@@ -22,6 +23,18 @@ function provider(
   sent: Questions[],
   choose = (options: string[]) => options[0] ?? "",
 ): Fetch {
+  return scripted(
+    Object.fromEntries(yes.map((key) => [key, 1])),
+    sent,
+    (_key, options) => choose(options),
+  );
+}
+/** Answers each yes/no with its number in `yes` (else 0) and each choice with the option `choose` names for its key. */
+function scripted(
+  yes: Record<string, number>,
+  sent: Questions[],
+  choose = (_key: string, options: string[]) => options[0] ?? "",
+): Fetch {
   return async (_url, init) => {
     const { questions } = JSON.parse(String(init?.body)) as {
       questions: Questions;
@@ -32,9 +45,9 @@ function provider(
       answers: Object.fromEntries(
         Object.entries(questions).map(([key, question]) => {
           if (question.type === "noul")
-            return [key, { type: "noul", noul: yes.includes(key) ? 1 : 0 }];
+            return [key, { type: "noul", noul: yes[key] ?? 0 }];
           const options = Object.keys(question.criteria ?? {});
-          const choice = choose(options);
+          const choice = choose(key, options);
           return [
             key,
             {
@@ -195,4 +208,96 @@ test("a sentence that ends a line ends its part without asking", async () => {
     sent.flatMap((questions) => Object.keys(questions)).includes("g6"),
     false,
   );
+});
+
+/** Plans the request with the scripted answers. */
+function planOf(
+  request: string,
+  yes: Record<string, number>,
+  choices: Record<string, string> = {},
+  sent: Questions[] = [],
+) {
+  return createPlanner(
+    live,
+    scripted(yes, sent, (key, options) => choices[key] ?? options[0] ?? ""),
+  )({ ...scene, request });
+}
+
+test("a slot length read for a case without an appointment is its worked minutes", async () => {
+  const plan = await planOf(
+    "1037 bitte 75 min eintragen",
+    { "s0.case.V-1037": 1, "s0.V-1037.chg.appointmentDuration": 1 },
+    { "s0.V-1037.val.appointmentDuration": "75" },
+  );
+  assert.deepEqual(plan?.cases, { "V-1037": { workedMinutes: "75" } });
+});
+
+test("two views read at the same word keep the likelier one", async () => {
+  const plan = await planOf(
+    "danach wieder zur liste",
+    { "s0.page.cases": 0.9, "s0.page.customers": 0.7 },
+    { "s0.at.cases": "w3", "s0.at.customers": "w3" },
+  );
+  assert.deepEqual(plan?.visits, ["cases"]);
+});
+
+test("a customer filter the request never names is no filter", async () => {
+  const filter = { "s0.fchg.customerFilter": 1 };
+  const nord = { "s0.fval.customerFilter": "nord" };
+  assert.deepEqual((await planOf("1039 an jonas", filter, nord))?.filters, {});
+  assert.deepEqual(
+    (await planOf("nur die vom Nord Werk", filter, nord))?.filters,
+    { customerFilter: "nord" },
+  );
+});
+
+test("an assignee the request never names is asked for", async () => {
+  const assign = {
+    "s0.case.V-1041": 1,
+    "s0.V-1041.chg.technician": 1,
+    "s0.V-1041.is.technician.lea": 0.9,
+  };
+  assert.deepEqual((await planOf("1041 an die kollegin", assign))?.cases, {
+    "V-1041": { technician: ASK },
+  });
+  assert.deepEqual((await planOf("1041 an lae", assign))?.cases, {
+    "V-1041": { technician: "lea" },
+  });
+});
+
+test("a number read for both worked minutes and slot length goes to the field Jev picks", async () => {
+  const sent: Questions[] = [];
+  const plan = await planOf(
+    "1041 100 min",
+    {
+      "s0.case.V-1041": 1,
+      "s0.V-1041.chg.workedMinutes": 0.8,
+      "s0.V-1041.chg.appointmentDuration": 0.9,
+    },
+    {
+      "s0.V-1041.val.workedMinutes": "100",
+      "s0.V-1041.val.appointmentDuration": "100",
+      "s0.V-1041.minutes": "workedMinutes",
+    },
+    sent,
+  );
+  assert.deepEqual(plan?.cases, { "V-1041": { workedMinutes: "100" } });
+  assert.ok(sent.some((questions) => "s0.V-1041.minutes" in questions));
+});
+
+test("a minute count written as a word is offered as a value, a clock hour is not", async () => {
+  const sent: Questions[] = [];
+  const plan = await planOf(
+    "1039 achtzig minuten gearbeitet seit halb elf",
+    { "s0.case.V-1039": 1, "s0.V-1039.chg.workedMinutes": 1 },
+    { "s0.V-1039.val.workedMinutes": "80" },
+    sent,
+  );
+  assert.deepEqual(plan?.cases, { "V-1039": { workedMinutes: "80" } });
+  const offered = Object.keys(
+    sent.find((q) => "s0.V-1039.val.workedMinutes" in q)?.[
+      "s0.V-1039.val.workedMinutes"
+    ]?.criteria ?? {},
+  );
+  assert.equal(offered.includes("11"), false);
 });

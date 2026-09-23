@@ -27,6 +27,7 @@ import {
   type CaseValues,
 } from "../shared/intent.js";
 import { ASK, type Plan, type PlanInput } from "../shared/plan.js";
+import { spokenNumbers } from "../shared/value-reading.js";
 import type { Config } from "./config.js";
 import { createClient } from "./jev.js";
 
@@ -191,6 +192,13 @@ function valueOptions(
     request: scene.request,
     ...(caseId ? { caseId } : {}),
   });
+  if ("reading" in entry && entry.reading === "minutes")
+    for (const { text, value } of spokenNumbers(scene.request))
+      if (!options.some((o) => o.value === String(value)))
+        options.push({
+          value: String(value),
+          label: `Zahl als Wort im Auftrag: „${text}“ = ${value} Minuten`,
+        });
   if (entry.scope === "list") {
     const reset = filterValue(entry.id, defaultCaseFilters);
     if (!options.some((o) => o.value === reset))
@@ -270,6 +278,57 @@ function names(ws: Workspace) {
     ]
       .map((n) => n.toLowerCase())
       .filter((n) => n.length > 2),
+  );
+}
+/** Whether the two words differ by at most one typo: a letter changed, added, dropped or swapped with its neighbour. */
+function nearly(a: string, b: string) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  let j = 0;
+  while (
+    j < Math.min(a.length, b.length) - i &&
+    a.at(-1 - j) === b.at(-1 - j)
+  )
+    j++;
+  const differ = Math.max(a.length, b.length) - i - j;
+  return (
+    differ <= 1 ||
+    (differ === 2 &&
+      a.length === b.length &&
+      a[i] === b[i + 1] &&
+      a[i + 1] === b[i])
+  );
+}
+/** Whether the request names this technician or customer (or its contact), allowing one typo and compounds such as "Hafenkunden". */
+function named(
+  scene: PlanScene,
+  references: "technicians" | "customers",
+  id: string,
+) {
+  const ws = scene.workspace;
+  const customer = ws.customers.find((c) => c.id === id);
+  const said =
+    references === "technicians"
+      ? (ws.technicians.find((t) => t.id === id)?.name ?? "")
+      : customer
+        ? `${customer.name.split(/[ &]/)[0]} ${customer.contact.split("·")[0]}`
+        : "";
+  const parts = said
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((p) => p.length > 2);
+  const single = scene.request.toLowerCase().match(/\p{L}+/gu) ?? [];
+  // A compound name can be written as two words.
+  const words = [
+    ...single,
+    ...single.slice(1).map((word, i) => single[i] + word),
+  ];
+  return parts.some((part) =>
+    words.some(
+      (word) =>
+        nearly(word, part) || (part.length > 3 && word.startsWith(part)),
+    ),
   );
 }
 /** Word gaps after punctuation or a line break, before a connector, a case id or a name. */
@@ -479,7 +538,18 @@ async function extractSteps(
             ? picked(a[`s${i}.fval.${dim}`])
             : null
           : likeliest(a, `s${i}.fis.${dim}.`);
-      if (value !== null && value !== filterValue(dim, scene.filters))
+      const d = dimension(dim);
+      // A filter to a person or customer the request never names is no filter it asks for.
+      const unnamed =
+        "references" in d &&
+        value !== d.unset.value &&
+        value !== null &&
+        !named(scene, d.references, value);
+      if (
+        value !== null &&
+        !unnamed &&
+        value !== filterValue(dim, scene.filters)
+      )
         filters[dim] = value;
     }
     const opened = pages.filter((pg) => yes(a[`s${i}.page.${pg}`]) >= 0.5);
@@ -530,39 +600,85 @@ async function extractSteps(
           Number(picked(b[`s${i}.at.${pg}`]).slice(1)),
         ]),
       );
-      step.pages.sort((x, y) => at[x]! - at[y]!);
+      // One word names one view: views read at the same word keep the likelier one.
+      step.pages = step.pages
+        .filter(
+          (pg) =>
+            !step.pages.some(
+              (other) =>
+                other !== pg &&
+                at[other] === at[pg] &&
+                yes(a[`s${i}.page.${other}`]) > yes(a[`s${i}.page.${pg}`]),
+            ),
+        )
+        .sort((x, y) => at[x]! - at[y]!);
     }
-  const perCase: Record<string, { seg: number; values: CaseValues }[]> = {};
-  steps.forEach((step, i) => {
-    for (const id of step.cases) {
+  const reads = steps.flatMap((step, i) =>
+    step.cases.map((id) => {
       const values: CaseValues = {};
-      const changeP: Partial<Record<CaseDimensionId, number>> = {};
       for (const dim of caseDimensions) {
-        const py = yes(b[`s${i}.${id}.chg.${dim}`]);
-        if (py < 0.5) continue;
+        if (yes(b[`s${i}.${id}.chg.${dim}`]) < 0.5) continue;
         const key = `s${i}.${id}.val.${dim}`;
         // A fixed-set field whose yes/no names no option keeps its value.
-        const value =
+        values[dim] =
           fixed[key] ??
           (key in qb
             ? picked(b[key])
             : (likeliest(b, `s${i}.${id}.is.${dim}.`) ??
               currentCaseValue(scene, id, dim)));
-        // Setting a field to its current value is no change.
-        if (value === currentCaseValue(scene, id, dim)) continue;
-        values[dim] = value;
-        changeP[dim] = py;
       }
-      // One number fills one field: the same value in worked minutes and appointment length goes to the likelier field.
-      const [m, d] = [values.workedMinutes, values.appointmentDuration];
-      if (m !== undefined && m !== ASK && m === d) {
-        const pm = changeP.workedMinutes ?? 0;
-        const pd = changeP.appointmentDuration ?? 0;
-        delete values[pm >= pd ? "appointmentDuration" : "workedMinutes"];
-      }
-      (perCase[id] ??= []).push({ seg: i, values });
+      return { seg: i, id, values };
+    }),
+  );
+  // One number fills one field: when worked minutes and appointment length read the same number, Jev picks the field.
+  const qc: Questions = {};
+  for (const { seg, id, values } of reads) {
+    const m = values.workedMinutes;
+    if (m !== undefined && m !== ASK && m === values.appointmentDuration)
+      qc[`s${seg}.${id}.minutes`] = choice(
+        `${partRef(segments, seg)}\n\nFor case ${caseLabel(scene, id)}: which field should get the value ${m} minutes? ${resolveNote}`,
+        {
+          workedMinutes: dimension("workedMinutes").description,
+          appointmentDuration: dimension("appointmentDuration").description,
+        },
+      );
+  }
+  const c = await ask(state, qc);
+  const perCase: Record<string, { seg: number; values: CaseValues }[]> = {};
+  for (const { seg: i, id, values } of reads) {
+    const key = `s${i}.${id}.minutes`;
+    if (key in qc)
+      delete values[
+        picked(c[key]) === "workedMinutes"
+          ? "appointmentDuration"
+          : "workedMinutes"
+      ];
+    for (const dim of caseDimensions) {
+      const value = values[dim];
+      if (value === undefined) continue;
+      const d = dimension(dim);
+      // Setting a field to its current value is no change.
+      if (value === currentCaseValue(scene, id, dim)) delete values[dim];
+      // A person the request never names is a guess: the run asks instead.
+      else if ("references" in d && !named(scene, d.references, value))
+        values[dim] = ASK;
     }
-  });
+    // A case without an appointment has no slot length: a minutes value read for it is the worked minutes.
+    const length = values.appointmentDuration;
+    if (
+      length !== undefined &&
+      (values.appointmentStart ??
+        currentCaseValue(scene, id, "appointmentStart")) === "none"
+    ) {
+      delete values.appointmentDuration;
+      if (
+        values.workedMinutes === undefined &&
+        length !== currentCaseValue(scene, id, "workedMinutes")
+      )
+        values.workedMinutes = length;
+    }
+    (perCase[id] ??= []).push({ seg: i, values });
+  }
   // A field set again in a later part is a sequence only when the earlier part saves; otherwise the later value corrects it.
   const cases: Record<string, CaseValues> = {};
   const sequence: Record<string, CaseValues[]> = {};
