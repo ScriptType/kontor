@@ -161,6 +161,30 @@ test("the run's coverage probability and checklist are read from the history whe
   });
 });
 
+test("the run's plan and votes are read from the history when present", async ({
+  page,
+}) => {
+  const s = byId("user-fresh");
+  await withApp(page, s, async (store) => {
+    const read = () =>
+      readEnd(page, store.snapshot(), store.snapshot(), [], [done]);
+    expect(await read()).toMatchObject({ plan: null, votes: null });
+    const plan = { cases: { "V-1041": { technician: "mara" } } };
+    const votes = [
+      { step: 0, choice: "case:V-1041", via: "pick", slot: "cases=V-1041" },
+    ];
+    await page.evaluate(
+      (run) =>
+        localStorage.setItem(
+          "kontor-command-v1",
+          JSON.stringify({ version: 3, history: [{ steps: [], ...run }] }),
+        ),
+      { plan, votes },
+    );
+    expect(await read()).toMatchObject({ plan, votes });
+  });
+});
+
 test("confirmations are answered from the ground truth through data-confirm attributes", async ({
   page,
 }) => {

@@ -181,6 +181,8 @@ const historySchema = z.object({
       z.object({
         coverageProbability: z.number().optional().catch(undefined),
         checklist: z.unknown().optional(),
+        plan: z.unknown().optional(),
+        votes: z.unknown().optional(),
         steps: z.array(
           z.object({
             action: z.object({ id: z.string() }),
@@ -196,6 +198,8 @@ type Run = {
   steps: string[];
   coverageProbability: number | null;
   checklist: unknown;
+  plan: unknown;
+  votes: unknown;
 };
 export async function readEnd(
   page: Page,
@@ -305,6 +309,8 @@ export async function readEnd(
     steps: steps.map((step) => `${step.action.id}:${step.outcome}`),
     coverageProbability: stored?.coverageProbability ?? null,
     checklist: stored?.checklist ?? null,
+    plan: stored?.plan ?? null,
+    votes: stored?.votes ?? null,
   };
 }
 
