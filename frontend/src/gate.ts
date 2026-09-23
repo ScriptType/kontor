@@ -60,9 +60,9 @@ export type GatePolicy = Read & {
    */
   duel?: number;
   /**
-   * The probability at which the plan's option acts in place of a pick that
-   * neither acts nor wins a duel: the offered option the plan agrees with
-   * that Jev rates highest.
+   * The probability at which the plan's view acts in place of a pick that
+   * neither acts nor wins a duel: the offered view, filter, menu or case the
+   * plan agrees with that Jev rates highest.
    */
   steer?: number;
   /**

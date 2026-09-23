@@ -997,32 +997,48 @@ export class CommandRunner {
     return true;
   }
   /**
-   * The option of the capture's decision the run's plan agrees with that Jev
-   * rates highest; null without a plan or agreement, undefined once the
-   * capture went stale while the plan was read.
+   * The option of the capture's decision among `eligible` the run's plan
+   * agrees with that Jev rates highest; null without a plan or agreement,
+   * undefined once the capture went stale while the plan was read.
    */
-  private async planChoice(capture: DecisionCapture) {
+  private async planChoice(
+    capture: DecisionCapture,
+    eligible: (choice: string) => boolean = () => true,
+  ) {
     const planned = this.planned;
     if (!planned || planned.runId !== capture.runId) return null;
     const run = await planned.ready;
     if (!this.resolveCapture(capture)) return undefined;
     const world = this.planWorld();
+    const probabilities = Object.fromEntries(
+      Object.entries(capture.decision.probabilities).filter(([choice]) =>
+        eligible(choice),
+      ),
+    );
     return run && world
-      ? planOption(run, capture.decision.probabilities, capture.input, world)
+      ? planOption(run, probabilities, capture.input, world)
       : null;
   }
   /**
-   * The plan's option in place of a pick that neither acts nor wins a duel:
-   * the capture to follow when Jev rates it at the gate's steer floor, false
-   * when the gate does not steer or the option is missing or below the floor,
-   * null once the capture went stale.
+   * The plan's view in place of a pick that neither acts nor wins a duel: the
+   * capture to follow when Jev rates it at the gate's steer floor, false when
+   * the gate does not steer or the view is missing or below the floor, null
+   * once the capture went stale. Only views: a plan misread then costs a
+   * wrong page, filter or menu, never a wrong write or a wrong done.
    */
   private async steer(
     capture: DecisionCapture,
   ): Promise<DecisionCapture | false | null> {
     const policy: GatePolicy = gates[this.gate];
     if (policy.steer === undefined) return false;
-    const option = await this.planChoice(capture);
+    const views = new Set(
+      capture.input.actions
+        .filter((action) => action.kind === "view")
+        .map((action) => action.id),
+    );
+    const option = await this.planChoice(capture, (choice) =>
+      views.has(choice),
+    );
     if (option === undefined) return null;
     if (!option) return false;
     const { choice, probability, slot } = option;
@@ -1193,14 +1209,12 @@ export class CommandRunner {
         if (agrees === null) return;
         acts = agrees;
       }
-      let steered = false;
       if (!acts) {
         let won = await this.duel(capture);
         if (won === null) return;
         if (!won) {
           won = await this.steer(capture);
           if (won === null) return;
-          steered = won !== false;
         }
         if (won) {
           capture = won;
@@ -1265,13 +1279,7 @@ export class CommandRunner {
         let doubtful =
           assessment.verdict !== "authorized" ||
           assessment.confidence < this.confidencePercent() / 100;
-        // The plan chose a steered save, so it cannot also vouch for its effect.
-        if (
-          doubtful &&
-          !reason &&
-          this.votes(["effect"]) &&
-          !(steered && chosen.kind === "commit")
-        ) {
+        if (doubtful && !reason && this.votes(["effect"])) {
           const agrees = await this.planAgrees(capture, action.id, ["effect"]);
           if (agrees === null) return;
           doubtful = !agrees;

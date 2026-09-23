@@ -178,20 +178,13 @@ for (const run of [
     );
   });
 
-// On Lea's unsaved draft two views tie, their duel stays unsure and the plan's save trails.
-const saveTrails = {
-  choice: "nav:customers",
-  confidence: 0.35,
-  probabilities: { "nav:customers": 0.35, "nav:reports": 0.35, save: 0.3 },
-};
-
+// Two views tie and their duel stays unsure while the plan's next step, a write or done, trails.
 for (const run of [
-  { effect: "authorized", saves: true },
-  { effect: "additional", saves: false },
+  { kind: "draft", at: 2, trails: "technician:lea", saved: "jonas" },
+  { kind: "save", at: 3, trails: "save", saved: "jonas" },
+  { kind: "done", at: 4, trails: "done", saved: "lea" },
 ] as const)
-  test(`g3-cpe-steer steers to a save the effect check calls ${run.effect}`, async ({
-    page,
-  }) => {
+  test(`g3-cpe-steer never steers to a ${run.kind}`, async ({ page }) => {
     await storeGate(page, "g3-cpe-steer");
     await withLive(
       page,
@@ -199,43 +192,45 @@ for (const run of [
       async (store) => {
         await start(page, request);
         await expect(page.locator(".activity-label")).toContainText(
-          run.saves ? "Jev meldet" : "Effektprüfung 90 %",
+          "Auswahl unter der Schwelle",
         );
         expect(
           store.snapshot().cases.find((c) => c.id === "V-1042")?.technicianId,
-        ).toBe(run.saves ? "lea" : "jonas");
+        ).toBe(run.saved);
         const history = await page.evaluate(
           () =>
             JSON.parse(localStorage.getItem("kontor-command-v1") ?? "{}")
               .history[0],
         );
-        expect(history.steers).toEqual([
-          {
-            step: 3,
-            choice: "save",
-            probability: 0.3,
-            slot: "save:V-1042#0",
-            acts: true,
-          },
-        ]);
+        expect(history.steps).toHaveLength(run.at);
+        expect(history.duels).toMatchObject([{ step: run.at, acts: false }]);
         expect(
-          (history.votes ?? []).filter(
-            (vote: { via: string }) => vote.via === "effect",
+          (history.steers ?? []).filter(
+            (steer: { acts: boolean }) => steer.acts,
           ),
         ).toEqual([]);
+        expect(await offered(page)).toEqual([
+          "nav:customers",
+          "nav:reports",
+          run.trails,
+        ]);
       },
       {
         plan: { ...plan, calls: [] },
-        effectAnswer: () => ({ choice: run.effect, confidence: 0.9 }),
         nextAnswer: (index) =>
-          index === 3
-            ? saveTrails
-            : index === 4
-              ? unsureDuel
-              : {
-                  choice: sequence[index > 4 ? index - 1 : index] ?? "done",
-                  confidence: 1,
+          index === run.at
+            ? {
+                choice: "nav:customers",
+                confidence: 0.35,
+                probabilities: {
+                  "nav:customers": 0.35,
+                  "nav:reports": 0.35,
+                  [run.trails]: 0.3,
                 },
+              }
+            : index === run.at + 1
+              ? unsureDuel
+              : { choice: sequence[index] ?? "done", confidence: 1 },
       },
     );
   });
