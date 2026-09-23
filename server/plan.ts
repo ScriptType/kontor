@@ -272,7 +272,7 @@ function names(ws: Workspace) {
       .filter((n) => n.length > 2),
   );
 }
-/** Whether at most one letter is changed, added or dropped between the two words. */
+/** Whether the two words differ by at most one typo: a letter changed, added, dropped or swapped with its neighbour. */
 function nearly(a: string, b: string) {
   if (Math.abs(a.length - b.length) > 1) return false;
   let i = 0;
@@ -283,7 +283,14 @@ function nearly(a: string, b: string) {
     a.at(-1 - j) === b.at(-1 - j)
   )
     j++;
-  return Math.max(a.length, b.length) - i - j <= 1;
+  const differ = Math.max(a.length, b.length) - i - j;
+  return (
+    differ <= 1 ||
+    (differ === 2 &&
+      a.length === b.length &&
+      a[i] === b[i + 1] &&
+      a[i + 1] === b[i])
+  );
 }
 /** Whether the request names this technician or customer (or its contact), allowing one typo and compounds such as "Hafenkunden". */
 function named(
@@ -616,7 +623,12 @@ async function extractSteps(
               currentCaseValue(scene, id, dim)));
         // Setting a field to its current value is no change.
         if (value === currentCaseValue(scene, id, dim)) continue;
-        values[dim] = value;
+        const d = dimension(dim);
+        // A person the request never names is a guess: the run asks instead.
+        values[dim] =
+          "references" in d && !named(scene, d.references, value)
+            ? ASK
+            : value;
         changeP[dim] = py;
       }
       // One number fills one field: the same value in worked minutes and appointment length goes to the likelier field.

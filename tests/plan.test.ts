@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Fetch } from "@typesafe-ai/sdk";
 import { createPlanner, type PlanScene } from "../server/plan.js";
 import { defaultCaseFilters, seedWorkspace } from "../shared/domain.js";
+import { ASK } from "../shared/plan.js";
 
 const live = { mode: "live", apiKey: "test", model: "jev-latest" } as const;
 const scene: PlanScene = {
@@ -248,4 +249,18 @@ test("a customer filter the request never names is no filter", async () => {
     (await planOf("nur die vom Nord Werk", filter, nord))?.filters,
     { customerFilter: "nord" },
   );
+});
+
+test("an assignee the request never names is asked for", async () => {
+  const assign = {
+    "s0.case.V-1041": 1,
+    "s0.V-1041.chg.technician": 1,
+    "s0.V-1041.is.technician.lea": 0.9,
+  };
+  assert.deepEqual((await planOf("1041 an die kollegin", assign))?.cases, {
+    "V-1041": { technician: ASK },
+  });
+  assert.deepEqual((await planOf("1041 an lae", assign))?.cases, {
+    "V-1041": { technician: "lea" },
+  });
 });
