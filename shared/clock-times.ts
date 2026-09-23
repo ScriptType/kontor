@@ -18,6 +18,8 @@ const dates = (request: string): Span[] =>
     at: m.index,
     end: m.index + m[0].length,
   }));
+const within = (spans: Span[], at: number) =>
+  spans.some((span) => at >= span.at && at < span.end);
 // Digits after a colon are minutes, not an hour.
 const hourDigits = /(?<![\p{N}:])\d{1,2}(?!\p{N})/gu;
 /**
@@ -29,7 +31,7 @@ export function writtenHours(request: string): number[] {
   const inDate = dates(request);
   const hours = [
     ...[...request.matchAll(hourDigits)]
-      .filter((m) => !inDate.some((d) => m.index >= d.at && m.index < d.end))
+      .filter((m) => !within(inDate, m.index))
       .map((m) => Number(m[0])),
     ...[...request.matchAll(/\p{L}+/gu)].map((m) =>
       hourWords.get(m[0].toLowerCase()),
@@ -53,10 +55,18 @@ const relativeTime = new RegExp(
   "giu",
 );
 const durationUnit = String.raw`\s*(?:h|std|stunden?|min|minuten?)(?!\p{L})`;
-// "13", "13:30", "9.45". A "24.09." is a day, and a number before a duration
-// unit ("3 Stunden") is no clock time.
+// "13", "13:30", "9.45", "9.45." at a sentence end. A number before a
+// duration unit ("3 Stunden") is no clock time; neither is a date, which the
+// callers skip.
 const digitTime = new RegExp(
-  String.raw`(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?![.\p{N}]))?(?!\p{N}|[.,:]\p{N}|${durationUnit})`,
+  String.raw`(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?!\.?\p{N}))?(?!\p{N}|[.,:]\p{N}|${durationUnit})`,
+  "giu",
+);
+// "neun" in "von neun bis elf". "ein" and "eine" are articles more often.
+const bareHourWord = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(${[...hourWords.keys()]
+    .filter((word) => word !== "ein" && word !== "eine")
+    .join("|")})(?![\p{L}\p{N}]|${durationUnit})`,
   "giu",
 );
 const minuteWordPattern = [...minuteWords.keys()]
@@ -67,10 +77,11 @@ const minutesAfterUhr = new RegExp(
   "giu",
 );
 export function writtenMinutes(request: string): number[] {
+  const inDate = dates(request);
   const minutes = [
-    ...[...request.matchAll(digitTime)].map((m) =>
-      m[2] === undefined ? undefined : Number(m[2]),
-    ),
+    ...[...request.matchAll(digitTime)]
+      .filter((m) => !within(inDate, m.index))
+      .map((m) => (m[2] === undefined ? undefined : Number(m[2]))),
     ...[...request.matchAll(minutesAfterUhr)].map(
       (m) => Number(m[1]) || minuteWords.get(m[1]!.toLowerCase()),
     ),
@@ -103,12 +114,26 @@ function clockTimes(request: string): ClockTime[] {
     if (hour <= 24 && minutes < 60 && free(m.index, end))
       times.push({ at: m.index, end, minutes: hour * 60 + minutes });
   }
+  for (const m of request.matchAll(bareHourWord)) {
+    const end = m.index + m[0].length;
+    if (free(m.index, end))
+      times.push({
+        at: m.index,
+        end,
+        minutes: hourWords.get(m[1]!.toLowerCase())! * 60,
+      });
+  }
   return times.sort((a, b) => a.at - b.at);
 }
-const rangeSeparator = /(?:\bbis|[-–])\s*$/iu;
+const rangeSeparator = /(?:\bbis(?:\s+um)?|[-–])\s*$/iu;
+const noon = 12 * 60;
 /** Two clock times the request writes as a range, in minutes after midnight. */
 export type TimeRange = { text: string; from: number; to: number };
-/** Every range from a clock time to the next one that a separator right before it ends ("von 13 bis 15 uhr", "9-11"). */
+/**
+ * Every range from a clock time to the next one that a separator right before
+ * it ends ("von 13 bis 15 uhr", "9-11", "bis um 15"). An end before a morning
+ * start is in the afternoon ("von 11 bis 1" ends at 13:00), unless it is hour 0.
+ */
 export function timeRanges(request: string): TimeRange[] {
   const times = clockTimes(request);
   return times.slice(1).flatMap((to, i) => {
@@ -118,7 +143,12 @@ export function timeRanges(request: string): TimeRange[] {
           {
             text: request.slice(from.at, to.end),
             from: from.minutes,
-            to: to.minutes,
+            to:
+              to.minutes < from.minutes &&
+              from.minutes < noon &&
+              to.minutes >= 60
+                ? to.minutes + noon
+                : to.minutes,
           },
         ]
       : [];

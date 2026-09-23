@@ -41,6 +41,7 @@ const lengths: [string, string[]][] = [
   ["2  bis 3  Stunden", []],
   ["30 bis 45 Minuten", []],
   ["von 15 bis 13", []],
+  ["von 9 bis 0 Uhr", []],
   ["von 9 bis 18 Uhr", []],
   ["um 9 und um 11", []],
   ["am 2026-09-10 um 9", []],
