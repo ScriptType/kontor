@@ -15,6 +15,7 @@ import {
   formatDir,
   fullStateSchema,
   g3Pick,
+  isDuel,
   labelState,
   labRoot,
   recordedCallSchema,
@@ -120,11 +121,6 @@ const samples = await samplesOf(values.runs);
 
 const terminal = (option: string) =>
   ["done", "blocked", "abstain"].includes(option) || option.startsWith("ask:");
-/** A second look between two options (server/jev.ts decide with `duel`). */
-const isDuel = (payload: RecordedCall) =>
-  payload.request.questions["next"]?.instructions.startsWith(
-    "Two next steps",
-  ) ?? false;
 const duelText = /^([^]*)\. UI "([^"]*)", kind (view|draft|commit|discard)$/;
 const stateOf = (payload: RecordedCall) =>
   fullStateSchema.parse(JSON.parse(payload.request.state));

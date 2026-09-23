@@ -123,6 +123,11 @@ export const recordedCallSchema = z.object({
   usage: usageSchema.nullable(),
 });
 export type RecordedCall = z.infer<typeof recordedCallSchema>;
+/** A second look between two options (server/jev.ts decide with `duel`). */
+export const isDuel = (payload: RecordedCall) =>
+  payload.request.questions["next"]?.instructions.startsWith(
+    "Two next steps",
+  ) ?? false;
 
 /**
  * The value candidates the app offered on a decide state, keyed by action id,
@@ -130,7 +135,13 @@ export type RecordedCall = z.infer<typeof recordedCallSchema>;
  * customers are the existing values a request can name. `text` is the value
  * source as Jev reads it.
  */
-export function fieldCandidates(state: FullState, start: Workspace) {
+export function fieldCandidates(
+  state: Pick<
+    FullState,
+    "originalRequest" | "explicitAnswers" | "availableFields"
+  >,
+  start: Workspace,
+) {
   const existing = [
     ...start.cases.flatMap((c) => [c.id, c.title]),
     ...start.customers.map((c) => c.name),
