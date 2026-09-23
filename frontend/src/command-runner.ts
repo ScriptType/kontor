@@ -219,8 +219,11 @@ export class CommandRunner {
       gate: defaultGate,
     })
     .parse(readBrowserState(gatePreferenceKey)).gate;
+  private readonly policy: GatePolicy = gates[this.gate];
   /** Whether the personal percent also decides the step pick, not only asks and effect checks. */
-  readonly percentPicks = gates[this.gate].bars === "percent";
+  readonly percentPicks = this.policy.bars === "percent";
+  /** Whether the header offers the case picker. */
+  readonly jump = this.policy.jump === true;
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
   readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
