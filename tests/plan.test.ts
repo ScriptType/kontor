@@ -301,3 +301,22 @@ test("a minute count written as a word is offered as a value, a clock hour is no
   );
   assert.equal(offered.includes("11"), false);
 });
+
+test("the plan offers the saved minutes plus a request number and reads the sum", async () => {
+  const sent: Questions[] = [];
+  const plan = await planOf(
+    "1037 noch 25 min dazu telefonat gestern vergessen",
+    { "s0.case.V-1037": 1, "s0.V-1037.chg.workedMinutes": 1 },
+    { "s0.V-1037.val.workedMinutes": "45" },
+    sent,
+  );
+  const offered = sent.find((q) => "s0.V-1037.val.workedMinutes" in q)?.[
+    "s0.V-1037.val.workedMinutes"
+  ]?.criteria;
+  assert.equal(
+    offered?.["45"],
+    "Summe: gespeicherte 20 + 25 aus dem Auftrag = 45",
+  );
+  assert.equal(offered?.["25"], "wörtliche Zahl aus Auftrag");
+  assert.deepEqual(plan?.cases, { "V-1037": { workedMinutes: "45" } });
+});
