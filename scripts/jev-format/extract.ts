@@ -383,7 +383,7 @@ const check = {
           "observedSteps.before+after": state.observedSteps.reduce(
             (sum, step) =>
               sum +
-              JSON.stringify(step.before).length +
+              (step.before ? JSON.stringify(step.before).length : 0) +
               JSON.stringify(step.after).length,
             0,
           ),

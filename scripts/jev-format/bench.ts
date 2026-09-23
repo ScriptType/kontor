@@ -71,7 +71,7 @@ export const fullStateSchema = z
         action: sentActionSchema,
         authorizedBy: z.enum(["request", "user"]),
         outcome: z.enum(["changed", "unchanged", "unknown"]),
-        before: z.record(z.string(), z.unknown()),
+        before: z.record(z.string(), z.unknown()).optional(),
         after: z.record(z.string(), z.unknown()),
       }),
     ),
@@ -93,6 +93,17 @@ export const fullStateSchema = z
   })
   .strict();
 export type FullState = z.infer<typeof fullStateSchema>;
+/**
+ * The observed steps with every observation before a step. The slim history
+ * (`history: "slim"`) leaves it out where it equals the one after the step
+ * before.
+ */
+export const stepsWithBefore = (steps: FullState["observedSteps"]) =>
+  steps.map((step, i) => {
+    const before = step.before ?? steps[i - 1]?.after;
+    if (!before) throw new Error(`step ${i} has no observation before it`);
+    return { ...step, before };
+  });
 
 export const usageSchema = z.object({
   input_tokens: z.number(),
@@ -386,7 +397,7 @@ export function checkFor(pickResult: GatePick): "done" | "action" | null {
 function guarded(state: Pick<BenchState, "state" | "actions">, choice: string) {
   const { observedSteps, originalRequest, currentFacts } = state.state;
   if (!state.actions.some((a) => a.id === choice)) return false;
-  const steps = observedSteps.map((step) => ({
+  const steps = stepsWithBefore(observedSteps).map((step) => ({
     ...step,
     before: JSON.stringify(step.before),
     after: JSON.stringify(step.after),

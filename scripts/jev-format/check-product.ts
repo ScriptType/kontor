@@ -13,6 +13,7 @@ import { requestHints } from "../../shared/request-hints.js";
 import {
   assessState,
   formatDir,
+  stepsWithBefore,
   type AssessQuestions,
   type BenchState,
   type SentAction,
@@ -73,7 +74,7 @@ function inputOf(state: BenchState, gate: GateName) {
     fields: s.availableFields.map((f) => ({ ...f, jev: { name: f.label } })),
     blockedControls: blocked,
     answers: s.explicitAnswers,
-    steps: s.observedSteps.map((step) => ({
+    steps: stepsWithBefore(s.observedSteps).map((step) => ({
       snapshotId: "earlier",
       action: action(step.action),
       authorizedBy: step.authorizedBy,

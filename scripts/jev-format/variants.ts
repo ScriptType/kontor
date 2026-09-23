@@ -11,6 +11,7 @@ import {
   assessQuestion,
   assessState,
   sha256,
+  stepsWithBefore,
   type FullState,
   type Payload,
   type Variant,
@@ -148,8 +149,9 @@ const withHints = (s: State) => {
 };
 
 // f6: history formats; the steps change, the rest of the state stays.
-type Step = FullState["observedSteps"][number];
-const stepsOf = (s: State) => s["observedSteps"] as Step[];
+type Step = ReturnType<typeof stepsWithBefore>[number];
+const stepsOf = (s: State) =>
+  stepsWithBefore(s["observedSteps"] as FullState["observedSteps"]);
 const changesOf = (step: Step) =>
   observedChanges(JSON.stringify(step.before), JSON.stringify(step.after));
 const changeText = (step: Step) =>
