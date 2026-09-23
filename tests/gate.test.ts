@@ -4,6 +4,7 @@ import {
   acts,
   assesses,
   completes,
+  decisionHints,
   gateKind,
   gateNames,
   gates,
@@ -11,6 +12,7 @@ import {
   workKind,
 } from "../frontend/src/gate.js";
 import type { ActionDescription } from "../shared/command.js";
+import { defaultCaseFilters, draftOf, seedWorkspace } from "../shared/domain.js";
 
 const offered = (id: string, kind: ActionDescription["kind"]) => ({
   id,
@@ -487,7 +489,10 @@ test("g3-mem is g3 with the lean state for decide only", () => {
 });
 test("only the plan gates let the plan release a check", () => {
   for (const gate of gateNames)
-    if (!gate.startsWith("g3-compact-plan") && gate !== "g3-cpe-duel")
+    if (
+      !gate.startsWith("g3-compact-plan") &&
+      !gate.startsWith("g3-cpe-")
+    )
       assert.deepEqual(gates[gate].planVote, [], gate);
   assert.deepEqual(gates["g3-compact-plan"].planVote, ["pick", "completion"]);
   assert.deepEqual(gates["g3-compact-plan-effect"].planVote, [
@@ -502,4 +507,62 @@ test("the plan gates are g3-compact apart from the plan vote", () => {
     const { planVote: _plan, ...rest } = gates[gate];
     assert.deepEqual(rest, compact, gate);
   }
+});
+test("g3-cpe-todo is g3-compact-plan-effect with the plan's todo list", () => {
+  const { todo, ...rest } = gates["g3-cpe-todo"];
+  const { todo: effectTodo, ...effect } = gates["g3-compact-plan-effect"];
+  assert.deepEqual(rest, effect);
+  assert.equal(todo, true);
+  assert.equal(effectTodo, false);
+});
+test("only g3-cpe-todo sends Jev the plan reading with its hints", () => {
+  const workspace = seedWorkspace();
+  const plan = {
+    run: {
+      plan: {
+        segments: [],
+        cases: { "V-1041": { technician: "lea" } },
+        sequence: {},
+        filters: {},
+        visits: [],
+        flags: { noSave: false, unsupported: false },
+      },
+      start: {
+        workspace,
+        page: "cases" as const,
+        filters: defaultCaseFilters,
+      },
+    },
+    world: {
+      page: "cases" as const,
+      filters: defaultCaseFilters,
+      selected: null,
+      draft: null,
+      dirty: false,
+      records: Object.fromEntries(
+        workspace.cases.map((c) => [c.id, draftOf(c)]),
+      ),
+      receipts: [],
+      visited: [],
+      answers: [],
+    },
+  };
+  const request = "Gib V-1041 an Lea und speichere.";
+  for (const gate of gateNames) {
+    const hints = decisionHints(gate, request, workspace, [], plan);
+    assert.equal(hints === undefined, gates[gate].prompt === "full", gate);
+    assert.equal(hints?.planReading !== undefined, gates[gate].todo, gate);
+  }
+  assert.deepEqual(
+    decisionHints("g3-cpe-todo", request, workspace, [], plan)?.planReading
+      ?.stillOpen,
+    [
+      "case V-1041: assigned technician should become Lea Sommer (now Jonas Weber)",
+      "case V-1041: save the change",
+    ],
+  );
+  assert.equal(
+    decisionHints("g3-cpe-todo", request, workspace, [], null)?.planReading,
+    undefined,
+  );
 });

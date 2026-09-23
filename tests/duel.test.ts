@@ -98,7 +98,7 @@ test("a near tie between two effects that does not act duels them, strongest fir
 test("only a gate with a duel duels", () => {
   const tie = { "nav:team": 0.51, "nav:reports": 0.49 };
   for (const gate of gateNames)
-    if (gate !== "g3-cpe-duel")
+    if (!("duel" in gates[gate]))
       assert.equal(
         duelPair(
           gate,
