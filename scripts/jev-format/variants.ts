@@ -1,6 +1,6 @@
 import { choice, type EntryType } from "@typesafe-ai/sdk";
 import { seedWorkspace } from "../../shared/domain.js";
-import { requestNumbers } from "../../shared/field-values.js";
+import { requestHints } from "../../shared/request-hints.js";
 import { observedChanges } from "../../shared/step-log.js";
 import {
   assessQuestion,
@@ -121,6 +121,10 @@ const requestLast = (s: State) => ({
   ...s,
   originalRequestAgain: s["originalRequest"],
 });
+const requestMovedLast = (s: State) => ({
+  ...omit(s, "originalRequest"),
+  originalRequest: s["originalRequest"],
+});
 const requestInInstructions = (payload: Payload): Question => ({
   instructions: `Original request: "${payload.state.originalRequest}". ${payload.instructions}`,
   options: payload.options,
@@ -128,95 +132,12 @@ const requestInInstructions = (payload: Payload): Question => ({
 
 // f5: facts code already knows about the request.
 const workspace = seedWorkspace();
-const pageCues: [string, RegExp][] = [
-  ["cases", /vorg[aä]ng|auftr[aä]g|fallliste|liste/giu],
-  ["customers", /kunde/giu],
-  ["team", /team|kapazit|auslastung/giu],
-  ["reports", /bericht|report|auswertung|statistik/giu],
-];
-function distance(a: string, b: string) {
-  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    let previous = row[0]!;
-    row[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const kept = row[j]!;
-      row[j] = Math.min(
-        row[j]! + 1,
-        row[j - 1]! + 1,
-        previous + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
-      previous = kept;
-    }
-  }
-  return row[b.length]!;
-}
-const commonWords = new Set(["haben", "neben", "leben", "lesen", "mehr"]);
-const resembles = (token: string, word: string) =>
-  token.length >= 3 &&
-  !commonWords.has(token) &&
-  (token === word ||
-    (token.length >= 4 && (word.startsWith(token) || token.startsWith(word))) ||
-    (token.length >= 4 && token[0] === word[0] && distance(token, word) <= 1));
-export function requestHints(request: string) {
-  const tokens = request.toLowerCase().match(/\p{L}+/gu) ?? [];
-  const mention = (words: string[]) => [
-    ...new Set(
-      tokens.filter((t) => words.some((w) => resembles(t, w.toLowerCase()))),
-    ),
-  ];
-  const cases = workspace.cases.map((c) => c.id);
-  const digits = (id: string) => id.replace(/\D/g, "");
-  return {
-    numbers: requestNumbers(request, cases).map((n) => ({
-      value: Number(n.value),
-      ...(n.span === undefined ? {} : { from: n.span }),
-      fields: n.fields,
-      cases: n.cases,
-      tiedByFieldWord: n.bound,
-    })),
-    cases: cases
-      .map((id) => ({
-        id,
-        at: request.search(
-          new RegExp(
-            `(?<!\\d)${digits(id).slice(0, 2)}\\s?${digits(id).slice(2)}(?!\\d)`,
-          ),
-        ),
-      }))
-      .filter((c) => c.at >= 0)
-      .sort((a, b) => a.at - b.at)
-      .map((c) => c.id),
-    technicians: workspace.technicians.flatMap((t) => {
-      const found = mention(t.name.split(" "));
-      return found.length
-        ? [{ mention: found.join(" "), id: t.id, name: t.name }]
-        : [];
-    }),
-    customers: workspace.customers.flatMap((c) => {
-      const words = c.name
-        .split(/[\s&]+/)
-        .filter((w) => w.length >= 4 && !/^(gmbh|partner)$/i.test(w));
-      const found = mention(words);
-      return found.length
-        ? [{ mention: found.join(" "), id: c.id, name: c.name }]
-        : [];
-    }),
-    pageWordsInOrder: pageCues
-      .flatMap(([page, cue]) =>
-        [...request.matchAll(cue)].map((m) => ({ page, at: m.index })),
-      )
-      .sort((a, b) => a.at - b.at)
-      .map((m) => m.page)
-      .filter((page, i, all) => page !== all[i - 1]),
-  };
-}
 const withHints = (s: State) => {
   const { originalRequest, ...rest } = s;
   return {
     ...("snapshotId" in rest ? { snapshotId: rest["snapshotId"] } : {}),
     originalRequest,
-    requestHints: requestHints(String(originalRequest)),
+    requestHints: requestHints(String(originalRequest), workspace),
     ...omit(rest, "snapshotId"),
   };
 };
@@ -350,7 +271,7 @@ const minimal = (s: State): State => {
   const f = facts(s);
   return {
     originalRequest: s["originalRequest"],
-    requestHints: requestHints(String(s["originalRequest"])),
+    requestHints: requestHints(String(s["originalRequest"]), workspace),
     explicitAnswers: s["explicitAnswers"],
     currentPage: f["currentPage"],
     filters: f["filters"],
@@ -420,4 +341,45 @@ export const variants = {
   "f8-shuffle": variant({ question: reorder(shuffled) }),
   "f8-reverse": variant({ question: reorder((ids) => ids.toReversed()) }),
   f9: variant({ decideShape: pipe(minimal)() }),
+  "f4-last": variant({ shape: pipe(requestMovedLast)() }),
+  "c1-dedupe-end": variant({
+    shape: pipe(requestLast)(),
+    decideShape: pipe(noDuplicates, requestLast)(),
+  }),
+  "c2-dedupe-end-instr": variant({
+    shape: pipe(requestLast)(),
+    decideShape: pipe(noDuplicates, requestLast)(),
+    question: requestInInstructions,
+  }),
+  "c3-dedupe-end-hints": variant({
+    shape: pipe(withHints, requestLast)(),
+    decideShape: pipe(withHints, noDuplicates, requestLast)(),
+  }),
+  "c4-squeeze": variant({
+    shape: pipe(noSnapshotId, noViewport, requestLast)(),
+    decideShape: pipe(noSnapshotId, noViewport, noDuplicates, requestLast)(),
+    question: mapOptions((text) => {
+      const { does, now } = optionParts(text);
+      return now ? `${does}. Now: ${now}` : does;
+    }),
+  }),
+  "c6-squeeze-hints": variant({
+    shape: pipe(noSnapshotId, noViewport, withHints, requestLast)(),
+    decideShape: pipe(
+      noSnapshotId,
+      noViewport,
+      withHints,
+      noDuplicates,
+      requestLast,
+    )(),
+    question: mapOptions((text) => {
+      const { does, now } = optionParts(text);
+      return now ? `${does}. Now: ${now}` : does;
+    }),
+  }),
+  "c5-dedupe-end-region": variant({
+    shape: pipe(requestLast)(),
+    decideShape: pipe(noDuplicates, requestLast)(),
+    question: reorder(regionOrder),
+  }),
 } satisfies Record<string, Variant>;
