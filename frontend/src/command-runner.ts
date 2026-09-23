@@ -59,6 +59,8 @@ import {
   assesses,
   completes,
   defaultGate,
+  duelPair,
+  gateKind,
   gatePreferenceKey,
   gateNames,
   gates,
@@ -121,6 +123,18 @@ const historySchema = z.object({
         choice: z.string(),
         via: z.enum(["pick", "completion", "effect"]),
         slot: z.string(),
+      }),
+    )
+    .optional(),
+  /** Each second look between two effects, with its winner and whether it acted. */
+  duels: z
+    .array(
+      z.object({
+        step: z.number(),
+        options: z.tuple([z.string(), z.string()]),
+        choice: z.string(),
+        probability: z.number(),
+        acts: z.boolean(),
       }),
     )
     .optional(),
@@ -917,6 +931,54 @@ export class CommandRunner {
     }));
     return true;
   }
+  /**
+   * A second look between the two strongest effects of a pick that does not
+   * act: the capture to follow when its winner acts, false when there is no
+   * duel or the winner stays below the bar, null once the capture went stale.
+   */
+  private async duel(
+    capture: DecisionCapture,
+  ): Promise<DecisionCapture | false | null> {
+    const { input } = capture;
+    const policy: GatePolicy = gates[this.gate];
+    const options = duelPair(this.gate, capture.pick, capture.decision, input);
+    if (policy.duel === undefined || !options) return false;
+    const decision = await this.ui.api.decide.call(
+      { ...input, duel: options },
+      { signal: this.abort?.signal },
+    );
+    if (!this.resolveCapture(capture)) return null;
+    if (decision.snapshotId !== input.snapshotId)
+      throw new Error("Veraltete Entscheidung.");
+    const [winner, other] = decision.ranked;
+    if (!winner) throw new Error("Unvollständige Entscheidung.");
+    const acts = winner.probability >= policy.duel;
+    this.update((r) => ({
+      ...r,
+      duels: [
+        ...(r.duels ?? []),
+        {
+          step: r.steps.length,
+          options,
+          choice: winner.choice,
+          probability: winner.probability,
+          acts,
+        },
+      ],
+    }));
+    if (!acts) return false;
+    return {
+      ...capture,
+      decision,
+      pick: {
+        choice: winner.choice,
+        kind: gateKind(winner.choice, input),
+        acts: true,
+        total: winner.probability,
+        margin: winner.probability - (other?.probability ?? 0),
+      },
+    };
+  }
   private async checkCompletion(capture: DecisionCapture) {
     const { input } = capture;
     const assessment = await this.ui.api.assess.call(
@@ -991,11 +1053,11 @@ export class CommandRunner {
         signal: this.abort?.signal,
       });
       if (epoch !== this.epoch) return;
-      const capture = this.capture(input, decision);
+      let capture = this.capture(input, decision);
       if (!this.resolveCapture(capture)) return;
       if (decision.snapshotId !== input.snapshotId)
         throw new Error("Veraltete Entscheidung.");
-      const chosen = capture.pick;
+      let chosen = capture.pick;
       const due = this.due(chosen.choice, input);
       if (due) {
         this.raise(due);
@@ -1014,6 +1076,24 @@ export class CommandRunner {
         const agrees = await this.planAgrees(capture, chosen.choice, ["pick"]);
         if (agrees === null) return;
         acts = agrees;
+      }
+      if (!acts) {
+        const won = await this.duel(capture);
+        if (won === null) return;
+        if (won) {
+          capture = won;
+          chosen = won.pick;
+          acts = true;
+          const due = this.due(chosen.choice, input);
+          if (due) {
+            this.raise(due);
+            return;
+          }
+          if (chosen.choice === "done") {
+            await this.checkCompletion(capture);
+            return;
+          }
+        }
       }
       if (acts && chosen.choice.startsWith("ask:")) {
         this.note(chosen.choice, input);
