@@ -167,12 +167,13 @@
           } @else {
           Die Auswahl hat feste Schwellen je Art des Schritts. Die Bestätigungsschwelle von {{ runner.confidencePercent() }} % gilt für Rückfragen und die separate Effektprüfung.
           }</p>
-        <ol class="ranked-choices" aria-label="Jevs zwei wahrscheinlichste Optionen">
-          @for (row of state.capture.decision.ranked; track row.choice) {
-          <li>
+        <ol class="ranked-choices" [attr.aria-label]="state.options.length > state.capture.decision.ranked.length ? 'Jevs zwei wahrscheinlichste Optionen und ein Vorschlag aus dem gelesenen Auftrag' : 'Jevs zwei wahrscheinlichste Optionen'">
+          @for (row of state.options; track row.choice) {
+          <li [attr.data-review-plan]="row.fromPlan ? '' : null">
             <div><strong>{{ runner.describeChoice(row.choice, state.capture).label }}</strong>
               <span>Optionswahrscheinlichkeit {{ (row.probability * 100).toFixed(0) }} %</span></div>
             <p>{{ runner.describeChoice(row.choice, state.capture).effect }}</p>
+            @if (row.fromPlan) { <small>Vorschlag aus dem gelesenen Auftrag</small> }
             @if (row.choice === state.capture.decision.choice) { <small>Von Jev gewählt</small> }
             @if (state.capture.assessments[row.choice]?.verdict === 'forbidden') {
             <p class="blocker">Jev hält diesen Schritt für einen Widerspruch zum Auftrag. Du kannst ihn trotzdem ausführen.</p>

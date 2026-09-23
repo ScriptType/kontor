@@ -399,6 +399,8 @@ test("finishing by hand waits for a receipt of every save", async ({
 test("an uncertain blocked choice opens the review and a ranked navigation proceeds", async ({
   page,
 }) => {
+  // The fixture's plan asks for nothing, so under the default gate done would join as the plan's row.
+  await storeGate(page, "g3-compact");
   await withLive(
     page,
     [],

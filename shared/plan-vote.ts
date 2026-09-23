@@ -196,10 +196,7 @@ function nextVisit(run: RunPlan, world: PlanWorld): Page | undefined {
   return planned[index];
 }
 
-/**
- * The plan slot a choice agrees with, or null. The plan never chooses: it
- * only confirms the one choice the step pick already made.
- */
+/** The plan slot a choice agrees with, or null. */
 export function stepVote(
   run: RunPlan,
   choice: string,
@@ -316,4 +313,30 @@ function changeSlot(
     caseValue(draft, id) !== caseValue(target, id)
     ? `${change}@${caseId}`
     : null;
+}
+
+/**
+ * The option of a decision the plan agrees with that Jev gives the highest
+ * probability: an offered action, done or blocked, never a question or
+ * abstain. Ties keep the offered order; null when the plan agrees with none.
+ */
+export function planOption(
+  run: RunPlan,
+  probabilities: Record<string, number>,
+  input: Pick<DecisionInput, "actions" | "context">,
+  world: PlanWorld,
+): { choice: string; probability: number; slot: string } | null {
+  let best: { choice: string; probability: number; slot: string } | null = null;
+  for (const choice of [
+    ...input.actions.map((action) => action.id),
+    "done",
+    "blocked",
+  ]) {
+    const probability = probabilities[choice];
+    if (probability === undefined || (best && probability <= best.probability))
+      continue;
+    const slot = stepVote(run, choice, input, world);
+    if (slot) best = { choice, probability, slot };
+  }
+  return best;
 }

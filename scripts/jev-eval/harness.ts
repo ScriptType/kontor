@@ -257,6 +257,7 @@ const historySchema = z.object({
         plan: z.unknown().optional(),
         votes: z.unknown().optional(),
         duels: z.unknown().optional(),
+        steers: z.unknown().optional(),
         steps: z.array(
           z.object({
             action: z.object({ id: z.string() }),
@@ -275,6 +276,7 @@ type Run = {
   plan: unknown;
   votes: unknown;
   duels: unknown;
+  steers: unknown;
 };
 const stepAfterSchema = z.object({
   page: pageSchema,
@@ -326,6 +328,11 @@ async function answerReview(
   const offered = await options.evaluateAll((buttons) =>
     buttons.map((button) => button.getAttribute("data-review-option") ?? ""),
   );
+  const [fromPlan] = await page
+    .locator("[data-review-plan] [data-review-option]:visible")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("data-review-option")),
+    );
   const executed = (await storedRun(page))?.steps ?? [];
   const last = executed.at(-1);
   const after = last ? stepAfterSchema.parse(JSON.parse(last.after)) : null;
@@ -346,7 +353,7 @@ async function answerReview(
     prefix: executed.map((step) => step.action.id),
     steps,
   });
-  const shown = `offered ${offered.join(", ") || "nothing"}`;
+  const shown = `offered ${offered.join(", ") || "nothing"}${fromPlan ? ` · plan row ${fromPlan}` : ""}`;
   if (pick.option === null)
     return {
       ...stop,
@@ -468,6 +475,7 @@ export async function readEnd(
     plan: stored?.plan ?? null,
     votes: stored?.votes ?? null,
     duels: stored?.duels ?? null,
+    steers: stored?.steers ?? null,
   };
 }
 

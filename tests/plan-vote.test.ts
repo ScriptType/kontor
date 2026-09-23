@@ -10,6 +10,7 @@ import {
 import { ASK, type Plan } from "../shared/plan.js";
 import {
   planIntent,
+  planOption,
   reached,
   stepVote,
   type PlanWorld,
@@ -327,5 +328,101 @@ test("an open ask leaves only case and ask votes until the run answers it", () =
   assert.equal(
     vote(run, { ...onV1042(), answers }, "technician:lea", "draft"),
     "V-1042.technician=lea",
+  );
+});
+
+const onCases = inputOf(worldOf(), [
+  ["nav:customers", "view"],
+  ["case:V-1041", "view"],
+  ["case:V-1042", "view"],
+]);
+
+test("the plan's option is the one it agrees with that Jev rates highest", () => {
+  assert.deepEqual(
+    planOption(
+      assignLea,
+      { "nav:customers": 0.7, "case:V-1041": 0.2, "case:V-1042": 0.1 },
+      onCases,
+      worldOf(),
+    ),
+    { choice: "case:V-1042", probability: 0.1, slot: "cases=V-1042" },
+  );
+  const both = runOf({
+    cases: { "V-1041": { priority: "high" }, "V-1042": { technician: "lea" } },
+  });
+  assert.equal(
+    planOption(
+      both,
+      { "nav:customers": 0.4, "case:V-1041": 0.3, "case:V-1042": 0.3 },
+      onCases,
+      worldOf(),
+    )?.choice,
+    "case:V-1041",
+    "a tie keeps the offered order",
+  );
+  assert.equal(
+    planOption(
+      both,
+      { "nav:customers": 0.4, "case:V-1041": 0.2, "case:V-1042": 0.4 },
+      onCases,
+      worldOf(),
+    )?.choice,
+    "case:V-1042",
+  );
+});
+
+test("the plan's option is null when the plan agrees with no offered option", () => {
+  assert.equal(
+    planOption(
+      assignLea,
+      { "nav:customers": 0.9, "case:V-1041": 0.1 },
+      inputOf(worldOf(), [
+        ["nav:customers", "view"],
+        ["case:V-1041", "view"],
+      ]),
+      worldOf(),
+    ),
+    null,
+  );
+});
+
+test("the plan's option is done only once reached and offered", () => {
+  const input = inputOf(afterSave(), [["nav:customers", "view"]]);
+  assert.deepEqual(
+    planOption(
+      assignLea,
+      { "nav:customers": 0.8, done: 0.2 },
+      input,
+      afterSave(),
+    ),
+    { choice: "done", probability: 0.2, slot: "done" },
+  );
+  assert.equal(
+    planOption(assignLea, { "nav:customers": 1 }, input, afterSave()),
+    null,
+    "done not offered",
+  );
+  assert.equal(
+    planOption(
+      assignLea,
+      { "nav:customers": 0.8, done: 0.2 },
+      input,
+      afterSave({ receipts: [] }),
+    ),
+    null,
+    "not reached",
+  );
+});
+
+test("the plan's option is never a question or abstain", () => {
+  const minutes = runOf({ cases: { "V-1042": { workedMinutes: ASK } } });
+  assert.equal(
+    planOption(
+      minutes,
+      { "ask:minutes": 0.9, abstain: 0.1 },
+      inputOf(onV1042(), []),
+      onV1042(),
+    ),
+    null,
   );
 });
