@@ -42,6 +42,8 @@ export type GatePolicy = Read & {
   /** Stop loops, repeated page visits and runs over their step budget. */
   guard: boolean;
   completion: "verdict" | "perKind";
+  /** How the full state and the options are written for Jev. */
+  prompt: DecisionInput["prompt"];
 };
 
 // Bars fitted on holdout-1 by the Jev bench (bench/gate-table.json).
@@ -73,6 +75,7 @@ export const gates = {
     memory: "off",
     guard: false,
     completion: "verdict",
+    prompt: "full",
   },
   g1: {
     read: "pmax",
@@ -82,6 +85,7 @@ export const gates = {
     memory: "off",
     guard: false,
     completion: "perKind",
+    prompt: "full",
   },
   "g2-effect": {
     read: "pmax",
@@ -91,6 +95,7 @@ export const gates = {
     memory: "off",
     guard: false,
     completion: "perKind",
+    prompt: "full",
   },
   "g2-exits": {
     read: "pmax",
@@ -100,6 +105,7 @@ export const gates = {
     memory: "off",
     guard: false,
     completion: "perKind",
+    prompt: "full",
   },
   "g2-pool": {
     read: "pooled",
@@ -110,6 +116,7 @@ export const gates = {
     memory: "off",
     guard: false,
     completion: "perKind",
+    prompt: "full",
   },
   g2: {
     read: "pooled",
@@ -120,6 +127,7 @@ export const gates = {
     memory: "off",
     guard: false,
     completion: "perKind",
+    prompt: "full",
   },
   "explore-nomem": {
     read: "pmax",
@@ -129,6 +137,7 @@ export const gates = {
     memory: "off",
     guard: true,
     completion: "perKind",
+    prompt: "full",
   },
   explore: {
     read: "pmax",
@@ -138,6 +147,7 @@ export const gates = {
     memory: "all",
     guard: true,
     completion: "perKind",
+    prompt: "full",
   },
   g3: {
     read: "pooled",
@@ -148,6 +158,29 @@ export const gates = {
     memory: "off",
     guard: true,
     completion: "perKind",
+    prompt: "full",
+  },
+  "g3-focused": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "focused",
+  },
+  "g3-compact": {
+    read: "pooled",
+    margin: 0.1,
+    bars: g3Bars,
+    assessed: ["draft", "commit"],
+    doneBeforeFirstStep: false,
+    memory: "off",
+    guard: true,
+    completion: "perKind",
+    prompt: "compact",
   },
   "g3-mem": {
     read: "pooled",
@@ -158,6 +191,7 @@ export const gates = {
     memory: "decide",
     guard: true,
     completion: "perKind",
+    prompt: "full",
   },
 } as const satisfies Record<string, GatePolicy>;
 export type GateName = keyof typeof gates;

@@ -22,6 +22,7 @@ import {
 } from "../../shared/command";
 import { validFieldValue } from "../../shared/field-values";
 import { changingActions } from "../../shared/dimensions";
+import { requestHints } from "../../shared/request-hints";
 import { guardStop, type GuardStop } from "../../shared/run-guard";
 import { blockers, receiptSchema } from "../../shared/domain";
 import { WorkspaceUi } from "./workspace";
@@ -43,7 +44,12 @@ import {
 export type RunState =
   | {
       kind:
-        "idle" | "deciding" | "executing" | "done" | "stopped" | "reconciling";
+        | "idle"
+        | "deciding"
+        | "executing"
+        | "done"
+        | "stopped"
+        | "reconciling";
     }
   | {
       kind: "paused";
@@ -156,10 +162,12 @@ export class CommandRunner {
   readonly confidenceError = this.confidenceValidation.asReadonly();
   private readonly confidencePersistence = signal(true);
   readonly confidenceStored = this.confidencePersistence.asReadonly();
-  private readonly gate = gatePreferenceSchema.catch({
-    version: 1,
-    gate: "threshold",
-  }).parse(readBrowserState(gatePreferenceKey)).gate;
+  private readonly gate = gatePreferenceSchema
+    .catch({
+      version: 1,
+      gate: "threshold",
+    })
+    .parse(readBrowserState(gatePreferenceKey)).gate;
   readonly historyStored = signal(true);
   readonly history = signal<z.infer<typeof historySchema>[]>([]);
   readonly confirmedReceipts = computed(() => this.run()?.receipts ?? []);
@@ -593,6 +601,10 @@ export class CommandRunner {
       steps: run.steps,
       doneBeforeFirstStep: policy.doneBeforeFirstStep,
       state: leanStates[policy.memory],
+      prompt: policy.prompt,
+      ...(policy.prompt !== "full" && data
+        ? { hints: requestHints(run.request, data) }
+        : {}),
     };
   }
   private capture(input: DecisionInput, decision: Decision): DecisionCapture {
@@ -765,7 +777,9 @@ export class CommandRunner {
         else this.terminalOrQuestion(chosen.choice, capture, input);
         return;
       }
-      const action = input.actions.find((action) => action.id === chosen.choice);
+      const action = input.actions.find(
+        (action) => action.id === chosen.choice,
+      );
       if (!action)
         throw new Error("Entscheidung gehört nicht zum sichtbaren Zustand.");
       let reason = chosen.acts

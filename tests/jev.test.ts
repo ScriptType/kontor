@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
 import { createJev } from "../server/jev.js";
+import { seedWorkspace } from "../shared/domain.js";
 import { fieldValues, validFieldValue } from "../shared/field-values.js";
+import { requestHints } from "../shared/request-hints.js";
 import {
   decisionInputSchema,
   demos,
@@ -12,6 +14,7 @@ import {
 const input: DecisionInput = {
   doneBeforeFirstStep: true,
   state: "full",
+  prompt: "full",
   request: "Zeig Kunden, danach Team",
   context: "{}",
   snapshotId: "fresh",
@@ -614,6 +617,113 @@ test("leanDecide sends the lean state to decide and the full state to both check
   assert(JSON.stringify(effect).includes('"before"'));
   assert(!JSON.stringify(decide).includes('"before"'));
   assert(!JSON.stringify([decide, effect, completion]).includes("leanDecide"));
+});
+test("a focused prompt repeats the request last and leaves the action list to the decide options", async () => {
+  const hints = requestHints(input.request, seedWorkspace());
+  const focusedInput: DecisionInput = {
+    ...blockedInput,
+    prompt: "focused",
+    hints,
+    context: JSON.stringify({
+      currentPage: "customers",
+      blockedControls: ["copy"],
+    }),
+  };
+  const { jev, calls } = causalProvider([
+    { choice: "abstain", confidence: 1 },
+    { choice: "authorized", confidence: 1 },
+    { choice: "complete", confidence: 1 },
+  ]);
+  const [selected] = focusedInput.actions;
+  assert(selected);
+  await jev.decide(focusedInput);
+  await jev.assess({ ...focusedInput, selected });
+  await jev.assess({ ...focusedInput, selected: "done" });
+  const [decide, effect, completion] = calls.map((call) =>
+    z.record(z.string(), z.unknown()).parse(call.state),
+  );
+  assert(decide && effect && completion);
+  assert.deepEqual(Object.keys(decide), [
+    "snapshotId",
+    "originalRequest",
+    "requestHints",
+    "explicitAnswers",
+    "currentFacts",
+    "observedSteps",
+    "availableFields",
+    "blockedControls",
+    "originalRequestAgain",
+  ]);
+  assert.deepEqual(decide["requestHints"], hints);
+  assert.equal(decide["originalRequestAgain"], input.request);
+  assert.deepEqual(decide["currentFacts"], { currentPage: "customers" });
+  assert.equal(Object.keys(effect).at(-1), "originalRequestAgain");
+  assert.equal(Object.keys(effect).at(-2), "selected");
+  assert("availableActions" in effect && "availableActions" in completion);
+  assert.deepEqual(effect["currentFacts"], {
+    currentPage: "customers",
+    blockedControls: ["copy"],
+  });
+  assert.equal(
+    calls[0]?.criteria["nav:customers"],
+    'Go to the customer overview page. View only; changes no case data. UI "Kunden", kind view',
+  );
+});
+test("a compact prompt drops snapshot ids and viewport details and keeps what an option does and its value", async () => {
+  const region = {
+    id: "navigation",
+    kind: "navigation",
+    order: 0,
+    viewport: { visibility: "fully-visible" },
+    actionIds: ["nav:customers"],
+  };
+  const compactInput: DecisionInput = {
+    ...input,
+    prompt: "compact",
+    context: JSON.stringify({ screen: { regions: [region] } }),
+    actions: [
+      {
+        id: "nav:customers",
+        label: "Kunden",
+        effect: "Kunden anzeigen",
+        kind: "view",
+        jev: {
+          does: "Go to the customer overview page",
+          now: "current page is the case list page",
+          notFor: "filtering the case list",
+        },
+      },
+    ],
+    fields: [
+      {
+        id: "minutes",
+        scope: "V-1042",
+        label: "Arbeitszeit",
+        kind: "draft",
+        type: "number",
+        current: "0",
+        jev: { name: "worked minutes", notFor: "the appointment length" },
+      },
+    ],
+  };
+  const { jev, calls } = causalProvider([{ choice: "abstain", confidence: 1 }]);
+  await jev.decide(compactInput);
+  const [call] = calls;
+  assert(call);
+  const state = z.record(z.string(), z.unknown()).parse(call.state);
+  assert(!("snapshotId" in state));
+  assert.deepEqual(state["currentFacts"], {
+    screen: {
+      regions: [
+        { id: "navigation", kind: "navigation", actionIds: ["nav:customers"] },
+      ],
+    },
+  });
+  assert.equal(
+    call.criteria["nav:customers"],
+    "Go to the customer overview page. Now: current page is the case list page",
+  );
+  assert(!call.criteria["ask:minutes"]?.includes("Not for"));
 });
 test("the demo fixture abstains instead of choosing an unoffered blocked", async () => {
   const demo = createJev({ mode: "demo" });

@@ -96,19 +96,23 @@ export function createJev(config: Config, fetch?: Fetch) {
       input: DecisionInput,
       signal?: AbortSignal,
     ): Promise<Decision> {
+      // A compact prompt keeps what an option does and its current value.
+      const compact = input.prompt === "compact";
       const options = Object.fromEntries(
         input.actions
           .filter((a) => !a.id.startsWith("blocked:"))
           .map((a) => [
             a.id,
-            `${jevText(a)}. UI "${a.label}", kind ${a.kind}`,
+            compact
+              ? renderJev({ does: a.jev.does, now: a.jev.now })
+              : `${jevText(a)}. UI "${a.label}", kind ${a.kind}`,
           ]),
       );
       for (const field of input.fields)
         options[`ask:${field.id}`] = renderJev({
           does: `Ask the user for a missing value of ${jevFieldName(field)}, only if the request and previous answers do not supply it`,
           now: `UI "${field.label}", current value ${field.current === "" ? "empty" : field.current}`,
-          notFor: field.jev.notFor,
+          notFor: compact ? undefined : field.jev.notFor,
         });
       if (input.doneBeforeFirstStep || input.steps.length > 0)
         options["done"] =
@@ -299,11 +303,19 @@ function modelState(
       ...selected,
     };
   }
+  // A focused prompt repeats the request last and leaves the action list and
+  // the second copy of blocked controls to the decide options.
+  const focused = input.prompt !== "full";
+  const compact = input.prompt === "compact";
+  const deciding = input.selected === undefined;
+  const shownFacts = compact ? withoutViewport(facts) : facts;
+  const { blockedControls: _blocked, ...factsOnce } = shownFacts;
   return {
-    snapshotId: input.snapshotId,
+    ...(compact ? {} : { snapshotId: input.snapshotId }),
     originalRequest: input.request,
+    ...(focused && input.hints ? { requestHints: input.hints } : {}),
     explicitAnswers: input.answers,
-    currentFacts: facts,
+    currentFacts: focused && deciding ? factsOnce : shownFacts,
     observedSteps: input.steps.map((step) => ({
       action: jevAction(step.action),
       authorizedBy: step.authorizedBy,
@@ -311,10 +323,35 @@ function modelState(
       before: JSON.parse(step.before),
       after: JSON.parse(step.after),
     })),
-    availableActions: input.actions.map(jevAction),
+    ...(focused && deciding
+      ? {}
+      : { availableActions: input.actions.map(jevAction) }),
     availableFields: input.fields.map(({ jev: _, ...field }) => field),
     blockedControls: input.blockedControls.map(jevBlockedControl),
     ...selected,
+    ...(focused ? { originalRequestAgain: input.request } : {}),
+  };
+}
+
+/** Screen regions without their viewport position and order. */
+function withoutViewport(facts: Record<string, unknown>) {
+  const screen = facts["screen"];
+  if (
+    typeof screen !== "object" ||
+    screen === null ||
+    !("regions" in screen) ||
+    !Array.isArray(screen.regions)
+  )
+    return facts;
+  return {
+    ...facts,
+    screen: {
+      ...screen,
+      regions: screen.regions.map((region: Record<string, unknown>) => {
+        const { viewport: _viewport, order: _order, ...rest } = region;
+        return rest;
+      }),
+    },
   };
 }
 

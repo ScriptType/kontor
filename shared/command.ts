@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { blockerSchema } from "./domain.js";
 import { valueSourceSchema } from "./field-values.js";
+import { requestHintsSchema } from "./request-hints.js";
 export const jevTextSchema = z.object({
   does: z.string().min(1),
   now: z.string().optional(),
@@ -61,6 +62,14 @@ export const decisionInputSchema = z.object({
    * leanDecide does so for decide only and keeps the full state for assess.
    */
   state: z.enum(["full", "lean", "leanDecide"]).default("full"),
+  /**
+   * Gate setting: focused drops the duplicate action list from decide, adds
+   * request hints and repeats the request at the end of the state; compact
+   * also drops snapshot ids and viewport details and shortens option texts.
+   */
+  prompt: z.enum(["full", "focused", "compact"]).default("full"),
+  /** Filled by the runner for a focused or compact prompt. */
+  hints: requestHintsSchema.optional(),
 });
 export const decisionSchema = z.object({
   snapshotId: z.string(),
