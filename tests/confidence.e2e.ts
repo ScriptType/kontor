@@ -298,7 +298,7 @@ for (const verdict of ["additional", "unclear", "forbidden"]) {
           );
           await expect(
             page.locator(".ranked-choices button").first(),
-          ).toBeDisabled();
+          ).toHaveAccessibleName(/^Trotzdem ausführen: /);
         } else
           await expect(
             page.locator(".ranked-choices button").first(),

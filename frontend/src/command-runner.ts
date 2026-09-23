@@ -486,7 +486,6 @@ export class CommandRunner {
     const state = this.state();
     if (
       state.kind !== "review" ||
-      state.capture.assessments[choice]?.verdict === "forbidden" ||
       !state.capture.decision.ranked.some((row) => row.choice === choice)
     )
       return;
@@ -521,7 +520,8 @@ export class CommandRunner {
       if (this.terminalOrQuestion(choice, capture, input)) return;
       const action = input.actions.find((action) => action.id === choice);
       if (!action) throw new Error("Schritt ist nicht mehr verfügbar.");
-      let assessment = capture.assessments[action.id];
+      const warned = capture.assessments[action.id];
+      let assessment = warned;
       if (!assessment) {
         assessment = await this.ui.api.assess.call(
           { ...input, selected: action },
@@ -532,12 +532,15 @@ export class CommandRunner {
           throw new Error("Veraltete Schrittprüfung.");
       }
       if (assessment.verdict === "forbidden") {
-        this.review(
-          capture,
-          `Schritt widerspricht dem Auftrag: ${action.effect}`,
-          "forbidden",
-          { choice: action.id, assessment },
-        );
+        // The review showed the warning with this verdict, so the click is the user's decision.
+        if (warned) await this.performReviewed(capture, input, action);
+        else
+          this.review(
+            capture,
+            `Schritt widerspricht dem Auftrag: ${action.effect}`,
+            "forbidden",
+            { choice: action.id, assessment },
+          );
         return;
       }
       if (
