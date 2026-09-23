@@ -47,6 +47,7 @@ import {
 import {
   blockers,
   draftOf,
+  editableSchema,
   pageSchema,
   receiptSchema,
 } from "../../shared/domain";
@@ -129,6 +130,11 @@ const historySchema = z.object({
   ordinals: z.array(listOrdinalSchema).default([]),
   steps: z.array(stepSchema),
   createdAt: z.string(),
+  /**
+   * The saved case records when the run started. "Noch 25 dazu" adds to these;
+   * after Jev saves the sum, the live record would add the 25 a second time.
+   */
+  records: z.record(z.string(), editableSchema).optional(),
   outcome: z.string(),
   /** The plan read at run start under a plan-voting gate, recorded for measurement. */
   plan: z.union([planSchema, z.object({ failed: z.string() })]).optional(),
@@ -439,6 +445,9 @@ export class CommandRunner {
           ordinals: [],
           steps: [],
           createdAt: new Date().toISOString(),
+          records: Object.fromEntries(
+            (this.ui.data()?.cases ?? []).map((c) => [c.id, draftOf(c)]),
+          ),
           outcome: "In Arbeit",
         },
         ...h,
@@ -689,7 +698,13 @@ export class CommandRunner {
     const blockedControls = this.registry.blockedSnapshot();
     const policy: GatePolicy = gates[this.gate];
     const context = this.facts(blockedControls);
-    const actions = this.registry.snapshot(run.request, run.answers, existing);
+    const actions = this.registry.snapshot(
+      run.request,
+      run.answers,
+      existing,
+      run.records ??
+        Object.fromEntries((data?.cases ?? []).map((c) => [c.id, draftOf(c)])),
+    );
     const changing =
       policy.memory === "off" ? actions : changingActions({ actions, context });
     const shown = withheld(

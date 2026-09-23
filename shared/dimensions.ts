@@ -343,12 +343,37 @@ export function dimensionOptions(
         context.request,
         context.answers ?? [],
         existingValues(workspace),
+        savedMinutes(
+          field,
+          workspace.cases.find((c) => c.id === context.caseId),
+        ),
       ).map(({ value, ...found }) => ({
         value,
         label: describeSource(found, value, "de"),
       }))
     : [];
   return [...literals, ...unset];
+}
+/** The minutes a field that reads minutes holds on the case's saved record, if it holds any. */
+export function savedMinutes(
+  field: FieldDescription,
+  record: CaseDraft | undefined,
+): number | undefined {
+  const entry = dimensions.find(
+    (d) =>
+      d.kind === "value" &&
+      "reading" in d &&
+      d.reading === "minutes" &&
+      d.controls.field === field.id,
+  );
+  if (!record || entry?.kind !== "value" || entry.source.schema !== "editable")
+    return undefined;
+  const { source } = entry;
+  const value =
+    source.field === "appointment"
+      ? record.appointment?.[source.key]
+      : record[source.field];
+  return typeof value === "number" ? value : undefined;
 }
 function existingValues(workspace: Workspace) {
   return [

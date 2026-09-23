@@ -10,6 +10,8 @@ export const valueSourceSchema = z.enum([
   "existing",
   "hours",
   "word",
+  "sum",
+  "difference",
 ]);
 export type ValueSource = z.infer<typeof valueSourceSchema>;
 export const valueSources = {
@@ -41,11 +43,15 @@ export const valueSources = {
     de: "Zahlwort aus Auftrag, als Minuten gelesen",
     en: "number word from the request read as minutes",
   },
+  sum: { de: "Summe", en: "sum" },
+  difference: { de: "Differenz", en: "difference" },
 } as const satisfies Record<ValueSource, { de: string; en: string }>;
 const requestSources: ReadonlySet<ValueSource> = new Set([
   "number",
   "hours",
   "word",
+  "sum",
+  "difference",
   "dateTime",
 ]);
 
@@ -247,31 +253,78 @@ export function requestNumbers(
     .sort((a, b) => a.at - b.at)
     .map(({ at: _, ...number }) => number);
 }
-/** Where a candidate comes from, with the converted hour phrase when there is one. */
+/** Where a candidate comes from: the source, a converted hour phrase or number word, or the arithmetic on the saved value. */
 export function describeSource(
-  found: { source: ValueSource; span?: string },
+  found: { source: ValueSource; span?: string; saved?: number },
   value: string,
   language: "de" | "en",
 ) {
   const text = valueSources[found.source][language];
+  if (found.saved !== undefined) {
+    const amount = Math.abs(Number(value) - found.saved);
+    const plus = found.source === "sum";
+    return language === "de"
+      ? `${text}: gespeicherte ${found.saved} ${plus ? "+" : "−"} ${found.span === undefined ? amount : `„${found.span}“ (${amount})`} aus dem Auftrag = ${value}`
+      : `${text}: saved ${found.saved} ${plus ? "plus" : "minus"} ${found.span === undefined ? amount : `"${found.span}" (${amount})`} from the request = ${value}`;
+  }
   if (found.span === undefined) return text;
   return language === "de"
     ? `${text}: „${found.span}“ = ${value} Minuten`
     : `${text}: "${found.span}" = ${value} min`;
 }
+/** The request numbers that belong to this number field on its case. */
+export function fieldNumbers(
+  field: FieldDescription,
+  request: string,
+  existing: string[],
+) {
+  return requestNumbers(request, existing).filter(
+    ({ fields, cases }) =>
+      fields.includes(field.id) &&
+      (!cases.length || cases.includes(field.scope)),
+  );
+}
+/**
+ * The saved minutes plus and minus each number, for a request that adds to or
+ * takes from a saved value ("noch 25 dazu", "20 zu viel"). Code offers both;
+ * Jev reads which one the request means.
+ */
+export function savedArithmetic(saved: number, numbers: RequestNumber[]) {
+  return numbers.flatMap(({ value, span }) =>
+    (
+      [
+        ["sum", saved + Number(value)],
+        ["difference", saved - Number(value)],
+      ] as const
+    ).map(([source, result]) => ({
+      value: String(result),
+      source,
+      saved,
+      ...(span === undefined ? {} : { span }),
+    })),
+  );
+}
 /**
  * Value candidates for one field. A candidate is bound when the request ties it
  * to this field alone (a field word, or the field type for a date and time) and
  * it is the only request value offered to this field on this case. A
- * correction or a sequence offers two values, so neither is bound.
+ * correction or a sequence offers two values, so neither is bound. With the
+ * field's saved minutes, the sums and differences count as request values too,
+ * so the number they come from is not bound.
  */
 export function fieldValues(
   field: FieldDescription,
   request: string,
   answers: DecisionInput["answers"],
   existing: string[],
+  saved?: number,
 ) {
-  type Found = { source: ValueSource; span?: string; bound: boolean };
+  type Found = {
+    source: ValueSource;
+    span?: string;
+    saved?: number;
+    bound: boolean;
+  };
   const values = new Map<string, Found>();
   const add = (
     value: string,
@@ -291,15 +344,13 @@ export function fieldValues(
     if (answer.fieldId === field.id && answer.scope === field.scope)
       add(answer.value, "answer", false);
   if (field.type === "number") {
-    for (const { value, fields, cases, span, bound, source } of requestNumbers(
-      request,
-      existing,
-    ))
-      if (
-        fields.includes(field.id) &&
-        (!cases.length || cases.includes(field.scope))
-      )
-        add(value, source, bound, span);
+    const numbers = fieldNumbers(field, request, existing);
+    for (const { value, span, bound, source } of numbers)
+      add(value, source, bound, span);
+    if (saved !== undefined)
+      for (const { value, ...found } of savedArithmetic(saved, numbers))
+        if (!values.has(value) && validFieldValue(field, value))
+          values.set(value, { ...found, bound: false });
   } else if (field.type === "datetime-local") {
     for (const match of request.matchAll(
       /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
