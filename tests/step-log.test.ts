@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ActionDescription } from "../shared/command.js";
-import { observedChanges, stepLog, visitedNote } from "../shared/step-log.js";
+import {
+  observedChanges,
+  pagesShown,
+  stepLog,
+  visitedNote,
+} from "../shared/step-log.js";
 
 const observed = (state: Record<string, unknown> = {}) =>
   JSON.stringify({
@@ -165,4 +170,23 @@ test("a visit is marked only when it changed nothing until the step that left, a
     step("nav:team", {}, { page: "team" }),
   ]);
   assert.equal(draftStep[0]?.note, undefined);
+});
+
+test("pages shown list the start page, then each page a step landed on, once per stay", () => {
+  assert.deepEqual(pagesShown([], "customers"), ["customers"]);
+  const move = (from: string, to: string) =>
+    step(`nav:${to}`, { page: from }, { page: to });
+  assert.deepEqual(
+    pagesShown(
+      [
+        move("customers", "reports"),
+        step("menu:customer", { page: "reports" }, { page: "reports" }),
+        move("reports", "cases"),
+        step("case:V-1041", { page: "cases" }, { caseId: "V-1041" }),
+        move("cases", "reports"),
+      ],
+      "reports",
+    ),
+    ["customers", "reports", "cases", "reports"],
+  );
 });

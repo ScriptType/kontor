@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { jevText, type DecisionInput } from "./command.js";
 
 type Step = DecisionInput["steps"][number];
@@ -71,4 +72,21 @@ export function stepLog(steps: Step[]) {
       ...(visited ? { note: visitedNote } : {}),
     };
   });
+}
+
+const pageOf = (observed: string) =>
+  z.object({ page: z.string() }).parse(JSON.parse(observed)).page;
+/**
+ * The pages a run has shown in order: the page it started on, then each page
+ * a step landed on, with a page shown twice in a row listed once.
+ */
+export function pagesShown(
+  steps: Pick<Step, "before" | "after">[],
+  currentPage: string,
+) {
+  const [first] = steps;
+  const pages = first
+    ? [pageOf(first.before), ...steps.map((step) => pageOf(step.after))]
+    : [currentPage];
+  return pages.filter((page, index) => page !== pages[index - 1]);
 }
