@@ -237,6 +237,13 @@ const hourChoices: [string, string[]][] = [
   ["um 0 Uhr oder um 24", ["0", "24", "none"]],
   ["eine halbe Stunde vor vierundzwanzig", ["1", "24", "none"]],
   ["1039 um 25 Uhr", ["none"]],
+  ["Termin 9 uhr", ["9", "none"]],
+  ["Termin 29.09.", ["none"]],
+  ["Termin 24.9.", ["none"]],
+  ["am 24.9. um 14 uhr", ["14", "none"]],
+  ["am 24.09.2026 um 9", ["9", "none"]],
+  ["termin 29.09. 10 uhr nee 11, 45 min", ["10", "11", "none"]],
+  ["termin 2026-09-25 10:00", ["10", "none"]],
 ];
 test("the hour is one the request writes, in digits or words, or none", () => {
   for (const [request, hours] of hourChoices)
