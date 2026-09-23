@@ -12,9 +12,9 @@ const valueOf = (text: string, words: Map<string, number>) =>
   /^\d+$/.test(text) ? Number(text) : words.get(text.toLowerCase());
 /** Where a text stands in the request. */
 type Span = { at: number; end: number };
-// "24.09.", "24.9.2026", "2026-09-25".
+// "24.09.", "24.9.2026", "2026-09-25". After "um" or "gegen", "9.10." is 9:10.
 const writtenDate =
-  /(?<![\p{N}.])(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.(?:\d{4}|\d{2}(?!\p{N}))?|\d{4}-\d{2}-\d{2}/gu;
+  /(?<![\p{N}.]|(?<!\p{L})(?:um|gegen)\s+)(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.(?:\d{4}|\d{2}(?!\p{N}))?|\d{4}-\d{2}-\d{2}/giu;
 const dates = (request: string): Span[] =>
   [...request.matchAll(writtenDate)].map((m) => ({
     at: m.index,
@@ -64,11 +64,13 @@ const digitTime = new RegExp(
   String.raw`(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?!\.?\p{N}))?(?!\p{N}|[.,:]\p{N}|${durationUnit})`,
   "giu",
 );
-// "neun" in "von neun bis elf". "ein" and "eine" are articles more often.
+// "neun" in "von neun bis elf", before "Uhr", a range separator or a
+// punctuation mark; "zwei" in "zwei bis drei Leuten" counts people. "ein" and
+// "eine" are articles more often.
 const bareHourWord = new RegExp(
   String.raw`(?<![\p{L}\p{N}])(${[...hourWords.keys()]
     .filter((word) => word !== "ein" && word !== "eine")
-    .join("|")})(?![\p{L}\p{N}]|${durationUnit})`,
+    .join("|")})(?=\s*(?:(?:uhr|bis)(?!\p{L})|[-–.,;:!?)]|$))`,
   "giu",
 );
 const minuteWordPattern = [...minuteWords.keys()]
