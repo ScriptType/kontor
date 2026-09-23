@@ -35,12 +35,20 @@ Der Befehl liest die Läufe `rec-h1-g3` und `rec-h2-g3` (`--runs` ändert das) u
 | `calls.json` | Jeder Entscheidungs- und Prüfaufruf mit Tokenverbrauch und der Größe jedes Zustandsteils, auch abseits des Pfads. |
 | `assess-questions.json` | Die beiden Prüffragen (Wirkung und Abschluss) wörtlich aus den Aufnahmen. |
 
-Ob ein Feldwert an den Auftrag gebunden ist, sendet die App nicht an Jev. Der Befehl berechnet es mit `fieldValues` aus `shared/field-values.ts` neu, mit den Vorgängen und Kunden des Startzustands. Danach prüft er an jeder aufgenommenen Entscheidung vier Dinge und gibt die Abweichungen aus:
+Ob ein Feldwert an den Auftrag gebunden ist, sendet die App nicht an Jev. Der Befehl berechnet es mit `fieldCandidates` aus `scripts/jev-format/bench.ts` neu. Die Funktion ruft `fieldValues` aus `shared/field-values.ts` mit den Vorgängen und Kunden des Startzustands auf. Hat der Lauf eine Summe oder Differenz gesendet, rechnet sie wie die App mit den gespeicherten Minuten des Startzustands. Aufnahmen aus der Zeit vor den Summen bindet sie ohne gespeicherten Wert. Danach prüft er an jeder aufgenommenen Entscheidung vier Dinge und gibt die Abweichungen aus:
 
 - Der neu serialisierte Zustand gleicht dem gesendeten Text.
 - Der gebaute Prüfzustand gleicht dem gesendeten Prüfzustand.
 - Nach genau den Entscheidungen, nach denen die Bank eine Prüfung erwartet, folgt in der Aufnahme eine Prüfung.
 - Genau die Aktionen, die die Bank ausführen würde, hat der Lauf ausgeführt.
+
+Vor einer Bank auf neuen Aufnahmen prüft `scripts/jev-format/candidates.ts`, ob die Neuberechnung jede gesendete Feldoption samt Wertquelle trifft:
+
+```sh
+node --import tsx scripts/jev-format/candidates.ts --runs <Lauf,…>
+```
+
+Der Befehl zählt je Wertquelle die gesendeten, die fehlenden und die abweichenden Optionen und endet mit Code 1, sobald eine abweicht. Aufrufe ohne Antwort überspringt er. Auf den Aufnahmen der Runde 4 weicht keine der 289 Feldoptionen ab. Auf allen Läufen der Runde 6 weichen 77 von 84306 ab. Diese 77 sind Zahlwörter, die Kontrollarme mit einem Stand vor dem Lesen von Zahlwörtern als Antwort der Person sendeten. Art und Bindung der Option ändert das nicht.
 
 ### Aufnahmen mit kompaktem Zustand
 
@@ -108,4 +116,6 @@ Die Grundlinie mittelt alle Stichproben von `identity` und die aufgenommenen Ant
 - Die Beschriftung kennt einen richtigen Weg. Öffnet Jev einen Vorgang vor einer Navigation, die der menschliche Pfad zuerst macht, zählt das als falsch, auch wenn der Lauf danach richtig endet.
 - Eine Variante sieht nur den aufgenommenen Zustand. Folgen für spätere Schritte, etwa ein kürzerer Verlauf, zeigt erst ein ganzer Lauf.
 - Die Nachfrage nach der Ursache einer Blockade (`cause`) stellt die Bank nicht.
-- `extract.ts` berechnet die Feldkandidaten ohne gespeicherten Wert neu. Aufnahmen mit Summen, Differenzen oder Zeitspannen als Kandidaten (seit Runde 6) weichen deshalb vom gesendeten Text ab. Vor einer Bank auf solchen Aufnahmen muss `extract.ts` den gespeicherten Stand des Laufs übernehmen.
+- `extract.ts` liest nur Entscheidungen mit vollem Verlauf. Unter `g4-lean` und `g4-lean-e1` fehlt bisherigen Schritten `before`, und der Befehl bricht ab. Alle Eval-Läufe der Runde 6 mit Summen und Differenzen liefen unter einer dieser beiden Regeln. Vor einer Bank auf ihnen müssen `fullStateSchema` und die Größenzählung in `extract.ts` den schlanken Verlauf lesen.
+- Ein aufgenommener Aufruf ohne Antwort des Anbieters (`answers: null`, etwa nach 503) bricht `extract.ts` ab. In Runde 6 liegen solche Aufrufe in `k1clock-*`, `k1rows-*`, `f3arith-d6`, `k2clock-d6` und `s1lean-h2`.
+- Beide Abbrüche gelten auch für Läufe in einem Ordner unter `--catalog`. Der Befehl für Runde 6 oben bricht deshalb inzwischen mit `<lab>/round6` ab. `--catalog <lab>/round4/format` läuft.
