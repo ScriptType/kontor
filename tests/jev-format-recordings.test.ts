@@ -8,6 +8,7 @@ import {
   type BenchState,
   type FullState,
 } from "../scripts/jev-format/bench.js";
+import { createCatalog } from "../scripts/jev-format/catalog.js";
 
 const observation = (page: string) => ({
   page,
@@ -117,5 +118,133 @@ test("a call the provider never answered is skipped, not read as a decision", ()
       unanswered: false,
       payload: { request, answers, usage: null },
     },
+  );
+});
+
+test("the catalog rebuilds a field value and a picker case no recording offered", () => {
+  const minutes = (scope: string, current: string) => ({
+    id: "minutes",
+    scope,
+    label: `${scope} · Arbeitszeit in Minuten`,
+    kind: "draft" as const,
+    type: "number" as const,
+    current,
+    min: 0,
+    max: 10000,
+  });
+  const setMinutes = (scope: string, value: number) =>
+    `Set worked minutes (time actually spent on the case, Arbeitszeit) of case ${scope} to ${value}. Now: current value 0 → ${value}. Value source: literal number from the request`;
+  const openCase = (id: string, title: string) =>
+    `Open case ${id} "${title}" in the detail view; works even when the list filter hides it; does not change filters. Now: the case list filters hide it; status open, assignee Jonas Weber, worked 0 min, appointment none, priority Hoch`;
+  const minutesTail =
+    ". Changes only the unsaved draft; nothing is saved until save. Not for: the planned length of an appointment (that is the appointment duration field)";
+  const openTail =
+    ". Goes to the case list page and shows its editor; the list filters stay as they are; view only; changes no case data. Not for: filtering the case list to this case";
+  const state = (
+    observedSteps: unknown[],
+    availableFields: unknown[],
+    selected?: string,
+  ) =>
+    JSON.stringify({
+      originalRequest: "Trag 45 Minuten ein.",
+      explicitAnswers: [],
+      currentFacts: {
+        currentPage: "cases",
+        ...(selected ? { selected: { id: selected } } : {}),
+      },
+      observedSteps,
+      availableFields,
+      blockedControls: [],
+    });
+  const call = (
+    question: "next" | "assessment",
+    sent: string,
+    criteria: Record<string, string>,
+  ) => ({
+    question,
+    payload: {
+      request: {
+        state: sent,
+        questions: {
+          [question]: { type: "choice", instructions: "Choose", criteria },
+        },
+        model: "jev",
+      },
+      answers: {},
+      usage: null,
+    },
+  });
+  const firstOptions = {
+    "field:minutes:45": setMinutes("V-1041", 45),
+    "open-case:V-1041": openCase("V-1041", "Zugang für Einkauf einrichten"),
+  };
+  const catalog = createCatalog();
+  catalog.learn(
+    callLogEntrySchema.array().parse([
+      call("next", state([], [minutes("V-1041", "0")]), firstOptions),
+      call(
+        "assessment",
+        JSON.stringify({
+          availableActions: [
+            {
+              id: "field:minutes:45",
+              label: "V-1041 · Arbeitszeit in Minuten auf 45 setzen",
+              effect: setMinutes("V-1041", 45) + minutesTail,
+              kind: "draft",
+            },
+          ],
+        }),
+        { authorized: "The step is authorized" },
+      ),
+      call(
+        "next",
+        state(
+          [
+            {
+              action: {
+                id: "open-case:V-1041",
+                label: "V-1041 öffnen",
+                effect: firstOptions["open-case:V-1041"] + openTail,
+                kind: "view",
+              },
+              authorizedBy: "request",
+              outcome: "changed",
+              before: observation("cases"),
+              after: observation("cases"),
+            },
+          ],
+          [minutes("V-1041", "0")],
+          "V-1041",
+        ),
+        { done: "Done" },
+      ),
+    ]),
+  );
+  const options = {
+    "field:minutes:34": setMinutes("V-1042", 34),
+    "open-case:V-1039": openCase("V-1039", "Wartung Standort Süd"),
+    done: "Done",
+  };
+  assert.deepEqual(
+    catalog.rebuild(
+      fullStateSchema.parse(
+        JSON.parse(state([], [minutes("V-1042", "0")], "V-1042")),
+      ),
+      options,
+    ),
+    [
+      {
+        id: "field:minutes:34",
+        label: "V-1042 · Arbeitszeit in Minuten auf 34 setzen",
+        effect: options["field:minutes:34"] + minutesTail,
+        kind: "draft",
+      },
+      {
+        id: "open-case:V-1039",
+        label: "V-1039 öffnen",
+        effect: options["open-case:V-1039"] + openTail,
+        kind: "view",
+      },
+    ],
   );
 });
