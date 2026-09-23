@@ -88,6 +88,136 @@ for (const [request, scope, saved, expected] of [
     );
   });
 
+/** Each candidate after the run saved the field's minutes, oldest save first. */
+const afterSaves = (
+  scope: string,
+  request: string,
+  saved: number,
+  saves: number[],
+) =>
+  fieldValues(number("minutes", scope), request, [], ids, saved, saves).map(
+    (v) => [v.value, v.source, v.bound],
+  );
+
+for (const [why, request, scope, saved, saves, expected] of [
+  [
+    "the next sum builds on the value the run saved",
+    "1041 auf 20 speichern, dann noch 15 dazu",
+    "V-1041",
+    45,
+    [20],
+    [
+      ["20", "number", false],
+      ["15", "number", false],
+      ["35", "sum", false],
+      ["5", "difference", false],
+    ],
+  ],
+  [
+    "a saved sum spends its number",
+    "1041 auf 20 speichern, dann noch 15 dazu",
+    "V-1041",
+    45,
+    [20, 35],
+    [
+      ["20", "number", false],
+      ["15", "number", false],
+    ],
+  ],
+  [
+    "a saved sum is not added again",
+    "1041 noch 15 dazu",
+    "V-1041",
+    45,
+    [60],
+    [["15", "number", false]],
+  ],
+  [
+    "a spent number stays unbound",
+    "1041 arbeitszeit noch 15 dazu",
+    "V-1041",
+    45,
+    [60],
+    [["15", "number", false]],
+  ],
+  [
+    "a saved written value that equals a sum spends the written value",
+    "1041 auf 60 speichern, dann noch 15 dazu",
+    "V-1041",
+    45,
+    [60],
+    [
+      ["60", "number", false],
+      ["15", "number", false],
+      ["75", "sum", false],
+      ["45", "difference", false],
+    ],
+  ],
+  [
+    "each written occurrence is spent once",
+    "1041 noch 15 dazu, speichern, dann nochmal 15 dazu",
+    "V-1041",
+    45,
+    [60],
+    [
+      ["15", "number", false],
+      ["75", "sum", false],
+      ["45", "difference", false],
+    ],
+  ],
+  [
+    "both occurrences spent",
+    "1041 noch 15 dazu, speichern, dann nochmal 15 dazu",
+    "V-1041",
+    45,
+    [60, 75],
+    [["15", "number", false]],
+  ],
+  [
+    "a save that leaves the minutes spends nothing",
+    "1041 noch 15 dazu",
+    "V-1041",
+    45,
+    [45],
+    [
+      ["15", "number", false],
+      ["60", "sum", false],
+      ["30", "difference", false],
+    ],
+  ],
+  [
+    "a saved value from elsewhere moves the base and spends nothing",
+    "1041 noch 15 dazu",
+    "V-1041",
+    45,
+    [50],
+    [
+      ["15", "number", false],
+      ["65", "sum", false],
+      ["35", "difference", false],
+    ],
+  ],
+  [
+    "a saved difference spends its number",
+    "1039 sind 20 min zu viel drin, zieh die bitte ab",
+    "V-1039",
+    110,
+    [90],
+    [["20", "number", false]],
+  ],
+  [
+    "a saved written value spends it",
+    "1041 arbeitszeit auf 45",
+    "V-1041",
+    60,
+    [45],
+    [["45", "number", false]],
+  ],
+] as const)
+  test(`${why}: "${request}" saved ${saved} then ${saves.join(", ")}`, () => {
+    assert.deepEqual(afterSaves(scope, request, saved, [...saves]), expected);
+  });
+
 test("a sum or difference outside the field's range is not offered", () => {
   assert.deepEqual(
     candidates(number("duration", "V-1041"), "termin 30 min länger", 470),
