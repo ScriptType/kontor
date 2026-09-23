@@ -97,3 +97,29 @@ test("quoted and existing text candidates are never bound", () => {
     "V-1042": false,
   });
 });
+test("a number word is a minute candidate; a clock hour and a spoken case id are not", () => {
+  const offered = (field: FieldDescription, request: string) =>
+    fieldValues(field, request, [], ids).map((v) => [v.value, v.source]);
+  assert.deepEqual(
+    offered(
+      number("duration"),
+      "Fau 10 41, der Termin, zwei Stunden is zu lang, mach mal neunzig Minuten draus",
+    ),
+    [
+      ["120", "hours"],
+      ["90", "word"],
+    ],
+  );
+  assert.deepEqual(
+    offered(number("minutes"), "Arbeitszeit fünfundsiebzig, nee warte, achtzig"),
+    [
+      ["75", "word"],
+      ["80", "word"],
+    ],
+  );
+  assert.deepEqual(
+    offered(number("minutes"), "termin um halb elf, bis zwanzig Uhr"),
+    [],
+  );
+  assert.deepEqual(offered(number("minutes"), "vorgang zehn einundvierzig"), []);
+});

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { appointmentSchema } from "./domain.js";
 import type { DecisionInput, FieldDescription } from "./command.js";
+import { spokenNumbers } from "./number-words.js";
 export const valueSourceSchema = z.enum([
   "answer",
   "number",
@@ -8,6 +9,7 @@ export const valueSourceSchema = z.enum([
   "quote",
   "existing",
   "hours",
+  "word",
 ]);
 export type ValueSource = z.infer<typeof valueSourceSchema>;
 export const valueSources = {
@@ -35,10 +37,15 @@ export const valueSources = {
     de: "Stundenangabe aus Auftrag, in Minuten umgerechnet",
     en: "hours from the request converted to minutes",
   },
+  word: {
+    de: "Zahlwort aus Auftrag, als Minuten gelesen",
+    en: "number word from the request read as minutes",
+  },
 } as const satisfies Record<ValueSource, { de: string; en: string }>;
 const requestSources: ReadonlySet<ValueSource> = new Set([
   "number",
   "hours",
+  "word",
   "dateTime",
 ]);
 
@@ -111,6 +118,8 @@ const identifierDigits = (value: string) => /^\p{L}+-(\d+)$/u.exec(value)?.[1];
  */
 export type RequestNumber = {
   value: string;
+  /** A literal, an hour phrase converted to minutes, or a number word. */
+  source: "number" | "hours" | "word";
   /** The hour phrase a converted value came from; absent for a literal. */
   span?: string;
   fields: string[];
@@ -208,17 +217,31 @@ export function requestNumbers(
       {
         at,
         value: match[1] ?? match[0],
+        source: "number" as const,
         ...bind(at, match[0].length),
       },
     ];
   });
+  const words = spokenNumbers(request).filter(
+    ({ at }) =>
+      !covered.some((span) => at >= span.from && at < span.to) &&
+      !notMinutes.test(request.slice(at).replace(/^\p{L}+/u, "")),
+  );
   return [
     ...numbers,
     ...hours.map((h) => ({
       at: h.at,
       value: h.value,
       span: h.span,
+      source: "hours" as const,
       ...bind(h.at, h.end - h.at),
+    })),
+    ...words.map((w) => ({
+      at: w.at,
+      value: String(w.value),
+      span: w.text,
+      source: "word" as const,
+      ...bind(w.at, w.text.length),
     })),
   ]
     .sort((a, b) => a.at - b.at)
@@ -268,7 +291,7 @@ export function fieldValues(
     if (answer.fieldId === field.id && answer.scope === field.scope)
       add(answer.value, "answer", false);
   if (field.type === "number") {
-    for (const { value, fields, cases, span, bound } of requestNumbers(
+    for (const { value, fields, cases, span, bound, source } of requestNumbers(
       request,
       existing,
     ))
@@ -276,7 +299,7 @@ export function fieldValues(
         fields.includes(field.id) &&
         (!cases.length || cases.includes(field.scope))
       )
-        add(value, span === undefined ? "number" : "hours", bound, span);
+        add(value, source, bound, span);
   } else if (field.type === "datetime-local") {
     for (const match of request.matchAll(
       /\b(\d{4}-\d{2}-\d{2})(?:T|\s+(?:um\s+)?)(\d{2}:\d{2})\b/gi,
