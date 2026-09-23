@@ -513,7 +513,6 @@ test("the plan gates are g3-compact apart from the plan vote", () => {
 const g4Changes = [
   ["g4-lean", { history: "slim" }],
   ["g4-e1", { assessed: ["commit"] }],
-  ["g4-e0", { assessed: [] }],
   ["g4-lean-e1", { history: "slim", assessed: ["commit"] }],
 ] as const satisfies readonly (readonly [GateName, Partial<GatePolicy>])[];
 const g4Rows = ["g4", ...g4Changes.map(([gate]) => gate)];
@@ -535,11 +534,11 @@ test("g3-cpe-duel-jump is g3-cpe-duel with the case picker, which only it and th
     ["g3-cpe-duel-jump", ...g4Rows],
   );
 });
-test("the default gate g4 is g3-cpe-duel with norepeat and the case picker", () => {
+test("g4 is g3-cpe-duel with norepeat and the case picker, and g4-lean-e1 is the default", () => {
   const { norepeat, jump, ...rest } = gates.g4;
   assert.deepEqual([norepeat, jump], [true, true]);
   assert.deepEqual(rest, gates["g3-cpe-duel"]);
-  assert.equal(defaultGate, "g4");
+  assert.equal(defaultGate, "g4-lean-e1");
 });
 test("each g4 row is g4 with its one change, and g4 keeps the full history", () => {
   for (const [gate, change] of g4Changes)
@@ -550,13 +549,11 @@ test("each g4 row is g4 with its one change, and g4 keeps the full history", () 
     ["g4-lean", "g4-lean-e1"],
   );
 });
-test("g4-e1 and g4-lean-e1 check the effect of saves only, g4-e0 of nothing", () => {
+test("g4-e1 and g4-lean-e1 check the effect of saves only", () => {
   for (const gate of ["g4-e1", "g4-lean-e1"] as const) {
     assert.equal(assesses(gate, "draft"), false, gate);
     assert.equal(assesses(gate, "commit"), true, gate);
   }
-  assert.equal(assesses("g4-e0", "draft"), false);
-  assert.equal(assesses("g4-e0", "commit"), false);
   assert.equal(assesses("g4", "draft"), true);
   assert.equal(assesses("g4", "commit"), true);
 });

@@ -340,21 +340,6 @@ export const gates = {
     norepeat: true,
     jump: true,
   },
-  "g4-e0": {
-    read: "pooled",
-    margin: 0.1,
-    bars: g3Bars,
-    assessed: [],
-    doneBeforeFirstStep: false,
-    memory: "off",
-    guard: true,
-    completion: "perKind",
-    prompt: "compact",
-    planVote: ["pick", "completion", "effect"],
-    duel: 0.75,
-    norepeat: true,
-    jump: true,
-  },
   "g4-lean-e1": {
     read: "pooled",
     margin: 0.1,
@@ -375,10 +360,10 @@ export const gates = {
 export type GateName = keyof typeof gates;
 export const gateNames = Object.keys(gates) as GateName[];
 /**
- * The app's gate unless the browser stores another: g3-cpe-duel with norepeat
- * and the case picker, the round-6 candidate measured on holdout-1 and -2.
+ * The app's gate unless the browser stores another: g4 with the slim step
+ * history and the effect check on saves only; same decisions at 12 % fewer tokens.
  */
-export const defaultGate: GateName = "g4";
+export const defaultGate: GateName = "g4-lean-e1";
 /** Browser key of the stored gate; v1 values are ignored so browsers move to the default. */
 export const gatePreferenceKey = "kontor-jev-gate-v2";
 
