@@ -8,16 +8,29 @@ const numberWords = (upTo: number) =>
   );
 const hourWords = numberWords(24);
 const minuteWords = numberWords(59);
+/** Where a text stands in the request. */
+type Span = { at: number; end: number };
+// "24.09.", "24.9.2026", "2026-09-25".
+const writtenDate =
+  /(?<![\p{N}.])(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.(?:\d{4}|\d{2}(?!\p{N}))?|\d{4}-\d{2}-\d{2}/gu;
+const dates = (request: string): Span[] =>
+  [...request.matchAll(writtenDate)].map((m) => ({
+    at: m.index,
+    end: m.index + m[0].length,
+  }));
 // Digits after a colon are minutes, not an hour.
 const hourDigits = /(?<![\p{N}:])\d{1,2}(?!\p{N})/gu;
 /**
  * Every hour number the request writes, in digits (0 to 24, also before ":"
- * or ".") or as a number word (1 to 24), ascending. Code offers only these as
- * the hour of a clock time: "halb elf" can only be hour 11.
+ * or ".", but not in a date) or as a number word (1 to 24), ascending. Code
+ * offers only these as the hour of a clock time: "halb elf" can only be hour 11.
  */
 export function writtenHours(request: string): number[] {
+  const inDate = dates(request);
   const hours = [
-    ...[...request.matchAll(hourDigits)].map((m) => Number(m[0])),
+    ...[...request.matchAll(hourDigits)]
+      .filter((m) => !inDate.some((d) => m.index >= d.at && m.index < d.end))
+      .map((m) => Number(m[0])),
     ...[...request.matchAll(/\p{L}+/gu)].map((m) =>
       hourWords.get(m[0].toLowerCase()),
     ),
@@ -64,17 +77,13 @@ export function writtenMinutes(request: string): number[] {
   ].filter((minute): minute is number => minute !== undefined && minute < 60);
   return [...new Set(minutes)].sort((a, b) => a - b);
 }
-const isoDate = /\d{4}-\d{2}-\d{2}/g;
 /** A clock time code reads without doubt, in minutes after midnight. */
-type ClockTime = { at: number; end: number; minutes: number };
+type ClockTime = Span & { minutes: number };
 function clockTimes(request: string): ClockTime[] {
-  const dates = [...request.matchAll(isoDate)].map((m) => ({
-    at: m.index,
-    end: m.index + m[0].length,
-  }));
+  const taken = dates(request);
   const times: ClockTime[] = [];
   const free = (at: number, end: number) =>
-    ![...dates, ...times].some((span) => at < span.end && end > span.at);
+    ![...taken, ...times].some((span) => at < span.end && end > span.at);
   for (const m of request.matchAll(relativeTime)) {
     const hour = Number(m[2]) || hourWords.get(m[2]!.toLowerCase());
     const [back, minutes] =
