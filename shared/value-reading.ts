@@ -69,7 +69,12 @@ function fieldsReadAs(kind: ReadingKind) {
     "reading" in entry &&
     entry.reading === kind &&
     "field" in entry.controls
-      ? [{ id: entry.controls.field, description: entry.description }]
+      ? [
+          {
+            id: entry.controls.field,
+            label: `${entry.spoken}: ${entry.description}`,
+          },
+        ]
       : [],
   );
 }
@@ -87,7 +92,7 @@ export function readingKind(field: FieldDescription): ReadingKind | null {
 }
 
 const newValue = (field: FieldDescription) =>
-  `Gesucht ist der Wert, den das Feld „${field.label}“ von Vorgang ${field.scope} nach dem Auftrag haben soll: ${field.jev.name}.${field.jev.notFor ? ` Nicht gemeint: ${field.jev.notFor}.` : ""} Eine Angabe, die ausdrücklich einem anderen Vorgang oder einem anderen Feld gilt, zählt hier nicht. Korrigiert der Auftrag einen alten, bisherigen oder falschen Wert („60 ist zu lang, mach 45 draus“, „nicht 60 sondern 45“, „45, nee 50“), zählt nur der neue Wert.`;
+  `Jev bearbeitet für diesen Auftrag gerade Vorgang ${field.scope}; der Auftrag muss ihn nicht ausdrücklich nennen. Gesucht ist der Wert, den das Feld „${field.label}“ von Vorgang ${field.scope} nach dem Auftrag haben soll: ${field.jev.name}.${field.jev.notFor ? ` Nicht gemeint: ${field.jev.notFor}.` : ""} Eine Angabe, die ausdrücklich einem anderen Vorgang oder einem anderen Feld gilt, zählt hier nicht. Korrigiert der Auftrag einen alten, bisherigen oder falschen Wert („60 ist zu lang, mach 45 draus“, „nicht 60 sondern 45“, „45, nee 50“), zählt nur der neue Wert.`;
 const lowest = (...picks: PartPick[]) =>
   Math.min(...picks.map((pick) => pick.confidence));
 const pickOf = (picks: Record<string, PartPick>, part: string): PartPick =>
@@ -211,12 +216,12 @@ const minutesReader: Reader = {
         },
       },
       field: {
-        text: `Der Auftrag nennt für Vorgang ${field.scope} eine Dauer oder Zeitangabe. Welches Feld von Vorgang ${field.scope} soll sie nach dem Auftrag setzen?`,
+        text: `Der Auftrag nennt vielleicht einen neuen Wert für „${field.label}“ von Vorgang ${field.scope}. Welchem Feld von Vorgang ${field.scope} gilt die Zeitangabe, die dafür in Frage kommt, nach dem Auftrag wirklich?`,
         options: {
           ...Object.fromEntries(
-            fieldsReadAs("minutes").map((f) => [f.id, f.description]),
+            fieldsReadAs("minutes").map((f) => [f.id, f.label]),
           ),
-          none: "keines davon, oder der Auftrag nennt keine solche Angabe",
+          none: `keinem, der Auftrag nennt für Vorgang ${field.scope} keine solche Zeitangabe`,
         },
       },
       word: {

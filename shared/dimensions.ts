@@ -40,6 +40,8 @@ export type ValueDimension = Wording & {
   unset?: DimensionOption;
   controls: Controls;
   reading?: ReadingKind;
+  /** The German name people use for the field, for questions about the request. */
+  spoken?: string;
 };
 export type FlagDimension = Wording & { kind: "flag"; id: string };
 export type SetDimension = Wording & { kind: "set"; id: string };
@@ -64,6 +66,7 @@ export const dimensions = [
     source: { schema: "editable", field: "minutes" },
     controls: { field: "minutes" },
     reading: "minutes",
+    spoken: "Arbeitszeit",
     question: "How many minutes of work should be recorded for the case?",
     description:
       "Worked minutes: the time the technician spends or needs on the case. Not the length of the appointment slot, and not a case number.",
@@ -76,6 +79,7 @@ export const dimensions = [
     unset: { value: "none", label: "Remove the appointment" },
     controls: { field: "appointment" },
     reading: "dateTime",
+    spoken: "Termin",
     question: "When should the case's appointment start?",
     description:
       "Start date and time of the appointment slot, or removing the appointment.",
@@ -87,6 +91,7 @@ export const dimensions = [
     source: { schema: "editable", field: "appointment", key: "minutes" },
     controls: { field: "duration" },
     reading: "minutes",
+    spoken: "Termindauer",
     question: "How long should the case's appointment slot be, in minutes?",
     description:
       "Appointment duration: the length of the appointment slot. Not the technician's worked minutes.",
