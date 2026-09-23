@@ -33,7 +33,11 @@ import {
   openQuestions,
   withheld,
 } from "../../shared/open-questions";
-import { requestHints } from "../../shared/request-hints";
+import {
+  listOrdinalSchema,
+  requestHints,
+  requestOrdinals,
+} from "../../shared/request-hints";
 import { guardStop, type GuardStop } from "../../shared/run-guard";
 import {
   blockers,
@@ -106,6 +110,8 @@ const historySchema = z.object({
   answers: z.array(answerSchema),
   /** Questions Jev chose to ask; each waits until its case is saved or left. */
   questions: z.array(notedQuestionSchema).default([]),
+  /** The request's list ordinals, each bound to the case Jev opened at that row. */
+  ordinals: z.array(listOrdinalSchema).default([]),
   steps: z.array(stepSchema),
   createdAt: z.string(),
   outcome: z.string(),
@@ -396,6 +402,7 @@ export class CommandRunner {
           receipts: [],
           answers: [],
           questions: [],
+          ordinals: [],
           steps: [],
           createdAt: new Date().toISOString(),
           outcome: "In Arbeit",
@@ -671,7 +678,12 @@ export class CommandRunner {
       state: leanStates[policy.memory],
       prompt: policy.prompt,
       ...(policy.prompt !== "full" && data
-        ? { hints: requestHints(run.request, data) }
+        ? {
+            hints: {
+              ...requestHints(run.request, data),
+              ...(run.ordinals.length ? { listOrdinals: run.ordinals } : {}),
+            },
+          }
         : {}),
     };
   }
@@ -1070,6 +1082,7 @@ export class CommandRunner {
       return false;
     }
     this.state.set({ kind: "executing" });
+    this.bindOrdinals(action, runId);
     this.registry.execute(action);
     await this.ui.pending;
     await this.render();
@@ -1112,6 +1125,39 @@ export class CommandRunner {
       return false;
     }
     return true;
+  }
+  /** Binds each request ordinal naming the row of the case this step opens, so a later shift of the list does not move it. */
+  private bindOrdinals(action: ActionDescription, runId: string | null) {
+    const run = this.history().find((r) => r.id === runId);
+    if (!run || !action.id.startsWith("case:") || this.ui.page() !== "cases")
+      return;
+    const caseId = action.id.slice("case:".length);
+    const rows = this.ui.filtered().map((c) => c.id);
+    const openedAtRow = rows.indexOf(caseId) + 1;
+    const bound = requestOrdinals(run.request).filter(
+      ({ mention, row }) =>
+        openedAtRow > 0 &&
+        (row > 0 ? row : rows.length + 1 + row) === openedAtRow &&
+        !run.ordinals.some((ordinal) => ordinal.mention === mention),
+    );
+    if (!bound.length) return;
+    this.history.update((history) =>
+      history.map((r) =>
+        r.id === runId
+          ? {
+              ...r,
+              ordinals: [
+                ...r.ordinals,
+                ...bound.map(({ mention }) => ({
+                  mention,
+                  caseId,
+                  openedAtRow,
+                })),
+              ],
+            }
+          : r,
+      ),
+    );
   }
   private render() {
     return new Promise<void>((resolve) =>

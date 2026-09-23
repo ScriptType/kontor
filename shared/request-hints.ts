@@ -7,6 +7,13 @@ const mentionSchema = z.object({
   id: z.string(),
   name: z.string(),
 });
+/** A list ordinal of the request bound to the case Jev opened at that row. */
+export const listOrdinalSchema = z.object({
+  mention: z.string(),
+  caseId: z.string(),
+  openedAtRow: z.number(),
+});
+export type ListOrdinal = z.infer<typeof listOrdinalSchema>;
 export const requestHintsSchema = z.object({
   numbers: z.array(
     z.object({
@@ -21,6 +28,7 @@ export const requestHintsSchema = z.object({
   technicians: z.array(mentionSchema),
   customers: z.array(mentionSchema),
   pageWordsInOrder: z.array(z.string()),
+  listOrdinals: z.array(listOrdinalSchema).optional(),
 });
 export type RequestHints = z.infer<typeof requestHintsSchema>;
 
@@ -119,4 +127,26 @@ export function requestHints(
       .map((m) => m.page)
       .filter((page, i, all) => page !== all[i - 1]),
   };
+}
+
+const ordinalRows: [RegExp, number][] = [
+  [/^(erst|oberst|ober)/, 1],
+  [/^zweit/, 2],
+  [/^dritt/, 3],
+  [/^viert/, 4],
+  [/^fünft/, 5],
+  [/^(letzt|unterst|unter)/, -1],
+];
+/** List rows the request names with an article, 1 for the first and -1 for the last. */
+export function requestOrdinals(request: string) {
+  return [
+    ...request.matchAll(
+      /\b(?:den|die|das|der|dem)\s+((?:erst|zweit|dritt|viert|fünft|letzt|oberst|ober|unterst|unter)(?:e|en|er|es|em))\b/giu,
+    ),
+  ].flatMap((match) => {
+    const row = ordinalRows.find(([word]) =>
+      word.test(match[1]!.toLowerCase()),
+    )?.[1];
+    return row === undefined ? [] : [{ mention: match[0], row }];
+  });
 }
