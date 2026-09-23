@@ -13,7 +13,6 @@ export const listOrdinalSchema = z.object({
   caseId: z.string(),
   openedAtRow: z.number(),
 });
-export type ListOrdinal = z.infer<typeof listOrdinalSchema>;
 export const requestHintsSchema = z.object({
   numbers: z.array(
     z.object({
