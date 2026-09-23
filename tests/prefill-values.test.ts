@@ -72,7 +72,7 @@ const minutesOf = (
   );
   return reading.type === "number" ? reading.value : undefined;
 };
-const dateTimeOf = (parts: Record<string, string>) => {
+const dateTimeOf = (parts: Record<string, string>, request = "") => {
   const reading = readers.dateTime.assemble(
     picks({
       mode: "none",
@@ -83,7 +83,7 @@ const dateTimeOf = (parts: Record<string, string>) => {
       ...parts,
     }),
     field("appointment"),
-    scene(""),
+    scene(request),
   );
   return reading.type === "datetime-local"
     ? [reading.date.value, reading.time.value]
@@ -220,6 +220,63 @@ const times: [Record<string, string>, string | null][] = [
 test("code assembles the clock time from hour, relation, minutes and day part", () => {
   for (const [parts, time] of times)
     assert.equal(dateTimeOf(parts)?.[1], time, JSON.stringify(parts));
+});
+
+const relationOptions = (request: string) =>
+  Object.keys(
+    readers.dateTime.parts(field("appointment"), scene(request))["relation"]!
+      .options,
+  );
+const fixedRelations = ["exact", "quarter_past", "half", "quarter_to"];
+const relationChoices: [request: string, written: string[]][] = [
+  ["Termin zwanzig vor elf", ["vor_20"]],
+  ["Termin 20 vor 11", ["vor_20"]],
+  ["Termin zwanzig Minuten vor elf", ["vor_20"]],
+  ["Termin zehn nach drei nachmittags", ["nach_10"]],
+  ["Termin fünf nach halb zehn", ["halb_nach_5"]],
+  ["Termin zehn vor halb drei", ["halb_vor_10"]],
+  ["Termin halb 10", []],
+  ["Termin kurz vor elf", []],
+  ["Termin 45 nach 3", []],
+  ["Termin 1042 nach 14 Uhr", []],
+];
+test("the relation is a fixed one, minutes the request writes before or after an hour, other, or none", () => {
+  for (const [request, written] of relationChoices)
+    assert.deepEqual(
+      relationOptions(request),
+      [...fixedRelations, ...written, "other", "none"],
+      request,
+    );
+});
+
+const relativeTimes: [
+  request: string,
+  parts: Record<string, string>,
+  time: string | null,
+][] = [
+  ["Termin zwanzig vor elf", { hour: "11", relation: "vor_20" }, "10:40"],
+  [
+    "Termin zehn nach drei nachmittags",
+    { hour: "3", relation: "nach_10", daypart: "afternoon" },
+    "15:10",
+  ],
+  [
+    "Termin fünf nach halb zehn",
+    { hour: "10", relation: "halb_nach_5" },
+    "09:35",
+  ],
+  [
+    "Termin zehn vor halb drei",
+    { hour: "3", relation: "halb_vor_10", daypart: "afternoon" },
+    "14:20",
+  ],
+  ["Termin fünf vor zwölf", { hour: "12", relation: "vor_5" }, "11:55"],
+  ["Termin 10 vor 24", { hour: "24", relation: "vor_10" }, "23:50"],
+  ["Termin kurz vor elf", { hour: "11", relation: "other" }, null],
+];
+test("code assembles minutes before or after the hour as written, and no time for other", () => {
+  for (const [request, parts, time] of relativeTimes)
+    assert.equal(dateTimeOf(parts, request)?.[1], time, request);
 });
 
 const hourOptions = (request: string) =>
