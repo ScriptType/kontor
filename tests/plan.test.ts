@@ -169,3 +169,30 @@ test("a status change whose own yes/no is low does not complete the case", async
 test("an assignee change that names no person changes nobody", async () => {
   assert.deepEqual((await readAssignment(0.1))?.cases, { "V-1041": {} });
 });
+
+test("a status filter is read from its own yes/no per value", async () => {
+  const plan = await createPlanner(
+    live,
+    provider(["s0.fis.statusFilter.open"], []),
+  )({ ...scene, request: "Zeig die offenen Vorgänge." });
+  assert.deepEqual(plan?.filters, { statusFilter: "open" });
+});
+
+test("a sentence that ends a line ends its part without asking", async () => {
+  const sent: Questions[] = [];
+  const plan = await createPlanner(
+    live,
+    provider(["g6"], sent),
+  )({
+    ...scene,
+    request: "zeig die offenen vorgänge von jonas weber.\nWähle den ersten aus",
+  });
+  assert.deepEqual(plan?.segments, [
+    "zeig die offenen vorgänge von jonas weber.",
+    "Wähle den ersten aus",
+  ]);
+  assert.equal(
+    sent.flatMap((questions) => Object.keys(questions)).includes("g6"),
+    false,
+  );
+});
