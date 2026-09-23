@@ -10,6 +10,7 @@ import type { StartState } from "../jev-eval/scenarios.js";
 import {
   actsAfterCheck,
   assessState,
+  callLogEntrySchema,
   checkFor,
   fieldCandidates,
   formatDir,
@@ -19,7 +20,6 @@ import {
   labelState,
   labRoot,
   offersSavedArithmetic,
-  recordedCallSchema,
   sentActionSchema,
   sha256,
   type AssessQuestions,
@@ -63,18 +63,7 @@ for (const { name, meta: file } of holdouts)
 
 const sampleSchema = z.object({
   result: z.object({ scenarioId: z.string(), steps: z.array(z.string()) }),
-  // Plan calls ask other question types; only decide and check calls count.
-  callLog: z.array(
-    z
-      .object({ question: z.string(), payload: z.unknown().optional() })
-      .transform(({ question, payload }) => ({
-        question,
-        payload:
-          question === "next" || question === "assessment"
-            ? recordedCallSchema.optional().parse(payload)
-            : undefined,
-      })),
-  ),
+  callLog: z.array(callLogEntrySchema),
   scenario: z.object({
     request: z.string(),
     start: z.custom<StartState>(),
@@ -201,12 +190,21 @@ function learn(sample: Sample) {
     }
   }
 }
-for (const { sample } of samples) learn(sample);
+const unanswered = { runs: 0, catalog: 0 };
+const unansweredIn = (sample: Sample) =>
+  sample.callLog.filter((c) => c.unanswered).length;
+for (const { sample } of samples) {
+  learn(sample);
+  unanswered.runs += unansweredIn(sample);
+}
 for (const folder of values.catalog.split(",").filter(Boolean))
   for (const entry of await readdir(folder, { withFileTypes: true })) {
     const dir = join(folder, entry.name);
     if (entry.isDirectory() && existsSync(join(dir, "samples")))
-      for (const { sample } of await samplesOf(dir)) learn(sample);
+      for (const { sample } of await samplesOf(dir)) {
+        learn(sample);
+        unanswered.catalog += unansweredIn(sample);
+      }
   }
 /**
  * The offered actions of a decide: sent as availableActions, else those of
@@ -310,7 +308,10 @@ const check = {
     const executed = sample.result.steps.map(stepId);
     for (const [call, record] of sample.callLog.entries()) {
       const payload = record.payload;
-      if (record.question !== "next" && record.question !== "assessment")
+      if (
+        (record.question !== "next" && record.question !== "assessment") ||
+        record.unanswered
+      )
         continue;
       if (!payload) throw new Error(`${file} call ${call} was not recorded`);
       if (record.question === "assessment") {
@@ -542,6 +543,7 @@ process.stdout.write(
       .join(", ")}`,
     `decide calls: ${decideCalls.length} (${tally(decideCalls, (c) => c.holdout)}), on path ${decideCalls.filter((c) => c.onPath).length}`,
     `assess calls: ${assessCalls.length}`,
+    `calls without a provider answer, skipped: ${unanswered.runs} in the runs, ${unanswered.catalog} in the catalog`,
     `on-path states: ${states.length} (${tally(states, (s) => s.holdout)})`,
     `by depth: ${tally(states, (s) => String(s.labels.prefix.length))}`,
     `next not offered: ${states.filter((s) => !s.labels.nextOffered).length}`,

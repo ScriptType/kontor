@@ -135,6 +135,27 @@ export const recordedCallSchema = z.object({
   usage: usageSchema.nullable(),
 });
 export type RecordedCall = z.infer<typeof recordedCallSchema>;
+/**
+ * One call of a recorded run. Only decide and check calls carry a payload the
+ * bench reads; plan calls ask other question types. A call the provider never
+ * answered (answers null, as after a 503) holds no decision.
+ */
+export const callLogEntrySchema = z
+  .object({ question: z.string(), payload: z.unknown().optional() })
+  .transform(({ question, payload }) => {
+    const read = question === "next" || question === "assessment";
+    const unanswered =
+      read &&
+      z.object({ answers: z.null() }).loose().safeParse(payload).success;
+    return {
+      question,
+      unanswered,
+      payload:
+        read && !unanswered
+          ? recordedCallSchema.optional().parse(payload)
+          : undefined,
+    };
+  });
 /** A second look between two options (server/jev.ts decide with `duel`). */
 export const isDuel = (payload: RecordedCall) =>
   payload.request.questions["next"]?.instructions.startsWith(
