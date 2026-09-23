@@ -770,6 +770,13 @@ export class CommandRunner {
       input,
     );
   }
+  /** Asks the oldest open noted question instead of an unsure step: Jev did what it could. */
+  private askNoted() {
+    const run = this.run();
+    const open = run && openQuestions(run.questions, run.answers)[0];
+    if (open) this.raise(open);
+    return Boolean(open);
+  }
   /** Keeps Jev's question for later, so the rest of its case goes on first. */
   private note(choice: string, input: DecisionInput) {
     const field = input.fields.find((field) => `ask:${field.id}` === choice);
@@ -972,6 +979,7 @@ export class CommandRunner {
         continue;
       }
       if (chosen.choice === "blocked" || chosen.choice.startsWith("ask:")) {
+        if (!acts && this.askNoted()) return;
         if (!acts)
           this.review(
             capture,
@@ -1023,6 +1031,7 @@ export class CommandRunner {
           reason = `Effektprüfung ${Math.round(assessment.confidence * 100)} %: ${assessment.verdict === "additional" ? "zusätzliche Änderung" : "Auftragsfreigabe nicht sicher bestätigt"}. Vorschläge prüfen.`;
       }
       if (reason) {
+        if (this.askNoted()) return;
         this.review(capture, reason, "uncertain", assessed);
         return;
       }
