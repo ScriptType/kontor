@@ -297,6 +297,41 @@ export type GatePick = {
   margin: number;
 };
 
+export type EffectGroup = { total: number; choice: string };
+
+/**
+ * The offered options pooled by effect, strongest first. Each group is named
+ * by the option the runner follows: done in the group that changes nothing,
+ * else its likeliest member.
+ */
+export function effectGroups(
+  probabilities: Decision["probabilities"],
+  input: Pick<DecisionInput, "actions" | "context">,
+): EffectGroup[] {
+  const groups = new Map<
+    string,
+    { total: number; members: [string, number][] }
+  >();
+  for (const [option, probability] of Object.entries(probabilities)) {
+    const key = effectKey(option, input);
+    const group = groups.get(key) ?? { total: 0, members: [] };
+    group.total += probability;
+    group.members.push([option, probability]);
+    groups.set(key, group);
+  }
+  return [...groups]
+    .sort(([, a], [, b]) => b.total - a.total)
+    .map(([key, { total, members }]) => ({
+      total,
+      choice:
+        key === noChangeKey && members.some(([option]) => option === "done")
+          ? "done"
+          : members.reduce((best, member) =>
+              member[1] > best[1] ? member : best,
+            )[0],
+    }));
+}
+
 /** The choice the runner follows and whether it acts without review. */
 export function pick(
   gate: GateName,
@@ -320,30 +355,13 @@ export function pick(
       margin: (first?.probability ?? 0) - (second?.probability ?? 0),
     };
   }
-  const groups = new Map<
-    string,
-    { total: number; members: [string, number][] }
-  >();
-  for (const [option, probability] of Object.entries(decision.probabilities)) {
-    const key = effectKey(option, input);
-    const group = groups.get(key) ?? { total: 0, members: [] };
-    group.total += probability;
-    group.members.push([option, probability]);
-    groups.set(key, group);
-  }
-  const [top, next] = [...groups].sort(([, a], [, b]) => b.total - a.total);
+  const [top, next] = effectGroups(decision.probabilities, input);
   if (!top) {
     const kind = gateKind(decision.choice, input);
     return { choice: decision.choice, kind, acts: false, total: 0, margin: 0 };
   }
-  const [key, { total, members }] = top;
-  const margin = total - (next?.[1].total ?? 0);
-  const choice =
-    key === noChangeKey && members.some(([option]) => option === "done")
-      ? "done"
-      : members.reduce((best, member) =>
-          member[1] > best[1] ? member : best,
-        )[0];
+  const { choice, total } = top;
+  const margin = total - (next?.total ?? 0);
   const kind = gateKind(choice, input);
   return {
     choice,
