@@ -306,8 +306,8 @@ export const gates = {
     norepeat: true,
     jump: true,
   },
-  // The slim history cuts decide and check input without dropping anything
-  // observed (bench round6/format, l9-slim-after).
+  // The slim history cuts decide and check input; no step loses its
+  // observation (bench round6/format, l9-slim-after).
   "g4-lean": {
     read: "pooled",
     margin: 0.1,
