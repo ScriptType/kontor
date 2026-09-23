@@ -230,3 +230,12 @@ test("a slot length read for a case without an appointment is its worked minutes
   );
   assert.deepEqual(plan?.cases, { "V-1037": { workedMinutes: "75" } });
 });
+
+test("two views read at the same word keep the likelier one", async () => {
+  const plan = await planOf(
+    "danach wieder zur liste",
+    { "s0.page.cases": 0.9, "s0.page.customers": 0.7 },
+    { "s0.at.cases": "w3", "s0.at.customers": "w3" },
+  );
+  assert.deepEqual(plan?.visits, ["cases"]);
+});

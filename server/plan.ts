@@ -530,7 +530,18 @@ async function extractSteps(
           Number(picked(b[`s${i}.at.${pg}`]).slice(1)),
         ]),
       );
-      step.pages.sort((x, y) => at[x]! - at[y]!);
+      // One word names one view: views read at the same word keep the likelier one.
+      step.pages = step.pages
+        .filter(
+          (pg) =>
+            !step.pages.some(
+              (other) =>
+                other !== pg &&
+                at[other] === at[pg] &&
+                yes(a[`s${i}.page.${other}`]) > yes(a[`s${i}.page.${pg}`]),
+            ),
+        )
+        .sort((x, y) => at[x]! - at[y]!);
     }
   const perCase: Record<string, { seg: number; values: CaseValues }[]> = {};
   steps.forEach((step, i) => {
