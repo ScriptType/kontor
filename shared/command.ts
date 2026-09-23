@@ -70,6 +70,11 @@ export const decisionInputSchema = z.object({
   prompt: z.enum(["full", "focused", "compact"]).default("full"),
   /** Filled by the runner for a focused or compact prompt. */
   hints: requestHintsSchema.optional(),
+  /**
+   * A second look: decide offers only these two options, in full text, and
+   * asks which one comes next.
+   */
+  duel: z.tuple([z.string(), z.string()]).optional(),
 });
 export const decisionSchema = z.object({
   snapshotId: z.string(),

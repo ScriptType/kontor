@@ -97,9 +97,10 @@ export function createJev(config: Config, fetch?: Fetch) {
       input: DecisionInput,
       signal?: AbortSignal,
     ): Promise<Decision> {
-      // A compact prompt keeps what an option does and its current value.
-      const compact = input.prompt === "compact";
-      const options = Object.fromEntries(
+      // A compact prompt keeps what an option does and its current value; a
+      // duel weighs two options and reads each in full.
+      const compact = input.prompt === "compact" && !input.duel;
+      const offered = Object.fromEntries(
         input.actions
           .filter((a) => !a.id.startsWith("blocked:"))
           .map((a) => [
@@ -110,22 +111,34 @@ export function createJev(config: Config, fetch?: Fetch) {
           ]),
       );
       for (const field of input.fields)
-        options[`ask:${field.id}`] = renderJev({
+        offered[`ask:${field.id}`] = renderJev({
           does: `Ask the user for a missing value of ${jevFieldName(field)}, only if the request and previous answers do not supply it`,
           now: `UI "${field.label}", current value ${field.current === "" ? "empty" : field.current}`,
           notFor: compact ? undefined : field.jev.notFor,
         });
       if (input.doneBeforeFirstStep || input.steps.length > 0)
-        options["done"] =
+        offered["done"] =
           "Every part of the original request is satisfied, in its requested order. Drafts are not saved changes.";
       if (input.steps.length > 0 || input.blockedControls.length > 0)
-        options["blocked"] =
+        offered["blocked"] =
           "Outstanding request work cannot proceed with available controls or needs human evidence. Never silently omit a trailing task.";
-      options["abstain"] =
+      offered["abstain"] =
         "Cannot understand the request or choose a sensible next step. Stop automatic work and ask the user to revise or select a suggestion.";
+      const { duel } = input;
+      const options = duel
+        ? Object.fromEntries(
+            Object.entries(offered).filter(([option]) => duel.includes(option)),
+          )
+        : offered;
+      if (duel && Object.keys(options).length !== 2)
+        throw new ORPCError("BAD_REQUEST", {
+          message: "A duel needs two different offered options.",
+        });
       if (!client) {
         const fixed = fixture(input);
-        const selected = Object.hasOwn(options, fixed) ? fixed : "abstain";
+        const selected = Object.hasOwn(options, fixed)
+          ? fixed
+          : (duel?.[0] ?? "abstain");
         const probabilities = Object.fromEntries(
           Object.keys(options).map((key) => [key, key === selected ? 1 : 0]),
         );
@@ -141,7 +154,9 @@ export function createJev(config: Config, fetch?: Fetch) {
         JSON.stringify(modelState(input)),
         {
           next: {
-            text: "Choose ONE currently offered UI action toward the entire original request. Use observed history to remember earlier work and explicit order. Repeated assignments and multiple records are allowed. Already matching saved values can satisfy an assignment without another write. retainedSelection is the saved record, and any unsaved draft, of the selected case whose detail is not on screen: current data, not a visible control. An unchanged step records no change; do not repeat it while its value remains the same. Respect explicitly requested sequences of different assignments. Saves are stepwise; earlier saved work remains if later work is blocked. Do not invent values or evidence. Select done only when nothing remains; select blocked for unsupported remaining work; select abstain when you cannot understand or choose sensibly. A menu, navigation or input is a real intermediate step. Displayed records and unfinished checklists are context, not additional requested tasks. A restriction applies only to its owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records.",
+            text: duel
+              ? "Two next steps are in question. Choose the ONE that comes next toward the entire original request, respecting any order it states. Prefer a step that still does requested work over stopping; choose a stop (done or blocked) only when no requested work remains that an offered control can do."
+              : "Choose ONE currently offered UI action toward the entire original request. Use observed history to remember earlier work and explicit order. Repeated assignments and multiple records are allowed. Already matching saved values can satisfy an assignment without another write. retainedSelection is the saved record, and any unsaved draft, of the selected case whose detail is not on screen: current data, not a visible control. An unchanged step records no change; do not repeat it while its value remains the same. Respect explicitly requested sequences of different assignments. Saves are stepwise; earlier saved work remains if later work is blocked. Do not invent values or evidence. Select done only when nothing remains; select blocked for unsupported remaining work; select abstain when you cannot understand or choose sensibly. A menu, navigation or input is a real intermediate step. Displayed records and unfinished checklists are context, not additional requested tasks. A restriction applies only to its owning action and target. Displaying a requested list does not require opening, completing, editing or saving its records.",
             options,
           },
         },
