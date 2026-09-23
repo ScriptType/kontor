@@ -122,4 +122,13 @@ test("a number word is a minute candidate; a clock hour and a spoken case id are
     [],
   );
   assert.deepEqual(offered(number("minutes"), "vorgang zehn einundvierzig"), []);
+  for (const clock of [
+    "termin um zehn nach drei",
+    "komme zwanzig vor elf",
+    "fertig fünf vor zwölf",
+  ])
+    assert.deepEqual(offered(number("minutes"), clock), [], clock);
+  assert.deepEqual(offered(number("minutes"), "nach zwanzig minuten fertig"), [
+    ["20", "word"],
+  ]);
 });

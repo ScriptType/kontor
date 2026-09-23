@@ -42,10 +42,16 @@ export function germanWord(n: number): string {
   const ten = tens[Math.floor(n / 10)]!;
   return unit ? `${unit === 1 ? "ein" : ones[unit]}und${ten}` : ten;
 }
+const clockBefore = /(?:\bum|\bgegen|\bhalb|\bviertel)\s$/iu;
+/** "zehn nach drei", "zwanzig vor elf": minutes before or after an hour on the clock. */
+const clockAfter = /^\s(?:vor|nach)\s/iu;
+const hourAfterVorNach = /(?:\bvor|\bnach)\s$/iu;
+const minuteUnit = /^\s?(?:min|minuten?)\b/iu;
 /**
  * Every number from 10 to 100 the request writes as a word ("achtzig"), except
- * a clock hour ("halb elf") and a word next to another number word, which
- * belongs to a longer spoken number such as a case id.
+ * a clock time ("halb elf", "zwanzig vor elf", "zehn nach drei") and a word
+ * next to another number word, which belongs to a longer spoken number such
+ * as a case id.
  */
 export function spokenNumbers(request: string) {
   const words = new Map(
@@ -58,14 +64,16 @@ export function spokenNumbers(request: string) {
     value: words.get(m[0].toLowerCase()),
   }));
   const number = (i: number) => found[i]?.value !== undefined;
-  return found.flatMap(({ i, text, at, value }) =>
-    value === undefined ||
-    number(i - 1) ||
-    number(i + 1) ||
-    /(?:\bum|\bgegen|\bhalb|\bviertel)\s$/iu.test(
-      request.slice(Math.max(0, at - 12), at),
-    )
+  return found.flatMap(({ i, text, at, value }) => {
+    const before = request.slice(Math.max(0, at - 12), at);
+    const after = request.slice(at + text.length);
+    return value === undefined ||
+      number(i - 1) ||
+      number(i + 1) ||
+      clockBefore.test(before) ||
+      clockAfter.test(after) ||
+      (hourAfterVorNach.test(before) && !minuteUnit.test(after))
       ? []
-      : [{ text, at, value }],
-  );
+      : [{ text, at, value }];
+  });
 }
