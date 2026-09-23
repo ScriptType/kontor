@@ -8,6 +8,8 @@ const numberWords = (upTo: number) =>
   );
 const hourWords = numberWords(24);
 const minuteWords = numberWords(59);
+const valueOf = (text: string, words: Map<string, number>) =>
+  /^\d+$/.test(text) ? Number(text) : words.get(text.toLowerCase());
 /** Where a text stands in the request. */
 type Span = { at: number; end: number };
 // "24.09.", "24.9.2026", "2026-09-25".
@@ -73,7 +75,7 @@ const minuteWordPattern = [...minuteWords.keys()]
   .sort((a, b) => b.length - a.length)
   .join("|");
 const minutesAfterUhr = new RegExp(
-  String.raw`(?<![\p{L}\p{N}])(?:\d{1,2}|${hourWordPattern})\s*uhr\s+(\d{1,2}|${minuteWordPattern})(?![\p{L}\p{N}]|${durationUnit})`,
+  String.raw`(?<![\p{L}\p{N}])(\d{1,2}|${hourWordPattern})\s*uhr\s+(\d{1,2}|${minuteWordPattern})(?![\p{L}\p{N}]|${durationUnit})`,
   "giu",
 );
 export function writtenMinutes(request: string): number[] {
@@ -82,8 +84,8 @@ export function writtenMinutes(request: string): number[] {
     ...[...request.matchAll(digitTime)]
       .filter((m) => !within(inDate, m.index))
       .map((m) => (m[2] === undefined ? undefined : Number(m[2]))),
-    ...[...request.matchAll(minutesAfterUhr)].map(
-      (m) => Number(m[1]) || minuteWords.get(m[1]!.toLowerCase()),
+    ...[...request.matchAll(minutesAfterUhr)].map((m) =>
+      valueOf(m[2]!, minuteWords),
     ),
   ].filter((minute): minute is number => minute !== undefined && minute < 60);
   return [...new Set(minutes)].sort((a, b) => a - b);
@@ -96,7 +98,7 @@ function clockTimes(request: string): ClockTime[] {
   const free = (at: number, end: number) =>
     ![...taken, ...times].some((span) => at < span.end && end > span.at);
   for (const m of request.matchAll(relativeTime)) {
-    const hour = Number(m[2]) || hourWords.get(m[2]!.toLowerCase());
+    const hour = valueOf(m[2]!, hourWords);
     const [back, minutes] =
       relativeClock[
         m[1]!.toLowerCase().replace(/\s+/g, " ") as keyof typeof relativeClock
@@ -107,6 +109,21 @@ function clockTimes(request: string): ClockTime[] {
         end: m.index + m[0].length,
         minutes: (hour + back) * 60 + minutes,
       });
+  }
+  for (const m of request.matchAll(minutesAfterUhr)) {
+    const [hour, minutes] = [
+      valueOf(m[1]!, hourWords),
+      valueOf(m[2]!, minuteWords),
+    ];
+    const end = m.index + m[0].length;
+    if (
+      hour !== undefined &&
+      hour <= 24 &&
+      minutes !== undefined &&
+      minutes < 60 &&
+      free(m.index, end)
+    )
+      times.push({ at: m.index, end, minutes: hour * 60 + minutes });
   }
   for (const m of request.matchAll(digitTime)) {
     const [hour, minutes] = [Number(m[1]), Number(m[2] ?? 0)];
