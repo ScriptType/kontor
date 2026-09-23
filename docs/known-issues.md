@@ -110,7 +110,7 @@ Drei echte Läufe mit einer Schwelle von 10 Prozent führten beide Wiederholunge
 
 ## KI-010: Vorbelegung übernimmt den alten Wert statt des neuen
 
-Status: am 23. September 2026 im Eval-Lauf auf holdout-1 beobachtet, auf dem Zweig `exp/jev-fix-prefill` behoben (noch nicht in `main`).
+Status: am 23. September 2026 im Eval-Lauf auf holdout-1 beobachtet, behoben und in `main` übernommen.
 
 Die Antwortvorbelegung für ein Zahlenfeld übernimmt den einzigen Zahlwert, den `partialAnswer` im Auftrag findet. Nennt der Auftrag den alten Wert als Zahl und den neuen nur als Zahlwort, ist dieser einzige Wert der alte. Im Auftrag „zwei Stunden is zu lang, mach mal neunzig Minuten draus“ (Szenario `h-diktat-05`) liest `partialAnswer` für die Termindauer „zwei Stunden“ als 120. „neunzig“ liest es nicht. Das Antwortfeld zeigt „Aus dem Auftrag: 120. Bitte prüfen.“, obwohl 90 gemeint ist. Steht dort „90“, findet es zwei Werte und belegt nichts vor.
 
