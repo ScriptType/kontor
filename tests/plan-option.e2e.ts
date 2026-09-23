@@ -104,3 +104,46 @@ test("a review without a plan offers only Jev's two options", async ({
   );
 });
 
+// Two views tie and the plan's case trails; the duel between the views stays unsure.
+const tied = {
+  choice: "nav:customers",
+  confidence: 0.45,
+  probabilities: {
+    "nav:customers": 0.45,
+    "nav:reports": 0.45,
+    "case:V-1042": 0.1,
+  },
+};
+const unsureDuel = {
+  choice: "nav:customers",
+  confidence: 0.6,
+  probabilities: { "nav:customers": 0.6, "nav:reports": 0.4 },
+};
+test("under the default gate a review after an unsure duel still offers the plan's option", async ({
+  page,
+}) => {
+  await withLive(
+    page,
+    sequence,
+    async (store) => {
+      await start(page, request);
+      await expect(review(page)).toBeVisible();
+      expect((await history(page)).duels).toMatchObject([
+        { step: 0, options: ["nav:customers", "nav:reports"], acts: false },
+      ]);
+      expect(await offered(page)).toEqual([
+        "nav:customers",
+        "nav:reports",
+        "case:V-1042",
+      ]);
+      await expect(review(page).locator("[data-review-plan]")).toHaveCount(1);
+      expect(
+        store.snapshot().cases.find((c) => c.id === "V-1042")?.technicianId,
+      ).toBe("jonas");
+    },
+    {
+      plan: { ...plan, calls: [] },
+      nextAnswer: (index) => (index === 0 ? tied : unsureDuel),
+    },
+  );
+});
