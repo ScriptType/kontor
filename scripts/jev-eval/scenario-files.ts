@@ -11,9 +11,12 @@ import {
 import {
   caseDimensions,
   expectEnd,
-  flagDimensions,
   listDimensions,
+} from "../../shared/intent.js";
+import {
+  flagDimensions,
   scenario,
+  startWorkspace,
   validateScenario,
   type Scenario,
 } from "./scenarios.js";
@@ -68,7 +71,12 @@ export function scenarioProblems(scenarios: Scenario[]): string[] {
     if (seen.has(s.id)) problems.push("the id is used twice");
     seen.add(s.id);
     try {
-      if (!isDeepStrictEqual(expectEnd(s.start, s.intent), s.expected))
+      if (
+        !isDeepStrictEqual(
+          expectEnd(startWorkspace(s.start), s.start.filters, s.intent),
+          s.expected,
+        )
+      )
         problems.push(
           "expected differs from the end its start and intent imply",
         );
