@@ -174,3 +174,39 @@ test("only view and draft actions that change nothing are dropped from the optio
     "unknown-view",
   ]);
 });
+test("opening a case from the case picker has the effect of its row link", () => {
+  const picker = [
+    action("case:V-1041"),
+    action("open-case:V-1041"),
+    action("case:V-1042"),
+    action("open-case:V-1042"),
+    action("menu:open-case"),
+    action("menu:customer"),
+  ];
+  const key = (choice: string, menu: string | null = null, page = "cases") =>
+    effectKey(choice, {
+      actions: picker,
+      context: JSON.stringify({
+        currentPage: page,
+        filters: { ...defaultCaseFilters, customerId: "linden" },
+        menu,
+        ...(page === "cases" ? { selected: { id: "V-1042" }, draft } : {}),
+      }),
+    });
+  assert.equal(key("open-case:V-1041"), key("case:V-1041"));
+  assert.notEqual(key("open-case:V-1041"), noChangeKey);
+  assert.equal(key("open-case:V-1042"), noChangeKey);
+  assert.equal(
+    key("open-case:V-1041", null, "reports"),
+    key("case:V-1041", null, "reports"),
+  );
+  assert.notEqual(
+    key("open-case:V-1041", null, "reports"),
+    key("open-case:V-1041"),
+  );
+  assert.equal(key("menu:open-case"), JSON.stringify(["menu=open-case"]));
+  assert.equal(
+    key("menu:open-case", "open-case"),
+    key("menu:customer", "customer"),
+  );
+});

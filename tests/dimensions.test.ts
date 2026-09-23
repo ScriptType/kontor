@@ -169,6 +169,14 @@ test("action ids map to dimensions through their grammar", () => {
         { dimension: "page", value: "cases" },
       ],
     ],
+    [
+      "open-case:V-1041",
+      [
+        { dimension: "cases", value: "V-1041" },
+        { dimension: "page", value: "cases" },
+      ],
+    ],
+    ["menu:open-case", [{ dimension: "cases", value: null }]],
     ["complete", [{ dimension: "status", value: "done" }]],
     ["remove-appointment", [{ dimension: "appointmentStart", value: "none" }]],
     ["save", [{ dimension: "save", value: "yes" }]],
