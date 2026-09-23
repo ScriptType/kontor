@@ -108,3 +108,4 @@ Die Grundlinie mittelt alle Stichproben von `identity` und die aufgenommenen Ant
 - Die Beschriftung kennt einen richtigen Weg. Öffnet Jev einen Vorgang vor einer Navigation, die der menschliche Pfad zuerst macht, zählt das als falsch, auch wenn der Lauf danach richtig endet.
 - Eine Variante sieht nur den aufgenommenen Zustand. Folgen für spätere Schritte, etwa ein kürzerer Verlauf, zeigt erst ein ganzer Lauf.
 - Die Nachfrage nach der Ursache einer Blockade (`cause`) stellt die Bank nicht.
+- `extract.ts` berechnet die Feldkandidaten ohne gespeicherten Wert neu. Aufnahmen mit Summen, Differenzen oder Zeitspannen als Kandidaten (seit Runde 6) weichen deshalb vom gesendeten Text ab. Vor einer Bank auf solchen Aufnahmen muss `extract.ts` den gespeicherten Stand des Laufs übernehmen.
