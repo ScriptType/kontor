@@ -21,6 +21,8 @@ import {
 import { readConfig } from "../../server/config.js";
 import { createClient } from "../../server/jev.js";
 import type { ActionDescription } from "../../shared/command.js";
+import type { Workspace } from "../../shared/domain.js";
+import { describeSource, fieldValues } from "../../shared/field-values.js";
 import { guardStop } from "../../shared/run-guard.js";
 
 export const labRoot = join(
@@ -121,6 +123,36 @@ export const recordedCallSchema = z.object({
   usage: usageSchema.nullable(),
 });
 export type RecordedCall = z.infer<typeof recordedCallSchema>;
+
+/**
+ * The value candidates the app offered on a decide state, keyed by action id,
+ * recomputed with fieldValues from the run's start workspace: its cases and
+ * customers are the existing values a request can name. `text` is the value
+ * source as Jev reads it.
+ */
+export function fieldCandidates(state: FullState, start: Workspace) {
+  const existing = [
+    ...start.cases.flatMap((c) => [c.id, c.title]),
+    ...start.customers.map((c) => c.name),
+  ];
+  return new Map(
+    state.availableFields.flatMap((field) =>
+      fieldValues(
+        { ...field, jev: { name: field.label } },
+        state.originalRequest,
+        state.explicitAnswers,
+        existing,
+      ).map(({ value, bound, ...found }) => [
+        `field:${field.id}:${value}`,
+        {
+          source: found.source,
+          bound,
+          text: describeSource(found, value, "en"),
+        },
+      ]),
+    ),
+  );
+}
 
 export type Holdout = "holdout-1" | "holdout-2";
 export type Labels = {

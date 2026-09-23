@@ -4,17 +4,14 @@ import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { gateKind, workKind, type GateKind } from "../../frontend/src/gate.js";
-import type {
-  ActionDescription,
-  FieldDescription,
-} from "../../shared/command.js";
-import { fieldValues } from "../../shared/field-values.js";
+import type { ActionDescription } from "../../shared/command.js";
 import { seededStore } from "../jev-eval/harness.js";
 import type { StartState } from "../jev-eval/scenarios.js";
 import {
   actsAfterCheck,
   assessState,
   checkFor,
+  fieldCandidates,
   formatDir,
   fullStateSchema,
   g3Pick,
@@ -86,23 +83,14 @@ const sampleSchema = z.object({
 
 /** Gate kind per option; field candidates get `bound` the way ActionRegistry.snapshot does. */
 function optionKinds(
-  state: FullState,
   sent: SentAction[],
   options: string[],
-  existing: string[],
+  candidates: ReturnType<typeof fieldCandidates>,
 ): Record<string, GateKind> {
   const actions: ActionDescription[] = sent.map((action) => {
-    const match = /^field:([^:]+):(.*)$/.exec(action.id);
-    if (!match) return { ...action, jev: { does: action.effect } };
-    const [, fieldId, value] = match;
-    const field = state.availableFields.find((f) => f.id === fieldId);
-    if (!field) throw new Error(`${action.id} has no field`);
-    const found = fieldValues(
-      { ...field, jev: { name: field.label } } satisfies FieldDescription,
-      state.originalRequest,
-      state.explicitAnswers,
-      existing,
-    ).find((candidate) => candidate.value === value);
+    if (!action.id.startsWith("field:"))
+      return { ...action, jev: { does: action.effect } };
+    const found = candidates.get(action.id);
     if (!found) throw new Error(`${action.id} is not a recomputed candidate`);
     return {
       ...action,
@@ -319,10 +307,6 @@ const check = {
     const scenario = meta.get(scenarioId);
     if (!scenario) throw new Error(`${scenarioId} has no replay path`);
     const workspace = seededStore(sample.scenario.start).snapshot();
-    const existing = [
-      ...workspace.cases.flatMap((c) => [c.id, c.title]),
-      ...workspace.customers.map((c) => c.name),
-    ];
     const executed = sample.result.steps.map(stepId);
     for (const [call, record] of sample.callLog.entries()) {
       const payload = record.payload;
@@ -416,7 +400,11 @@ const check = {
         following ? next.payload : undefined,
       );
       if (rebuilt) check.actionsRebuilt++;
-      const kinds = optionKinds(state, actions, options, existing);
+      const kinds = optionKinds(
+        actions,
+        options,
+        fieldCandidates(state, workspace),
+      );
       const bench = {
         state,
         instructions: question.instructions,
