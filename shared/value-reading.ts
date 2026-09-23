@@ -1,7 +1,18 @@
 import { z } from "zod";
 import { fieldSchema, type FieldDescription } from "./command.js";
-import { dimensions, literalField, type ReadingKind } from "./dimensions.js";
-import type { PartialAnswer } from "./field-values.js";
+import {
+  dimensions,
+  literalField,
+  savedMinutes,
+  type ReadingKind,
+} from "./dimensions.js";
+import type { ServiceCase } from "./domain.js";
+import {
+  describeSource,
+  fieldNumbers,
+  savedArithmetic,
+  type PartialAnswer,
+} from "./field-values.js";
 import { germanWord } from "./number-words.js";
 
 /** One choice question of a reading: its text and its options by key. */
@@ -49,11 +60,11 @@ export function prefillFrom(
     time: sure(reading.time),
   };
 }
-/** What a reading is read from: the request, the run's start day and the case ids, whose digits are no value. */
+/** What a reading is read from: the request, the run's start day and the saved cases, whose id digits are no value. */
 export type ReadingScene = {
   request: string;
   today: string;
-  caseIds: string[];
+  cases: ServiceCase[];
 };
 type Reader = {
   parts(
@@ -166,7 +177,8 @@ const maxBareHours = 12;
 /**
  * Every value in minutes the request can give this field, by option key: each
  * written number in each unit it can have (its written unit, else minutes or
- * hours), and each spoken duration; only values the field accepts.
+ * hours), each spoken duration, and the saved minutes plus and minus each
+ * number the field's candidates offer; only values the field accepts.
  */
 function minuteOptions(field: FieldDescription, scene: ReadingScene) {
   const fits = (minutes: number) =>
@@ -177,8 +189,25 @@ function minuteOptions(field: FieldDescription, scene: ReadingScene) {
   const words = Object.entries(spokenDurations).filter(([, d]) =>
     fits(d.minutes),
   );
-  const room = choiceLimit - 2 - words.length;
-  for (const [i, span] of numberSpans(scene.request, scene.caseIds).entries()) {
+  const caseIds = scene.cases.map((c) => c.id);
+  const saved = savedMinutes(
+    field,
+    scene.cases.find((c) => c.id === field.scope),
+  );
+  // With nothing saved, a sum is the number itself, already offered as written.
+  const arithmetic = saved
+    ? savedArithmetic(
+        saved,
+        fieldNumbers(field, scene.request, caseIds),
+      ).filter(
+        (found, i, all) =>
+          fits(Number(found.value)) &&
+          Number(found.value) !== saved &&
+          all.findIndex((other) => other.value === found.value) === i,
+      )
+    : [];
+  const room = choiceLimit - 2 - words.length - arithmetic.length;
+  for (const [i, span] of numberSpans(scene.request, caseIds).entries()) {
     const [first = 0, second] = span.amounts;
     // [option key suffix, how the label reads the number, minutes]
     const readings: [string, string, number][] =
@@ -208,6 +237,11 @@ function minuteOptions(field: FieldDescription, scene: ReadingScene) {
         minutes,
       };
   }
+  for (const found of arithmetic)
+    options[`s${found.value}`] = {
+      label: describeSource(found, found.value, "de"),
+      minutes: Number(found.value),
+    };
   for (const [key, d] of words)
     options[`w.${key}`] = {
       label: `als Wort: „${d.words}“ = ${d.minutes} Minuten`,
@@ -218,18 +252,20 @@ function minuteOptions(field: FieldDescription, scene: ReadingScene) {
 
 const minutesReader: Reader = {
   parts(field, scene) {
+    const options = minuteOptions(field, scene);
+    // Without a sum or difference on offer, a change by an amount names no new value.
+    const arithmetic = Object.keys(options).some((key) => key.startsWith("s"));
     return {
       value: {
         text: `${newValue(field)} Welche Angabe im Auftrag nennt diesen Wert?`,
         options: {
           ...Object.fromEntries(
-            Object.entries(minuteOptions(field, scene)).map(([key, o]) => [
-              key,
-              o.label,
-            ]),
+            Object.entries(options).map(([key, o]) => [key, o.label]),
           ),
           elsewhere: `Die Zeitangaben im Auftrag gelten einem anderen Feld oder Vorgang${field.jev.notFor ? ` (etwa ${field.jev.notFor})` : ""}.`,
-          none: "Der Auftrag nennt keinen eindeutigen neuen Wert für dieses Feld: keinen, nur mögliche Werte zur Wahl („20 oder 25“) oder nur eine Änderung um einen Betrag („um 15 Minuten verlängern“).",
+          none: arithmetic
+            ? "Der Auftrag nennt keinen eindeutigen neuen Wert für dieses Feld: keinen oder nur mögliche Werte zur Wahl („20 oder 25“)."
+            : "Der Auftrag nennt keinen eindeutigen neuen Wert für dieses Feld: keinen, nur mögliche Werte zur Wahl („20 oder 25“) oder nur eine Änderung um einen Betrag („um 15 Minuten verlängern“).",
         },
       },
     };

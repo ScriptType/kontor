@@ -22,7 +22,7 @@ export async function readValues(
   const scene = {
     request: input.request,
     today: input.today,
-    caseIds: workspace.cases.map((c) => c.id),
+    cases: workspace.cases,
   };
   const questions: Questions = {};
   input.fields.forEach((field, i) => {

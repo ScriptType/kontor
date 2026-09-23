@@ -45,7 +45,9 @@ const picks = (parts: Record<string, string>) =>
 const scene = (request: string) => ({
   request,
   today,
-  caseIds: ["V-1041", "V-1042"],
+  cases: seedWorkspace().cases.filter((c) =>
+    ["V-1041", "V-1042"].includes(c.id),
+  ),
 });
 /** The options code offers for the field, as key and label. */
 const optionsOf = (id: "minutes" | "duration", request: string) =>
