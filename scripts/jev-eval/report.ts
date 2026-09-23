@@ -25,6 +25,7 @@ export type Summary = {
   magic: number;
   handoff: number;
   correctAfterAnswers: number;
+  correctWithinOne: number;
   stoppedUnanswered: number;
   stoppedUnansweredEndCorrect: number;
   askedWrong: number;
@@ -49,6 +50,11 @@ export function summarize(results: SampleResult[]): Summary {
     magic: count(results, "magic"),
     handoff: count(results, "handoff"),
     correctAfterAnswers: count(results, "correct-after-answers"),
+    correctWithinOne: results.filter(
+      (r) =>
+        r.outcome === "magic" ||
+        (r.outcome === "correct-after-answers" && r.questions <= 1),
+    ).length,
     stoppedUnanswered: count(results, "stopped-unanswered"),
     stoppedUnansweredEndCorrect: results.filter(
       (r) => r.outcome === "stopped-unanswered" && r.endCorrect,
@@ -95,7 +101,7 @@ export function markdown(
 ) {
   const rows = Object.entries(summaries(results)).map(
     ([group, s]) =>
-      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.magicSaveCheck, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterAnswers, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
+      `| ${group} | ${s.samples} | ${share(s.magic, s.samples)} | ${share(s.magicSaveCheck, s.samples)} | ${share(s.handoff, s.samples)} | ${share(s.correctAfterAnswers, s.samples)} | ${share(s.correctWithinOne, s.samples)} | ${share(s.stoppedUnanswered, s.samples)} (${s.stoppedUnansweredEndCorrect}) | ${share(s.askedWrong, s.samples)} | ${share(s.silentWrong, s.samples)} | ${s.errors} | ${s.questionsMean.toFixed(2)} | ${share(s.withQuestions, s.samples)} | ${s.callsMean.toFixed(1)} (${s.callsTotal}) | ${(s.wallMeanMs / 1000).toFixed(1)} s |`,
   );
   const samples = results.map(
     (r) =>
@@ -106,10 +112,10 @@ export function markdown(
     "",
     ...Object.entries(meta).map(([key, value]) => `- ${key}: ${value}`),
     "",
-    "Magic: end state correct, no question and no handoff. Handoff: end state correct and the run stopped for the expected human handoff. Correct after chips: end state correct and every question was a chip the harness answered. Stopped unanswered: the run ended at a question the harness cannot answer; the number in brackets ended there with a correct state. Asked, still wrong: chips answered, end state wrong. Silent-wrong: end state wrong or an unexpected save, and no question. Magic-save-check: magic, or correct after chips where every chip asked whether to save; in auto save mode no save chip appears and it equals magic. Rates count every sample; errors are provider or harness failures.",
+    "Magic: end state correct, no question and no handoff. Handoff: end state correct and the run stopped for the expected human handoff. Correct after answers: end state correct and the harness answered every question, a chip or a value in the answer panel. Correct ≤1 question: magic, or correct after answers with a single question. Stopped unanswered: the run ended at a question the harness cannot answer; the number in brackets ended there with a correct state. Asked, still wrong: questions answered, end state wrong. Silent-wrong: end state wrong or an unexpected save, and no question. Magic-save-check: magic, or correct after answers where every question asked whether to save; in auto save mode no save chip appears and it equals magic. Rates count every sample; errors are provider or harness failures.",
     "",
-    "| group | samples | magic | magic-save-check | handoff | correct after chips | stopped unanswered (end correct) | asked, still wrong | silent-wrong | errors | questions mean | ≥1 question | calls mean (total) | wall mean |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| group | samples | magic | magic-save-check | handoff | correct after answers | correct ≤1 question | stopped unanswered (end correct) | asked, still wrong | silent-wrong | errors | questions per run | ≥1 question | calls mean (total) | wall mean |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ...rows,
     "",
     "| sample | outcome | end correct | questions | stops | mismatches | coverage | calls | wall s |",

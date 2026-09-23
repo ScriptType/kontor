@@ -285,32 +285,32 @@ test("the simulated user answers from the scenario's ground truth", () => {
     null,
   );
 });
+const sample = (
+  outcome: SampleResult["outcome"],
+  questions: number,
+  calls: number,
+): SampleResult => ({
+  outcome,
+  endCorrect: ["magic", "handoff", "correct-after-answers"].includes(outcome),
+  questions,
+  magicSaveCheck: outcome === "magic",
+  mismatches: [],
+  unexpectedSaves: [],
+  variant: "test",
+  saveMode: "auto",
+  scenarioId: "x",
+  source: "generated",
+  sample: 1,
+  request: "",
+  stops: [],
+  steps: [],
+  coverageProbability: null,
+  unmappedActions: [],
+  calls,
+  wallMs: calls * 1000,
+  error: null,
+});
 test("the summary counts outcomes, questions, calls and wall time per sample", () => {
-  const sample = (
-    outcome: SampleResult["outcome"],
-    questions: number,
-    calls: number,
-  ): SampleResult => ({
-    outcome,
-    endCorrect: ["magic", "handoff", "correct-after-answers"].includes(outcome),
-    questions,
-    magicSaveCheck: outcome === "magic",
-    mismatches: [],
-    unexpectedSaves: [],
-    variant: "test",
-    saveMode: "auto",
-    scenarioId: "x",
-    source: "generated",
-    sample: 1,
-    request: "",
-    stops: [],
-    steps: [],
-    coverageProbability: null,
-    unmappedActions: [],
-    calls,
-    wallMs: calls * 1000,
-    error: null,
-  });
   const summary = summarize([
     sample("magic", 0, 4),
     sample("silent-wrong", 0, 6),
@@ -352,5 +352,17 @@ test("the summary counts outcomes, questions, calls and wall time per sample", (
       callsTotal: 28,
       wallMeanMs: 3500,
     },
+  );
+});
+test("correct within one question counts magic and runs correct after a single answer", () => {
+  assert.equal(
+    summarize([
+      sample("magic", 0, 1),
+      sample("correct-after-answers", 1, 1),
+      sample("correct-after-answers", 2, 1),
+      sample("handoff", 0, 1),
+      sample("asked-wrong", 1, 1),
+    ]).correctWithinOne,
+    2,
   );
 });
