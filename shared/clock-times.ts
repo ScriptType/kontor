@@ -56,10 +56,10 @@ const relativeTime = new RegExp(
   String.raw`(?<!\p{L})(halb|viertel\s+nach|viertel\s+vor|dreiviertel)\s+(\d{1,2}|${hourWordPattern})(?![\p{L}\p{N}])`,
   "giu",
 );
-const durationUnit = String.raw`\s*(?:h|std|stunden?|min|minuten?)(?!\p{L})`;
+const durationUnit = String.raw`\s*(?:h|std|stunden?|min|minuten?|tag(?:e|en)?|wochen?|monat(?:e|en)?|jahr(?:e|en)?)(?!\p{L})`;
 // "13", "13:30", "9.45", "9.45." at a sentence end. A number before a
-// duration unit ("3 Stunden") is no clock time; neither is a date, which the
-// callers skip.
+// duration unit ("3 Stunden", "2 Tage") is no clock time; neither is a date,
+// which the callers skip.
 const digitTime = new RegExp(
   String.raw`(?<![\p{L}\p{N}.,:/])(\d{1,2})(?:[:.](\d{2})(?!\.?\p{N}))?(?!\p{N}|[.,:]\p{N}|${durationUnit})`,
   "giu",
@@ -98,26 +98,37 @@ export type ClockRelation = {
   direction: "vor" | "nach";
   half: boolean;
 };
+// "zwanzig vor elf", "5 nach halb 10"; "5 nach 10 Minuten" counts minutes.
 const minutesBeforeAfter = new RegExp(
-  String.raw`(?<![\p{L}\p{N}])(\d{1,2}|${minuteWordPattern})\s+(?:min(?:uten?)?\s+)?(vor|nach)\s+(halb\s+)?(?:\d{1,2}|${hourWordPattern})(?![\p{L}\p{N}])`,
+  String.raw`(?<![\p{L}\p{N}])(\d{1,2}|${minuteWordPattern})\s+(?:min(?:uten?)?\s+)?(vor|nach)\s+(halb\s+)?(\d{1,2}|${hourWordPattern})(?![\p{L}\p{N}]|${durationUnit})`,
   "giu",
 );
 const halfHour = 30;
-export function writtenRelations(request: string): ClockRelation[] {
+function relations(request: string) {
   return [...request.matchAll(minutesBeforeAfter)].flatMap((m) => {
     const minutes = valueOf(m[1]!, minuteWords);
     return minutes && minutes < halfHour
       ? [
           {
-            text: m[0],
-            minutes,
-            direction: m[2]!.toLowerCase() === "vor" ? "vor" : "nach",
-            half: m[3] !== undefined,
+            at: m.index,
+            end: m.index + m[0].length,
+            hour: valueOf(m[4]!, hourWords)!,
+            relation: {
+              text: m[0],
+              minutes,
+              direction: m[2]!.toLowerCase() === "vor" ? "vor" : "nach",
+              half: m[3] !== undefined,
+            } satisfies ClockRelation,
           },
         ]
       : [];
   });
 }
+export const writtenRelations = (request: string): ClockRelation[] =>
+  relations(request).map(({ relation }) => relation);
+/** Minutes from the written hour to the clock time: "5 nach halb 10" is 5 − 30. */
+export const relationOffset = ({ minutes, direction, half }: ClockRelation) =>
+  (half ? -halfHour : 0) + (direction === "vor" ? -minutes : minutes);
 /** A clock time code reads without doubt, in minutes after midnight. */
 type ClockTime = Span & { minutes: number };
 function clockTimes(request: string): ClockTime[] {
@@ -125,18 +136,18 @@ function clockTimes(request: string): ClockTime[] {
   const times: ClockTime[] = [];
   const free = (at: number, end: number) =>
     ![...taken, ...times].some((span) => at < span.end && end > span.at);
+  for (const { at, end, hour, relation } of relations(request))
+    if (hour <= 24 && free(at, end))
+      times.push({ at, end, minutes: hour * 60 + relationOffset(relation) });
   for (const m of request.matchAll(relativeTime)) {
     const hour = valueOf(m[2]!, hourWords);
     const [back, minutes] =
       relativeClock[
         m[1]!.toLowerCase().replace(/\s+/g, " ") as keyof typeof relativeClock
       ];
-    if (hour !== undefined && hour <= 24)
-      times.push({
-        at: m.index,
-        end: m.index + m[0].length,
-        minutes: (hour + back) * 60 + minutes,
-      });
+    const end = m.index + m[0].length;
+    if (hour !== undefined && hour <= 24 && free(m.index, end))
+      times.push({ at: m.index, end, minutes: (hour + back) * 60 + minutes });
   }
   for (const m of request.matchAll(minutesAfterUhr)) {
     const [hour, minutes] = [

@@ -3,6 +3,7 @@ import {
   writtenHours,
   writtenMinutes,
   writtenRelations,
+  relationOffset,
   type ClockRelation,
 } from "./clock-times.js";
 import { fieldSchema, type FieldDescription } from "./command.js";
@@ -538,8 +539,7 @@ function relationOffsets(request: string): Record<string, number> {
     ...Object.fromEntries(
       writtenRelations(request).map((relation) => [
         relationKey(relation),
-        (relation.half ? -30 : 0) +
-          (relation.direction === "vor" ? -1 : 1) * relation.minutes,
+        relationOffset(relation),
       ]),
     ),
   };
