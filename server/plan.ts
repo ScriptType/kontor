@@ -91,6 +91,15 @@ const yes = (answer: Answer | undefined) => {
   if (answer?.type !== "noul") throw new Error("missing noul answer");
   return answer.noul;
 };
+/** The option whose own yes/no question under this prefix is likeliest. */
+const likeliest = (answers: Record<string, Answer>, prefix: string) =>
+  Object.entries(answers)
+    .filter(([key]) => key.startsWith(prefix))
+    .reduce<[string, number]>(
+      (best, [key, answer]) =>
+        yes(answer) > best[1] ? [key.slice(prefix.length), yes(answer)] : best,
+      [ASK, -1],
+    )[0];
 const picked = (answer: Answer | undefined) => {
   if (answer?.type !== "choice") throw new Error("missing choice answer");
   return answer.choice;
@@ -473,6 +482,11 @@ async function extractSteps(
         const options = valueOptions(scene, dim, id);
         if (options.length === 1)
           fixed[`s${i}.${id}.val.${dim}`] = options[0]!.value;
+        else if ("references" in d)
+          for (const option of options)
+            qb[`s${i}.${id}.is.${dim}.${option.value}`] = noul(
+              `${ref}\n\nDoes this part ask to make ${option.label} the value of this field of case ${caseLabel(scene, id)}? ${d.description} ${resolveNote}`,
+            );
         else if (options.length > 1)
           qb[`s${i}.${id}.val.${dim}`] = choice(
             `${ref}\n\nFor case ${caseLabel(scene, id)}: ${d.question} ${d.description} ${resolveNote}`,
@@ -500,7 +514,9 @@ async function extractSteps(
         const py = yes(b[`s${i}.${id}.chg.${dim}`]);
         if (py < 0.5) continue;
         const key = `s${i}.${id}.val.${dim}`;
-        const value = fixed[key] ?? (key in qb ? picked(b[key]) : ASK);
+        const value =
+          fixed[key] ??
+          (key in qb ? picked(b[key]) : likeliest(b, `s${i}.${id}.is.${dim}.`));
         // Setting a field to its current value is no change.
         if (value === currentCaseValue(scene, id, dim)) continue;
         values[dim] = value;
