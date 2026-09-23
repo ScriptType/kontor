@@ -392,6 +392,8 @@ async function serve(config: Config, store: WorkspaceStore, fetch?: Fetch) {
   return { url: `http://127.0.0.1:${address.port}`, close: () => app.close() };
 }
 
+/** The day the scenarios are written on, a Tuesday; "morgen" in a scenario means the day after it. */
+export const scenarioDay = new Date("2026-09-22T09:00:00");
 export async function evalContext(
   browser: Browser,
   saveMode: SaveMode,
@@ -401,6 +403,7 @@ export async function evalContext(
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
   });
+  await context.clock.setFixedTime(scenarioDay);
   await context.addInitScript(
     ({ percent, mode, gate, gateKey }) => {
       localStorage.setItem(
