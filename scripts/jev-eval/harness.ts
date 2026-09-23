@@ -6,6 +6,7 @@ import { createApp } from "../../server/app.js";
 import type { Config } from "../../server/config.js";
 import { WorkspaceStore } from "../../server/workspace-store.js";
 import { gatePreferenceKey, type GateName } from "../../frontend/src/gate.js";
+import { fieldSchema } from "../../shared/command.js";
 import { actionEffects } from "../../shared/dimensions.js";
 import {
   caseFiltersSchema,
@@ -18,7 +19,14 @@ import {
   type Save,
   type Workspace,
 } from "../../shared/domain.js";
-import { answerFor, judge, type Observed, type Stop } from "./judge.js";
+import {
+  answerFor,
+  judge,
+  valueAnswer,
+  type AnswerParts,
+  type Observed,
+  type Stop,
+} from "./judge.js";
 import type { SampleResult } from "./report.js";
 import { startWorkspace, type Scenario, type StartState } from "./scenarios.js";
 
@@ -26,8 +34,9 @@ export const confidencePercent = 75;
 export const saveModes = ["auto", "confirm"] as const;
 export type SaveMode = (typeof saveModes)[number];
 const maxConfirmations = 12;
+// "Antwort übernommen" is the pause between a panel answer and Jev resuming.
 const running =
-  /^(Bereit für deinen Auftrag|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft)$/;
+  /^(Bereit für deinen Auftrag|Jev wählt den nächsten sichtbaren Schritt|Schritt wird ausgeführt|Speicherergebnis wird geprüft|Antwort übernommen)$/;
 
 class RecordingStore extends WorkspaceStore {
   readonly receipts: Receipt[] = [];
@@ -170,6 +179,66 @@ export async function answerConfirmations(
     await handle?.waitForElementState("hidden", { timeout: 10000 });
   }
   return stops;
+}
+
+export async function answerValue(
+  page: Page,
+  scenario: Scenario,
+): Promise<Stop | null> {
+  const panel = page.locator("[data-answer-field]:visible").first();
+  await panel.waitFor({ timeout: 2000 }).catch(() => undefined);
+  if (!(await panel.count())) return null;
+  const input = (part: keyof AnswerParts) =>
+    panel.locator(`[data-answer-part="${part}"]`);
+  const prefill: AnswerParts = {};
+  for (const part of ["date", "time", "value"] as const)
+    if (await input(part).count())
+      prefill[part] = await input(part).inputValue();
+  const answer = valueAnswer(
+    scenario,
+    {
+      id: (await panel.getAttribute("data-answer-field")) ?? "",
+      scope: (await panel.getAttribute("data-answer-scope")) ?? "",
+      type:
+        prefill.value === undefined
+          ? "datetime-local"
+          : fieldSchema.shape.type.parse(
+              await input("value").getAttribute("type"),
+            ),
+    },
+    prefill,
+  );
+  const text = async () =>
+    (await panel.innerText()).replace(/\s+/g, " ").slice(0, 400);
+  const asked = {
+    ...(answer.dimension ? { dimension: answer.dimension } : {}),
+    ...(answer.caseId ? { caseId: answer.caseId } : {}),
+  };
+  if (answer.parts === null)
+    return { kind: "input", message: await text(), ...asked };
+  for (const [part, value] of Object.entries(answer.parts))
+    await input(part as keyof AnswerParts).fill(value);
+  const message = [
+    await text(),
+    ...answer.kept.map((kept) => `kept prefilled ${kept}`),
+  ].join(" · ");
+  const handle = await panel.elementHandle();
+  const error = page.locator("[data-answer-error]:visible");
+  await panel.locator("[data-answer-submit]").click();
+  await expect
+    .poll(
+      async () => (await error.count()) > 0 || !(await handle?.isVisible()),
+      { timeout: 10000 },
+    )
+    .toBe(true);
+  if (await error.count())
+    return {
+      kind: "input",
+      message: `${message} · ${(await error.innerText()).trim()}`,
+      ...asked,
+      value: answer.value,
+    };
+  return { kind: "answer", message, ...asked, value: answer.value };
 }
 
 const viewOf = (page: Page) =>
@@ -441,6 +510,7 @@ export async function runSample(options: {
   maxCalls?: number;
   timeoutMs?: number;
   recordPayloads?: boolean;
+  fetch?: Fetch;
 }): Promise<
   SampleResult & { observed: Observed | null; callLog: CallRecord[] }
 > {
@@ -454,6 +524,7 @@ export async function runSample(options: {
     callLog,
     maxCalls: options.maxCalls ?? 40,
     recordPayloads: options.recordPayloads ?? false,
+    fetch: options.fetch,
   });
   const app = await serve(config, store, fetch);
   const context = await evalContext(
@@ -476,6 +547,13 @@ export async function runSample(options: {
     await submit(page, scenario.request);
     while (true) {
       const stop = await awaitStop(page, Math.max(1000, deadline - Date.now()));
+      if (stop.kind === "input") {
+        const answered = (await answerValue(page, scenario)) ?? stop;
+        stops.push(answered);
+        if (answered.kind === "answer" && stops.length <= maxConfirmations)
+          continue;
+        break;
+      }
       const confirmations = await answerConfirmations(page, scenario);
       stops.push(...confirmations);
       if (

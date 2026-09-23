@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 import { once } from "node:events";
 import { createApp } from "../server/app.js";
 import { demos } from "../shared/command.js";
@@ -17,6 +17,7 @@ import {
   scenario,
   type Scenario,
 } from "../scripts/jev-eval/scenarios.js";
+import { scriptedProvider } from "./live-fixture.js";
 
 const done: Stop = {
   kind: "done",
@@ -78,6 +79,137 @@ test("a demo request runs through the real UI and is judged magic without provid
   expect(result.observed?.receipts.map((r) => r.saved.technicianId)).toEqual([
     "lea",
   ]);
+});
+
+const appointmentRequest =
+  "Setze V-1042 auf einen am 06.09.2026 und setzt wen anderes vom team dort ein als gerade gegeben der verfügbar ist";
+const answerSample = (browser: Browser, s: Scenario) =>
+  runSample({
+    browser,
+    config: { mode: "live", apiKey: "test", model: "jev-latest" },
+    scenario: s,
+    sample: 1,
+    variant: "test",
+    saveMode: "auto",
+    budget: { used: 0, limit: 40 },
+    fetch: scriptedProvider([], {
+      nextAnswer: (index) => ({
+        choice:
+          [
+            "case:V-1042",
+            "menu:technician",
+            "technician:lea",
+            "ask:appointment",
+            "save",
+            "field:appointment:2026-09-06T10:00",
+            "save",
+          ][index] ?? "done",
+        confidence: 1,
+      }),
+    }).fetch,
+  });
+
+test("a value question is answered in the panel like a person would: the prefilled date stays, the time is typed, the run goes on", async ({
+  browser,
+}) => {
+  const result = await answerSample(
+    browser,
+    scenario({
+      id: "answer-appointment",
+      source: "authored",
+      request: appointmentRequest,
+      intent: {
+        cases: {
+          "V-1042": { technician: "lea", appointmentStart: "2026-09-06T10:00" },
+        },
+        flags: { save: true },
+      },
+    }),
+  );
+  expect(result.outcome).toBe("correct-after-answers");
+  expect(result.questions).toBe(1);
+  expect(result.stops).toEqual([
+    {
+      kind: "answer",
+      message: expect.stringContaining(
+        "Datum aus dem Auftrag: 06.09.2026. Bitte die Uhrzeit ergänzen.",
+      ),
+      dimension: "appointmentStart",
+      caseId: "V-1042",
+      value: "2026-09-06T10:00",
+    },
+    expect.objectContaining({ kind: "done" }),
+  ]);
+  expect(result.stops[0]?.message).not.toContain("kept prefilled");
+  expect(result.observed?.records["V-1042"]).toMatchObject({
+    technicianId: "lea",
+    appointment: { start: "2026-09-06T10:00:00", minutes: 60 },
+  });
+});
+
+test("a prefilled part that disagrees with the scenario is kept, named in the stop, and judged by the end it leads to", async ({
+  browser,
+}) => {
+  const result = await answerSample(
+    browser,
+    scenario({
+      id: "answer-other-day",
+      source: "authored",
+      request: appointmentRequest,
+      intent: {
+        cases: {
+          "V-1042": { technician: "lea", appointmentStart: "2026-09-07T10:00" },
+        },
+        flags: { save: true },
+      },
+    }),
+  );
+  expect(result.outcome).toBe("asked-wrong");
+  expect(result.stops[0]).toEqual({
+    kind: "answer",
+    message: expect.stringContaining(
+      "kept prefilled date 2026-09-06, scenario 2026-09-07",
+    ),
+    dimension: "appointmentStart",
+    caseId: "V-1042",
+    value: "2026-09-06T10:00",
+  });
+});
+
+test("a value question without a single value in the scenario is left unanswered and ends the run", async ({
+  browser,
+}) => {
+  const result = await answerSample(
+    browser,
+    scenario({
+      id: "answer-moved",
+      source: "authored",
+      request: appointmentRequest,
+      intent: {
+        cases: { "V-1042": { appointmentStart: "2026-09-07T10:00" } },
+        sequence: {
+          "V-1042": [
+            { appointmentStart: "2026-09-06T10:00" },
+            { appointmentStart: "2026-09-07T10:00" },
+          ],
+        },
+        flags: { save: true, sequence: true },
+      },
+    }),
+  );
+  expect(result.outcome).toBe("stopped-unanswered");
+  expect(result.stops).toEqual([
+    {
+      kind: "input",
+      message: expect.stringContaining("Antwort ausstehend"),
+      dimension: "appointmentStart",
+      caseId: "V-1042",
+    },
+  ]);
+  expect(result.steps.some((step) => step.startsWith("field:appointment"))).toBe(
+    false,
+  );
+  expect(result.observed?.receipts).toEqual([]);
 });
 
 test("the repeat start state applies through the UI and reads back as its expected end", async ({

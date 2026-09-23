@@ -150,15 +150,16 @@ export function answerFor(
 
 /** The parts of the answer panel's inputs; an empty input is "". */
 export type AnswerParts = { date?: string; time?: string; value?: string };
-export type ValueAnswer = {
-  dimension: string | null;
-  caseId?: string;
-  /** The parts to type, only those that were empty; null means not answerable. */
-  parts: AnswerParts | null;
-  value: string | null;
-  /** Prefilled parts that differ from the scenario, kept as the panel showed them. */
-  kept: string[];
-};
+export type ValueAnswer = { dimension: string | null; caseId?: string } & (
+  | { parts: null; value: null; kept: [] }
+  | {
+      /** The parts to type: only those that were empty. */
+      parts: AnswerParts;
+      value: string;
+      /** Prefilled parts that differ from the scenario, kept as the panel showed them. */
+      kept: string[];
+    }
+);
 const inputValue: Record<FieldDescription["type"], RegExp> = {
   "datetime-local": /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
   number: /^\d+$/,
@@ -204,7 +205,7 @@ export function valueAnswer(
     value:
       field.type === "datetime-local"
         ? `${submitted.date}T${submitted.time}`
-        : (submitted.value ?? null),
+        : (submitted.value ?? truth),
     kept,
   };
 }
