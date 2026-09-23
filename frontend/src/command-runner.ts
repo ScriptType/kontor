@@ -662,7 +662,7 @@ export class CommandRunner {
     const policy = gates[this.gate];
     const context = this.facts(blockedControls);
     const actions = this.registry.snapshot(run.request, run.answers, existing);
-    const plan = this.readPlanNow();
+    const plan = this.awaitedPlan();
     const world = plan && this.planWorld();
     const hints =
       data &&
@@ -877,7 +877,7 @@ export class CommandRunner {
     return plan && workspace ? { plan, start: { ...start, workspace } } : null;
   }
   /** The active run's plan once a todo gate awaited it, else null. */
-  private readPlanNow() {
+  private awaitedPlan() {
     const planned = this.planned;
     return planned?.runId === this.activeId ? (planned.run ?? null) : null;
   }
